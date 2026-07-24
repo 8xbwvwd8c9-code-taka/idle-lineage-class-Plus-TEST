@@ -118,6 +118,38 @@ const toggleOffProblems = await opage.evaluate(() => {
   return bad;
 });
 
+// --- 第四輪:平板幾何(觸控 + 寬 > 768),驗右欄分頁不會「內外兩層都不捲」---
+//   afk-mobile 的 detectMobile() 只要 pointer:coarse 就算手機,範圍比上游 CSS 的手機斷點
+//   (max-width:768px / max-height:520px and pointer:coarse)大 → 觸控平板在我方眼中是手機、在上游眼中是桌機。
+//   我方「把分頁攤平、交給 #game-screen 單層捲」那組規則若沒包進上游同一條 media query,平板就會拿到
+//   「分頁不捲(我方規則) + #game-screen 也不捲(上游桌機幾何)」→ 道具/防具/設定超出畫面的部分永遠
+//   看不到也滑不到(2026-07-25 玩家回報)。前三輪都是手機或桌機尺寸,正好落在這道縫的兩側,測不到。
+const tctx = await browser.newContext({
+  viewport: { width: 820, height: 1180 }, hasTouch: true, deviceScaleFactor: 2,
+  userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+});
+const tpage = await tctx.newPage();
+await tpage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
+await tpage.waitForTimeout(3000);
+const tabletProblems = await tpage.evaluate(() => {
+  const bad = [];
+  const SCROLLABLE = ['auto', 'scroll'];
+  const oy = (el) => getComputedStyle(el).overflowY;
+  // 前置:只有「我方當手機、上游當桌機」這道縫才有混搭問題;兩邊同調時本檢查不適用。
+  if (!document.body.classList.contains('m-mobile')) return bad;
+  if (matchMedia('(max-width: 768px), (max-height: 520px) and (pointer: coarse)').matches) return bad;
+  const gs = document.getElementById('game-screen');
+  if (gs && SCROLLABLE.includes(oy(gs))) return bad;   // 外層自己就是捲動容器 → 分頁攤平是安全的
+  const panel = document.getElementById('tab-content-panel');
+  if (panel && oy(panel) === 'visible') bad.push('#tab-content-panel 被攤平(overflow-y:visible),但 #game-screen 不是捲動容器');
+  for (const id of ['tab-items', 'tab-weapons', 'tab-armors', 'tab-automation']) {
+    const el = document.getElementById(id);
+    if (!el) { bad.push(`#${id} 不存在(上游改了分頁 id?)`); continue; }
+    if (!SCROLLABLE.includes(oy(el))) bad.push(`#${id} 不是捲動容器(overflow-y:${oy(el)}),而 #game-screen 也不捲`);
+  }
+  return bad;
+});
+
 // 🗺️ 地圖名翻譯覆蓋檢查:掉落查詢的「出沒地圖」來源＝DB.maps 的 key,經 AFK_EXTRA.mapName 解析。
 //   mapName 查不到任一中文來源時會原樣回傳英文 id(name === id),這就是「漏翻」的精準訊號。
 //   作者新增「不在 MAP_CATEGORIES/MAP_REGIONS/DB.towns…」的地圖結構時會被這裡擋下 → 提醒補進 mapName。
@@ -152,6 +184,14 @@ if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
+  process.exit(1);
+}
+
+if (tabletProblems.length) {
+  console.error('冒煙測試失敗:平板(觸控·寬 820)上右欄分頁內外兩層都不捲,超出畫面的內容看不到也滑不到:');
+  for (const p of tabletProblems) console.error('  ' + p);
+  console.error('  判準:要覆寫上游「寫在 media query 裡」的樣式時,自己的規則必須包進同一條 media query');
+  console.error('       (afk-mobile.js 的 MOBILE_GEOM_MQ);只寫 body.m-mobile 會讓觸控平板拿到混搭幾何。');
   process.exit(1);
 }
 
