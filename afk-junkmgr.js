@@ -222,7 +222,6 @@
     m.innerHTML =
       '<div class="m-junk-box">' +
         '<div class="m-junk-head">🗑️ 廢品標記管理<button id="m-junk-x" type="button">✕</button></div>' +
-        '<div class="m-junk-note">這些是你標過廢品的物品：以後掉到同一款會自動標成廢品。刪除＝取消標記（背包裡同款的廢品標記也會一起取消）。</div>' +
         '<div class="m-junk-tools">' +
           '<input id="m-junk-search" type="search" placeholder="搜尋名稱…" autocomplete="off">' +
           '<button id="m-junk-selall" class="m-junk-btn" type="button">全選</button>' +
@@ -350,7 +349,6 @@
       '.m-junk-box{width:100%;max-width:560px;max-height:calc((100dvh - var(--orig-bar-h,0px)) * .9);display:flex;flex-direction:column;overflow:hidden;background:#0f172a;border:1px solid #475569;border-radius:12px;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.6);}',
       '.m-junk-head{flex:none;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;font-size:16px;font-weight:bold;color:#fbbf24;border-bottom:1px solid #334155;}',
       '.m-junk-head button{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px;}',
-      '.m-junk-note{flex:none;padding:9px 14px;font-size:12px;line-height:1.6;color:#94a3b8;border-bottom:1px solid #1e293b;}',
       '.m-junk-tools{flex:none;display:flex;gap:6px;padding:10px 14px 6px;}',
       '#m-junk-search{flex:1;min-width:0;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:13px;outline:none;font-family:inherit;}',
       '#m-junk-search:focus{border-color:#d97706;}',
@@ -373,7 +371,7 @@
       '.m-junk-tools .m-junk-btn{flex:none;padding:7px 10px;font-size:12px;}',
       '.m-junk-btn-red{background:#991b1b;border-color:#dc2626;}.m-junk-btn-red:hover{background:#dc2626;}',
       '.m-junk-btn:disabled{opacity:.45;cursor:default;background:#334155;}',
-      '@media (max-width:640px){.m-junk-box{max-width:none;max-height:calc((100dvh - var(--orig-bar-h,0px)) * .94);}.m-junk-note{padding:7px 12px;font-size:11px;line-height:1.5;}.m-junk-tools,.m-junk-foot{padding-left:10px;padding-right:10px;}.m-junk-btn{padding:9px 4px;}}'
+      '@media (max-width:640px){.m-junk-box{max-width:none;max-height:calc((100dvh - var(--orig-bar-h,0px)) * .94);}.m-junk-tools,.m-junk-foot{padding-left:10px;padding-right:10px;}.m-junk-btn{padding:9px 4px;}}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(st);
   }
