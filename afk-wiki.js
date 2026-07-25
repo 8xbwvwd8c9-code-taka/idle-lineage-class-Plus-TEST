@@ -2144,7 +2144,9 @@
     });
     function card(e) {
       var d = e.d, id = e.id;
-      var nameCls = d.legend ? 'c-legend' : 'text-slate-100';
+      // 名稱配色比照遊戲內(getItemColor 的優先序:遺物 > 傳說 > 一般);字級小、只靠顏色不夠明確 → 各配一個尾標(遺物 🏺／傳說 ✦)
+      var isRelic_ = isRelicItem(d);
+      var nameCls = isRelic_ ? 'c-relic' : (d.legend ? 'c-legend' : 'text-slate-100');
       var ic = ''; try { ic = (typeof getIconUrl === 'function') ? getIconUrl(d) : ''; } catch (eIc) {}
       var icImg = ic ? '<img src="' + esc(ic) + '" alt="" style="width:26px;height:26px;object-fit:contain;flex:none;border-radius:4px;" onerror="this.style.display=\'none\'">' : '';
       // 遺物檢視:右側摘要改顯示「掉落區域」(篩選維度,一眼看到掉哪);多區域截前 2 個 +「等 N 區」。展開詳情仍有完整取得方式(哪隻怪)。
@@ -2156,7 +2158,7 @@
       } else compact = equipCompact(d);
       return '<div class="m-wiki-card m-eq-card">' +
         '<div class="m-eq-head" data-eq="' + esc(id) + '" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
-          '<span style="display:flex;align-items:center;gap:7px;flex-shrink:0;">' + icImg + '<span class="' + nameCls + ' font-bold" style="white-space:nowrap;">' + esc(d.n) + (d.legend ? ' ✦' : '') + '</span></span>' +
+          '<span style="display:flex;align-items:center;gap:7px;flex-shrink:0;">' + icImg + '<span class="' + nameCls + ' font-bold" style="white-space:nowrap;">' + esc(d.n) + (isRelic_ ? ' 🏺' : (d.legend ? ' ✦' : '')) + '</span></span>' +
           '<span class="m-eq-compact" style="color:#94a3b8;font-size:12px;text-align:right;flex-shrink:1;min-width:0;">' + esc(compact) + '</span>' +
         '</div>' +
         '<div class="m-eq-detail" style="display:none;border-top:1px solid #1e293b;margin-top:6px;padding-top:6px;">' + equipDetailHTML(id) + '</div>' +
