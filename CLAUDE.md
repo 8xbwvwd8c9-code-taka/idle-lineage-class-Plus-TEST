@@ -88,7 +88,7 @@ CI 版:GitHub Actions `sync-upstream.yml`(**只有 `workflow_dispatch`,無 GitHu
 | `afk-statlist.js` | 能力分頁條列式(拿掉經典背景圖改大字卡片;純 CSS,DOM/updateUI 不動;配點中改單欄) |
 | `afk-autobuy.js` | 自動買肉/魔法屏障卷軸補貨(預設開;離線結算共用 `__afkAutobuyCheck`) |
 | `afk-training.js` | 木人場(量真實 DPS;獨立 map id `afk_dummy`) |
-| `afk-junkmgr.js` | 廢品標記管理(木人場鈕下方;列出/搜尋/多選刪除 `player.junkPrefs` 記憶＋背包廢品標記,虛擬捲動) |
+| `afk-junkmgr.js` | 廢品標記管理(木人場鈕下方;列出/搜尋/多選刪除 `player.junkPrefs`,刪除同時取消背包同款標記;規則標記 `_ruleJunk` 刻意不列;虛擬捲動) |
 | `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5) |
 | `afk-itemsearch.js` | 背包名稱搜尋(包 renderTabs 重注入;純顯示層過濾) |
 | `afk-invlist.js` | 背包條列式(桌機手機通用) |

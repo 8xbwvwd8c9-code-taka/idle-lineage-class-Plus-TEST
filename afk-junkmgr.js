@@ -1,17 +1,17 @@
 /* ============================================================================
  * afk-junkmgr.js — 廢品標記管理（自動化分頁「🔌 外掛」列，木人場按鈕下方）
  *
- * 為什麼需要：廢品標記有兩份，玩家看得到的只有背包裡那件，另一份「記憶」是隱形的——
- *   core 的 toggleJunk 標記時會把物品簽章寫進 player.junkPrefs，之後**掉到同樣的東西就自動標成廢品**
- *   （js/08 gainItem）。玩家一旦誤標過某件裝備，之後每次掉落都會被靜靜標記賣掉，而遊戲內沒有
- *   任何地方看得到、也刪不掉這份記憶（只能等它再掉出來、手動取消那一件）。本外掛就是那份清單的
- *   檢視／搜尋／刪除介面，外加一鍵全清。
+ * 為什麼需要：玩家標一件廢品時，core 的 toggleJunk 會把該物品的完整簽章寫進 player.junkPrefs，
+ *   之後**掉到同樣的東西就自動標成廢品**（js/08 gainItem）。這份名單是隱形的——遊戲內看不到、
+ *   也刪不掉（只能等它再掉出來、手動取消那一件），誤標過一次就會一直被靜靜標記賣掉。
+ *   本外掛就是那份名單的檢視／搜尋／刪除介面，外加一鍵全清。
  *
- * 一列＝一種標記（以 itemSig 完整簽章為單位：同 id 但強化值／祝福／遠古／屬性不同者各自一列）：
- *   ・「記憶」徽章＝在 player.junkPrefs 裡（以後掉到會自動標）
- *   ・「背包 N」徽章＝目前背包裡有 N 件標著廢品的同簽章物品
- *   刪除一列＝兩者一起清（刪記憶＋把背包內同簽章的廢品標記取消），與 core toggleJunk 取消標記等價，
- *   含「規則標記」的豁免處理（_ruleJunk → _userKeep，否則自動販賣規則下一輪又重標，刪了像沒刪）。
+ * 清單＝player.junkPrefs，一列＝一種標記（itemSig 完整簽章：同 id 但強化值／祝福／遠古／屬性
+ *   不同者各自一列）。刪除一列＝刪記憶＋把背包內同簽章的廢品標記一起取消，與 core toggleJunk
+ *   的「取消標記」等價，含規則標記的豁免處理（_ruleJunk → _userKeep）。
+ *
+ * ⚠ 刻意不列「自動販賣規則標記的物品」（_ruleJunk，只寫 i.junk、不寫 junkPrefs）：那是規則的產物，
+ *   在這裡刪掉下一輪又會被 applyAutoSellRules 重標，看起來像刪不掉；要停那些請改規則本身。
  *
  * 效能：標記可能上千筆 → 清單走虛擬捲動（只建視窗內約 20 列 DOM）、搜尋 debounce、
  *   名稱 HTML 依簽章快取（同一簽章只算一次 getItemFullName）。
@@ -29,7 +29,7 @@
   var OVERSCAN = 6;    // 視窗上下各多畫幾列，快速滑動時不會露白
   var TYPE_ORDER = { wpn: 0, arm: 1, acc: 2 };
 
-  var rows = [];       // 全部標記（已排序）：{ sig, html, plain, icon, inPref, invCnt }
+  var rows = [];       // 全部標記（已排序）：{ sig, html, plain, icon }
   var view = [];       // 目前搜尋條件下顯示的子集（rows 的參照）
   var sel = Object.create(null);   // 已勾選的簽章
   var nameCache = Object.create(null);   // sig → { html, plain, icon, order }（名稱不會變，跨重建共用）
@@ -84,26 +84,15 @@
     return c;
   }
 
-  // ---- 資料重建（O(標記數 + 背包數)）--------------------------------------
+  // ---- 資料重建（O(標記數)）-----------------------------------------------
   function rebuild() {
     var prefs = (player.junkPrefs = player.junkPrefs || {});
-    var invCnt = Object.create(null);
-    (player.inv || []).forEach(function (i) {
-      if (!i.junk) return;
-      var s = itemSig(i);
-      invCnt[s] = (invCnt[s] || 0) + (i.cnt || 1);
-    });
     var seen = Object.create(null);
     rows = [];
     Object.keys(prefs).forEach(function (s) {
       if (!prefs[s] || seen[s]) return;
       seen[s] = 1;
-      rows.push({ sig: s, inPref: true, invCnt: invCnt[s] || 0 });
-    });
-    Object.keys(invCnt).forEach(function (s) {   // 背包裡標著廢品、但沒進記憶的（規則標記／舊存檔）也要看得到
-      if (seen[s]) return;
-      seen[s] = 1;
-      rows.push({ sig: s, inPref: false, invCnt: invCnt[s] });
+      rows.push({ sig: s });
     });
     rows.forEach(function (r) {
       var c = infoOf(r.sig);
@@ -144,13 +133,10 @@
     var h = '';
     for (var i = start; i < end; i++) {
       var r = view[i];
-      var badges = (r.inPref ? '<span class="m-junk-bg m-junk-bg-pref">記憶</span>' : '')
-        + (r.invCnt ? '<span class="m-junk-bg m-junk-bg-inv">背包 ' + r.invCnt + '</span>' : '');
       h += '<div class="m-junk-row' + (sel[r.sig] ? ' on' : '') + '" data-i="' + i + '" style="top:' + (i * ROW_H) + 'px">'
         + '<span class="m-junk-cb"></span>'
         + (r.icon ? '<img class="m-junk-ic" src="' + esc(r.icon) + '" onerror="this.style.visibility=\'hidden\'">' : '<span class="m-junk-ic"></span>')
         + '<span class="m-junk-nm">' + r.html + '</span>'
-        + '<span class="m-junk-bgs">' + badges + '</span>'
         + '</div>';
     }
     list.innerHTML = h;
@@ -212,7 +198,7 @@
     var n = rows.length;
     AFK_UI.confirm({
       title: '清除全部廢品標記',
-      message: '將清掉全部 ' + n + ' 種標記：\n・「以後掉到就自動標廢品」的記憶全部忘掉\n・背包裡現在標著廢品的物品也一併取消標記\n\n此動作無法復原，要繼續嗎？',
+      message: '將取消全部 ' + n + ' 種廢品標記，以後掉到這些東西不會再自動標成廢品；背包裡同款的廢品標記也會一起取消。\n\n此動作無法復原，要繼續嗎？',
       okText: '全部清除', danger: true,
       onOk: function () {
         var all = Object.create(null);
@@ -236,7 +222,7 @@
     m.innerHTML =
       '<div class="m-junk-box">' +
         '<div class="m-junk-head">🗑️ 廢品標記管理<button id="m-junk-x" type="button">✕</button></div>' +
-        '<div class="m-junk-note">一列＝一種標記。<b class="m-junk-bg m-junk-bg-pref">記憶</b>＝以後掉到同樣的東西會自動標成廢品；<b class="m-junk-bg m-junk-bg-inv">背包</b>＝目前背包裡標著廢品的件數。刪除會把兩者一起取消。</div>' +
+        '<div class="m-junk-note">這些是你標過廢品的物品：以後掉到同一款會自動標成廢品。刪除＝取消標記（背包裡同款的廢品標記也會一起取消）。</div>' +
         '<div class="m-junk-tools">' +
           '<input id="m-junk-search" type="search" placeholder="搜尋名稱…" autocomplete="off">' +
           '<button id="m-junk-selall" class="m-junk-btn" type="button">全選</button>' +
@@ -380,10 +366,6 @@
       '.m-junk-ic{flex:none;width:24px;height:24px;object-fit:contain;}',
       '.m-junk-nm{flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.m-junk-unknown{color:#94a3b8;font-style:italic;}',
-      '.m-junk-bgs{flex:none;display:flex;gap:4px;}',
-      '.m-junk-bg{font-size:11px;padding:1px 6px;border-radius:999px;white-space:nowrap;font-style:normal;font-weight:normal;}',
-      '.m-junk-bg-pref{background:#422006;color:#fbbf24;border:1px solid #78350f;}',
-      '.m-junk-bg-inv{background:#1e293b;color:#94a3b8;border:1px solid #334155;}',
       '.m-junk-empty{padding:26px 14px;text-align:center;color:#64748b;font-size:13px;}',
       '.m-junk-foot{flex:none;display:flex;gap:8px;padding:10px 14px;}',
       '.m-junk-btn{flex:1;cursor:pointer;border-radius:6px;padding:8px 6px;font-size:13px;background:#334155;border:1px solid #475569;color:#e2e8f0;white-space:nowrap;font-family:inherit;}',
