@@ -351,7 +351,7 @@
           bl.push({ t: 'tbl', h: ['角色'].concat(fams), rows: rows });
         }
       } catch (e) {}
-      bl.push({ t: 'p', p: '加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／專精加成／龍騎士覺醒…）都是在這個基礎值上<b>再乘</b>（多個一起吃就<b>互相相乘疊加</b>，不是覆蓋）。<b>變身</b>比較特別：它會<b>用該變身自己的攻擊速度取代</b>這張表查到的基礎攻速（有的變身反而更慢），之後才再吃上面那些加速類乘算（詳見「變形」分頁）。負重過重的攻速懲罰見「負重」分頁。表格直接讀遊戲資料，數值會自動跟上。' });
+      bl.push({ t: 'p', p: '加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／專精加成／龍騎士覺醒…）都是在這個基礎值上<b>再乘</b>（多個一起吃就<b>互相相乘疊加</b>，不是覆蓋）。<b>變身</b>比較特別：它會<b>用該變身自己的攻擊速度取代</b>這張表查到的基礎攻速（有的變身反而更慢），之後才再吃上面那些加速類乘算（詳見「變形」分頁）。負重過重的攻速懲罰見「負重」分頁。' });
       return bl;
     })() },
     { t: '硬直與施法冷卻：兩個「職業速度」下限', blocks: (function () {
@@ -363,7 +363,7 @@
           bl.push({ t: 'tbl', h: ['職業', '硬直（秒）', '施法冷卻下限（秒）'], rows: CLS.map(function (c) { return [c[0], sec(HITSTUN_TICKS, c[1], c[2]), sec(CAST_TICKS, c[1], c[2])]; }) });
         }
       } catch (e) {}
-      bl.push({ t: 'p', p: '速度型<b>變身</b>（變形卷軸／套裝變身）會用該型態自己的攻擊間隔／施法／硬直<b>取代</b>這些值（見「變形」分頁）。施法冷卻只是<b>下限</b>，實際還受該攻擊技本身的冷卻與 MP 是否足夠一起節流。表格直接讀遊戲資料、數值自動跟上。' });
+      bl.push({ t: 'p', p: '速度型<b>變身</b>（變形卷軸／套裝變身）會用該型態自己的攻擊間隔／施法／硬直<b>取代</b>這些值（見「變形」分頁）。施法冷卻只是<b>下限</b>，實際還受該攻擊技本身的冷卻與 MP 是否足夠一起節流。' });
       return bl;
     })() },
     // ── 二、你打怪：傷害怎麼算（進攻） ──
@@ -416,7 +416,7 @@
       { t: 'tbl', h: ['頭目', '狂暴門檻', '狂暴時'], rows: [
         ['吉爾塔斯 · 真‧死亡騎士 冥皇丹特斯', 'HP < 30%', '命中 ×1.2、所有傷害 ×1.2']
       ]},
-      { t: 'p', p: '其餘頭目目前沒有這個機制。清最後三成血時要留意被反殺。' }
+      { t: 'p', p: '其餘頭目目前沒有這個機制。' }
     ]},
     { t: '血壁空間（吉爾塔斯專屬）', blocks: [
       { t: 'p', p: '吉爾塔斯會施放「血壁空間」，隨機獲得<b>近距離／遠距離／魔法</b>其中一種反射，持續 <b>10 秒</b>。期間你（或傭兵）用<b>對應類型</b>打中牠，會被<b>反彈同等傷害</b>回攻擊者身上。' },
@@ -432,7 +432,7 @@
         ['無關，或你／怪其中一方沒屬性', '×1.0'],
         ['反被牠剋（火打水／水打風／風打地／地打火）', '<b style="color:#fca5a5">×0.6</b>']
       ]},
-      { t: 'p', p: '這個倍率<b>物理攻擊、武器特效、魔法、技能傷害全都吃</b>（魔法沒有上面那筆固定加值，但一樣吃 ×1.4／×0.6）。<b>無屬性武器永遠 ×1.0、不會被扣</b>；只有「帶了被怪剋的屬性」才會掉到 ×0.6（比不帶屬性還虧）——所以盡量帶「剋當前地圖怪」的屬性、避免帶到被剋的。' },
+      { t: 'p', p: '這個倍率<b>物理攻擊、武器特效、魔法、技能傷害全都吃</b>（魔法沒有上面那筆固定加值，但一樣吃 ×1.4／×0.6）。<b>無屬性武器永遠 ×1.0、不會被扣</b>；只有「帶了被怪剋的屬性」才會掉到 ×0.6（比不帶屬性還虧）。' },
       { t: 'p', p: '<b>屬性抗性</b>（防具/飾品屬性詞綴給）：對應元素傷害依抗性減免——50 點以內 1 點＝減 1%，超過 50 後每 5 點才再減 1%（避免無腦堆）。' }
     ]},
     { t: '異常狀態效果（你讓怪中的負面狀態）', blocks: [
@@ -501,14 +501,16 @@
       '<b>你（或傭兵）被束縛</b>：手上<b>不是遠程武器就打不出一般攻擊</b>；<b>裝弓／十字弓則隔空射擊、完全不受影響</b>。',
       '成敗看<b>魔法命中 vs 目標魔防</b>，<b>對頭目無效</b>（頭目免疫）。目前唯一來源是<b>深紅之弩</b>（一般攻擊 <b>2%</b> 機率使目標束縛 6 秒）。'
     ]},
-    { t: '盾牌格擋（裝備上標示「格檔」）', lines: [
-      '裝<b>盾牌</b>時，被敵人的一般攻擊命中有機率<b>格擋</b>，擋下時這一擊傷害<b>直接減半</b>（×0.5、無條件捨去）。',
-      '<b>發動率看「是不是重擊」</b>：被敵人<b>重擊</b>命中時，格擋率＝<b>盾牌的格擋值</b>（如 100% 盾＝必擋）；被<b>非重擊</b>的一般攻擊命中時，格擋率只有盾牌格擋值的 <b>30%</b>。剛好在你最痛的「重擊」那一下最可靠。（重擊是什麼見上面「重擊 vs 爆擊」。）',
-      '<table style="width:100%;border-collapse:collapse;margin:4px 0;font-size:13px;color:#cbd5e1;"><thead><tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid #475569;">盾牌格擋值</th><th style="text-align:center;padding:4px 6px;border-bottom:1px solid #475569;">被重擊時</th><th style="text-align:center;padding:4px 6px;border-bottom:1px solid #475569;">被一般攻擊時</th></tr></thead><tbody><tr><td style="padding:4px 6px;">30%</td><td style="text-align:center;padding:4px 6px;">30%</td><td style="text-align:center;padding:4px 6px;">9%</td></tr><tr><td style="padding:4px 6px;">50%</td><td style="text-align:center;padding:4px 6px;">50%</td><td style="text-align:center;padding:4px 6px;">15%</td></tr><tr><td style="padding:4px 6px;">70%</td><td style="text-align:center;padding:4px 6px;">70%</td><td style="text-align:center;padding:4px 6px;">21%</td></tr><tr><td style="padding:4px 6px;">100%</td><td style="text-align:center;padding:4px 6px;">100%</td><td style="text-align:center;padding:4px 6px;">30%</td></tr></tbody></table>',
-      '<b>格擋值看你裝哪面盾</b>：各盾不同，從 <b>10%</b>（法師的法書／水晶球）到 <b>100%</b>（死亡之盾），常見 20～70%。實際數字在「掉落查詢」搜盾牌名、或裝備上會標「<b>格檔 N%</b>」。',
-      '<b>只有真盾牌有格擋</b>：同一格（副手／盾牌欄）的<b>臂甲沒有格擋</b>，空手也沒有。',
-      '<b>格擋＝必定反擊</b>：裝<b>單手劍</b>時本來受擊有 50% 機率反擊，<b>只要這次格擋成功就「必定」觸發反擊</b>（傭兵的反擊同理）——所以「盾＋單手劍」防反很搭。',
-      '<b>經典模式沒有格擋</b>（盾牌不格擋）。'
+    { t: '盾牌格擋（裝備上標示「格檔」）', blocks: [
+      { t: 'p', p: '裝<b>盾牌</b>時，被敵人的一般攻擊命中有機率<b>格擋</b>，擋下時這一擊傷害<b>直接減半</b>（×0.5、無條件捨去）。' },
+      { t: 'p', p: '<b>發動率看「是不是重擊」</b>：被敵人<b>重擊</b>命中時，格擋率＝<b>盾牌的格擋值</b>（如 100% 盾＝必擋）；被<b>非重擊</b>的一般攻擊命中時，格擋率只有盾牌格擋值的 <b>30%</b>。' },
+      { t: 'tbl', h: ['盾牌格擋值', '被重擊時', '被一般攻擊時'], rows: [
+        ['30%', '30%', '9%'], ['50%', '50%', '15%'], ['70%', '70%', '21%'], ['100%', '100%', '30%']
+      ]},
+      { t: 'p', p: '<b>格擋值看你裝哪面盾</b>：各盾不同，從 <b>10%</b>（法師的法書／水晶球）到 <b>100%</b>（死亡之盾），常見 20～70%。裝備上會標「<b>格檔 N%</b>」。' },
+      { t: 'p', p: '<b>只有真盾牌有格擋</b>：同一格（副手／盾牌欄）的<b>臂甲沒有格擋</b>，空手也沒有。' },
+      { t: 'p', p: '<b>格擋＝必定反擊</b>：裝<b>單手劍</b>時本來受擊有 50% 機率反擊，<b>只要這次格擋成功就「必定」觸發反擊</b>（傭兵的反擊同理）。' },
+      { t: 'p', p: '<b>經典模式沒有格擋</b>（盾牌不格擋）。' }
     ]},
     { t: '臂甲：能和雙手武器並用的副手裝備', blocks: [
       { t: 'p', p: '<b>臂甲</b>裝在<b>副手（盾牌欄）</b>，但<b>可和雙手武器同用</b>（拿雙手劍/矛/弓也能戴）；與盾牌共用同格、二選一。戰士的<b>迅猛雙斧</b>（副手武器）也佔同一個副手格 → 盾牌／臂甲／迅猛雙斧三者<b>擇一</b>，裝一個會自動卸下另一個（被詛咒不可卸的那件則會擋下）。<b>強化不加 AC，改每強化 +1 給 HP +10</b>（上限 +15，可帶祝福/詞綴）。門檻特效：強化到 <b>+5/+7/+9</b> 主效果各跳一階（取最高階、不累加）。' },
@@ -691,7 +693,7 @@
       ['打怪（一般怪）', '<b>1%</b>'],
       ['打怪（頭目）', '<b>10%</b>'],
       ['製作／合成', '<b>10%</b>'],
-      ['潘朵拉黑市的裝備商品', '<b>1%</b>（上架時就擲好，讀檔重買不會變）'],
+      ['潘朵拉黑市的裝備商品', '<b>1%</b>'],
       ['席琳的世界・一般怪', '<b>3%</b>'],
       ['瘋狂的席琳世界・一般怪', '<b>5%</b>'],
       ['席琳的世界・頭目', '<b>20%</b>（固定值，不是 10% 再乘倍率）'],
@@ -733,7 +735,7 @@
       '+9 以後成功率一路維持低檔（武器約 17% 成功、67% 爆裝），衝高強化非常吃卷軸與運氣。'
     ]},
     { t: '三種詞綴（屬性／遠古／祝福，可同時各帶一個）', lines: [
-      '<b>三種類型各自獨立、可以同時存在</b>：一件裝備最多能<b>同時</b>帶 1 個屬性 ＋ 1 個遠古系 ＋ 1 個祝福／詛咒（共 3 個）——<b>不是三選一、也不是只能帶一個</b>。',
+      '一件裝備可以<b>同時</b>帶 1 個屬性 ＋ 1 個遠古系 ＋ 1 個祝福／詛咒（共 3 個），彼此獨立。',
       '<b>屬性（火／水／風／地，各五階）</b>：<b>只能賦予在武器上</b>（防具與飾品不能）。武器會轉成該元素，並依階級加固定傷害與額外魔法點數：<b>第一階 +1／第二階 +3／第三階 +5／第四階 +7／第五階 +9</b>（以火為例＝火之／爆炎／火靈／赤炎／帕格里奧）。屬性的真正價值在<b>相剋</b>：打到被你剋的怪<b>傷害 ×1.4</b>，打到剋你的怪<b>×0.6</b>。剋制關係：火剋地、地剋風、風剋水、水剋火。',
       '<b>遠古系（遠古／永恆／不朽／太初，共四階）</b>：<b>已無取得途徑</b>，只在舊裝備上看得到；效果仍照下面生效。',
       '<b>遠古</b>：武器→額外傷害+2、魔法傷害+1；防具→傷害減免+2；飾品→傷害減免+1、魔防+1。',
@@ -743,7 +745,7 @@
       '<b>祝福／詛咒</b>：祝福給小幅正向（武器額外傷害+1·命中+1·魔力+2；防具防禦(AC) -1·減傷+1；飾品防禦(AC) -1·魔防+1），詛咒則是等量負向（負鏡像）。'
     ]},
     { t: '祝福／詛咒怎麼來', lines: [
-      '裝備到手那一刻就決定有沒有祝福，機率看來源（下表）；「對武器／盔甲施法的卷軸」另有各 <b>1%</b> 變成「祝福的」／「詛咒的」（互斥）。'
+      '撿到的裝備有機率自帶「祝福的」，機率看來源（下表）；「對武器／盔甲施法的卷軸」另有各 <b>1%</b> 變成「祝福的」／「詛咒的」（互斥）。'
     ], html: blessRateTableHtml },
     { t: '詞綴怎麼來', lines: [
       '<b>遠古系：沒有取得途徑</b>——「賦予武器／盔甲祝福卷軸」已停用，碧恩只賦予屬性。',
@@ -1539,7 +1541,7 @@
   function renderMastery(cls) {
     var md = MASTERY_DATA[cls];
     if (!md || !md.list) return '<div class="m-wiki-hint">查無此職業的專精資料。</div>';
-    var intro = '<div class="m-wiki-note">到 50 等後，到威頓村找「漢」接精通任務，擊敗 <b>' + esc(md.boss) + '</b> 取回「精通之證」，即可從下面四選一（初次免費，之後更換要花費）。卡片下方金框是<b>依程式碼查證的實際數據</b>（含未精通的基準值）。</div>';
+    var intro = '<div class="m-wiki-note">到 50 等後，到威頓村找「漢」接精通任務，擊敗 <b>' + esc(md.boss) + '</b> 取回「精通之證」，即可從下面四選一（初次免費，之後更換要花費）。卡片下方金框是實際數據（含未精通的基準值）。</div>';
     var cards = Object.keys(md.list).map(function (id) {
       var m = md.list[id];
       var facts = MASTERY_FACT[id];
@@ -1576,7 +1578,7 @@
   }
   function endgameCardHTML(s) {
     return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' +
-      s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('') + '</div>';
+      s.lines.map(bulletHTML).join('') + '</div>';
   }
   function renderQuest(cls) {
     // 「全職業」篩選:不分職業的共通任務(雷德的復仇)＋完成任一職業 50 級試煉後共通開放的魔族神殿／暗影神殿
@@ -1588,7 +1590,7 @@
     }
     var q = QUEST_BY_CLASS[cls];
     if (!q) return '<div class="m-wiki-hint">查無此職業的任務資料。</div>';
-    var html = '<div class="m-wiki-note">這裡是「' + esc(q.name) + '」自己的試煉／任務。試煉為<b>接取制</b>：達等級後向 NPC 接取，試煉道具擊殺指定怪物<b>必定掉落</b>（原版集滿需求量即停；外掛「試煉批次兌換」開啟時會持續掉落、並可在 NPC 面板重複批次兌換），收集齊一次完成領取<b>全部</b>獎勵。不分職業的共通任務請切上面的「全職業」。</div>';
+    var html = '<div class="m-wiki-note">這裡是「' + esc(q.name) + '」自己的試煉／任務。試煉為<b>接取制</b>：達等級後向 NPC 接取，試煉道具擊殺指定怪物<b>必定掉落</b>（集滿需求量即停），收集齊一次完成領取<b>全部</b>獎勵。不分職業的共通任務請切上面的「全職業」。</div>';
     html += '<div class="m-wiki-sub">' + q.icon + ' ' + esc(q.name) + '試煉（15／30／45 級・接取制）</div>' + q.trials.map(questCard).join('');
     if (TRIAL_50[cls]) html += '<div class="m-wiki-sub">🔥 50 級試煉（需等級 50）</div>' + questCard(TRIAL_50[cls]) + endgameCardHTML(FLAME_AUDIENCE_FLOW);
     if (q.attr) html += '<div class="m-wiki-sub">🌿 妖精屬性學習</div>' + questCard(q.attr);
@@ -2132,7 +2134,7 @@
       regionRow = '<div class="m-wiki-mfilter"><button type="button" class="m-wiki-mfbtn' + (region === 'all' ? ' on' : '') + '" data-equipregion="all">全部區域</button>' +
         _ridx.regions.map(function (rg) { return '<button type="button" class="m-wiki-mfbtn' + (rg === region ? ' on' : '') + '" data-equipregion="' + esc(rg) + '">' + esc(rg) + '</button>'; }).join('') + '</div>';
     }
-    var note = '<div class="m-wiki-note">選<b>部位</b>與<b>職業</b>篩選;<b>點任一件展開完整數值與取得方式</b>(數值與遊戲內一致)。搜尋會跨全部裝備、連展開內容一起命中。'
+    var note = '<div class="m-wiki-note">選<b>部位</b>與<b>職業</b>篩選;<b>點任一件展開完整數值與取得方式</b>。搜尋會跨全部裝備、連展開內容一起命中。'
       + '<br>💍 <b>飾品欄會隨等級解鎖</b>：戒指一開始 2 個，<b>Lv76 開第 3 個、Lv81 開第 4 個</b>；耳環一開始 1 個，<b>Lv59 開第 2 個</b>。'
       + '<br>🔒 <b>把裝備穿上身會自動取消它的「廢品」標記</b>（穿上＝你要留著），不會再被自動賣出賣掉。</div>';
     // 🏺 遺物總說明(手動維護;規則對應 js/01 掉落表、js/08 裝備/強化守衛、js/14 gachaWeight=0、js/21 收集冊)
@@ -2143,7 +2145,7 @@
       '有專屬新部位「<b>脛甲</b>」（盔甲之下的額外防具格，目前只有遺物）。',
       '取得任何遺物會登錄「<b>遺物收集冊</b>」（遊戲內「收藏」面板第 4 本；進度依一般／經典兩種模式各自一份、與倉庫同規則；只記錄進度、無全收集加成）。',
       '自動賣出<b>預設保護遺物</b>不賣（可在自動賣出設定關閉；對單件設「永遠販賣」則照賣）。'
-    ].map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('') + '</div>';
+    ].map(bulletHTML).join('') + '</div>';
     var buckets = {};
     Object.keys(DB.items).forEach(function (id) {
       var d = DB.items[id];
@@ -2194,9 +2196,9 @@
   }
 
   function renderEnhance() {
-    var note = '<div class="m-wiki-note">裝備可以「強化」升等，還可能帶「屬性／遠古／祝福」三種詞綴。<b>三種可以同時各帶一個（最多 3 個一起）</b>，彼此獨立、不是三選一。</div>';
+    var note = '<div class="m-wiki-note">裝備可以「強化」升等，還可能帶「屬性／遠古／祝福」三種詞綴，<b>可同時各帶一個</b>。</div>';
     var secs = ENHANCE_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       var extra = (typeof s.html === 'function') ? s.html() : '';   // 需要動態表格的段落(如屬性附加魔法)接在文字行之後
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + extra + '</div>';
     }).join('');
@@ -2278,7 +2280,12 @@
     return '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px;"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
   }
   function wCard(title, inner) { return '<div class="m-wiki-card"><div class="m-wiki-name">' + title + '</div>' + inner + '</div>'; }
-  function wDesc(t) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + t + '</div>'; }
+  // 一行敘述;內容本身就是表格(以 <table 開頭)時不加項目符號——否則表格上方會多出一個空的「・」
+  function bulletHTML(t) {
+    var v = String(t == null ? '' : t);
+    return /^\s*<table/i.test(v) ? v : ('<div class="m-wiki-desc" style="margin-top:4px;">・' + v + '</div>');
+  }
+  function wDesc(t) { return bulletHTML(t); }
 
   // ===== 變形(變形卷軸 / 變形控制戒指 / 套裝專屬變身) =========================
   //   型態與數值全讀遊戲全域 POLY_TIERS / SET_POLY_FORMS(js/02-stats-recompute),作者改數值/新增型態自動跟上。
@@ -2505,8 +2512,8 @@
       special: '<b>幻覺歐吉／巫妖／鑽石高崙的全隊光環</b>：幻術士傭兵在隊伍面板勾「自動維持」即可維持→他自己吃到加成、且全隊也吃到該光環（就算你沒放）。幻象本體（歐吉／巫妖／鑽石高崙幫打）則另需<b>幻術精通</b>才會出。' }
   ];
   function renderMercSkill() {
-    var note = '<div class="m-wiki-note">每個職業<b>當傭兵時</b>實際放得出來的技能整理。分四塊：<b>①</b> 可指定的攻擊技（會真的放）、<b>②</b> 免指定就自動施放、<b>③</b> 常駐、<b>④</b> 特殊要注意。先讀下面「通用規則」，再看各職業。</div>';
-    function bullets(arr) { return arr.map(function (t) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + t + '</div>'; }).join(''); }
+    var note = '<div class="m-wiki-note">每個職業<b>當傭兵時</b>實際放得出來的技能整理。分四塊：<b>①</b> 可指定的攻擊技（會真的放）、<b>②</b> 免指定就自動施放、<b>③</b> 常駐、<b>④</b> 特殊要注意。</div>';
+    function bullets(arr) { return arr.map(bulletHTML).join(''); }
     function mTbl(headers, rows) {
       var head = '<tr>' + headers.map(function (h) { return '<th style="text-align:left;padding:5px 6px;border-bottom:1px solid #475569;color:#e2e8f0;font-weight:bold;">' + h + '</th>'; }).join('') + '</tr>';
       var body = rows.map(function (r) {
@@ -2540,7 +2547,7 @@
     var th = function (t, c) { return '<th style="text-align:' + (c || 'left') + ';padding:5px 6px;border-bottom:1px solid #475569;color:#e2e8f0;font-weight:bold;white-space:nowrap;">' + t + '</th>'; };
     var td = function (t, c) { return '<td style="padding:5px 6px;border-bottom:1px solid #1e293b;vertical-align:top;' + (c ? 'text-align:' + c + ';' : '') + '">' + t + '</td>'; };
     var tbl = function (head, body) { return '<div style="overflow-x:auto;"><table ' + wrap + '><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>'; };
-    var desc = function (t) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + t + '</div>'; };
+    var desc = bulletHTML;
     function card(title, parts) {
       var body = (parts.lines || []).map(desc).join('') + (parts.html || '');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(title) + '</div>' + body + '</div>';
@@ -2648,7 +2655,7 @@
     var BAD = function (s) { return '<b style="color:#fca5a5">' + s + '</b>'; };
     var GOOD = function (s) { return '<b style="color:#86efac">' + s + '</b>'; };
 
-    var note = '<div class="m-wiki-note">經典模式在<b>創角時勾選</b>、<b>選了就永久不能改</b>。下面只列「和一般不一樣」的地方；資料以遊戲程式實際邏輯為準。</div>';
+    var note = '<div class="m-wiki-note">經典模式在<b>創角時勾選</b>、<b>選了就永久不能改</b>。下面只列「和一般不一樣」的地方。</div>';
 
     var c1 = card('📉 經驗 · 金幣 · 掉率 · 死亡', tbl(
       r('經驗值', '100%', GOOD('100%（同一般）')) +
@@ -2683,17 +2690,17 @@
   }
 
   function renderCombat() {
-    var note = '<div class="m-wiki-note">傷害不是「攻擊力扣防禦」這麼單純。這裡把幾個會大幅左右輸出與生存、卻不直觀的機制講清楚：硬皮、重擊與爆擊、命中、屬性相剋、魔防、HP／MP 自然恢復。</div>';
+    var note = '<div class="m-wiki-note">傷害不是「攻擊力扣防禦」這麼單純。下面把幾個會大幅左右輸出與生存、卻不直觀的機制講清楚。</div>';
     var secs = COMBAT_SECTIONS.map(function (s) {
       // blocks:依序混排散文與表格('p'＝散文一行;'tbl'＝表格 {h,rows});沒給 blocks 就退回舊的純 lines。
       var body = '';
       if (s.blocks) {
         body = s.blocks.map(function (b) {
           if (b.t === 'tbl') return wTbl(b.h, b.rows);
-          return '<div class="m-wiki-desc" style="margin-top:4px;">・' + b.p + '</div>';
+          return bulletHTML(b.p);
         }).join('');
       } else {
-        body = (s.lines || []).map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+        body = (s.lines || []).map(bulletHTML).join('');
       }
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + body + '</div>';
     }).join('');
@@ -2701,7 +2708,7 @@
   }
 
   function renderStats() {
-    var note = '<div class="m-wiki-note">數值直接讀遊戲計算、會自動更新。自然值（基礎＋配點＋萬能藥）上限 60，裝備／套裝可再往上疊，但<b>六維（力／敏／智／體／精／魅）最終值硬封頂 100</b>——堆過 100 的部分不再有效。</div>';
+    var note = '<div class="m-wiki-note">自然值（基礎＋配點＋萬能藥）上限 60，裝備／套裝可再往上疊，但<b>六維（力／敏／智／體／精／魅）最終值硬封頂 100</b>——堆過 100 的部分不再有效。</div>';
     var BP = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     function sgn(n) { return (n > 0 ? '+' : '') + n; }
     function tbl(cols) {
@@ -2718,34 +2725,34 @@
     // fx＝每個效果的「換算公式／規則」(照 js/01 的計算函式寫)。線性的直接給公式；分段查表的(rate 隨數值浮動)如實標「分段」+封頂，不硬湊假公式。
     var COLS = {
       str: (typeof getStrMeleeDmg === 'function') ? [
-        { h: '近戰傷害', fx: '原作逐格對照表（每點增量不固定，低段約每 +2 力量 +1）；力量 99↑ 封頂 +57，每級精確值見下表', f: function (v) { return sgn(getStrMeleeDmg(v)); } },
-        { h: '近戰命中', fx: '原作逐格對照表（每點增量不固定，多為每 +1~2 力量 +1）；力量 100 封頂 +75，見下表', f: function (v) { return sgn(getStrMeleeHit(v)); } },
+        { h: '近戰傷害', fx: '每點增量不固定，低段約每 +2 力量 +1；力量 99↑ 封頂 +57', f: function (v) { return sgn(getStrMeleeDmg(v)); } },
+        { h: '近戰命中', fx: '每點增量不固定，多為每 +1~2 力量 +1；力量 100 封頂 +75', f: function (v) { return sgn(getStrMeleeHit(v)); } },
         { h: '爆擊率', fx: '力量 40~44＝1%、45~49＝2%、50~59＝3%、60~64＝4%、65~69＝5%、70~74＝7%、75~79＝8%、80~84＝9%、85~89＝10%、90~94＝12%、95~99＝13%、100＝14%', f: function (v) { return getStrMeleeCrit(v) + '%'; } }
       ] : [],
       dex: (typeof getDexRangedDmg === 'function') ? [
-        { h: '遠程傷害', fx: '原作逐格對照表（每點增量不固定，低段約每 +3 敏捷 +1）；敏捷 100 封頂 +47，見下表', f: function (v) { return sgn(getDexRangedDmg(v)); } },
-        { h: '遠程命中', fx: '原作逐格對照表（多為每 +1 敏捷 +1、少數 +2/+4 跳點；敏捷 7＝−3 起）；100 封頂 +93，見下表', f: function (v) { return sgn(getDexRangedHit(v)); } },
+        { h: '遠程傷害', fx: '每點增量不固定，低段約每 +3 敏捷 +1；敏捷 100 封頂 +47', f: function (v) { return sgn(getDexRangedDmg(v)); } },
+        { h: '遠程命中', fx: '多為每 +1 敏捷 +1、少數 +2/+4 跳點；敏捷 7＝−3 起；100 封頂 +93', f: function (v) { return sgn(getDexRangedHit(v)); } },
         { h: '爆擊率', fx: '敏捷 40~44＝1%、45~49＝2%、50~59＝3%，之後每 +5 敏捷 +1%（60~64＝4%…95~99＝11%）、100＝12%', f: function (v) { return getDexRangedCrit(v) + '%'; } },
         { h: '防禦(AC)', fx: '敏捷 8~59：每 +3 敏捷 −1（−2→−19）；再來 60＝−20、63＝−21、66＝−22、70＝−23、73＝−24、77＝−25、80＝−26、83＝−27、86＝−28、90＝−29、93＝−30、97＝−31、98↑＝−32（逐段對照，不是敏捷÷N）', f: function (v) { return getDexAC(v); } },
         { h: '迴避', fx: '敏捷 ÷ 2（無條件捨去；敏捷以 60 計，上限 +30）', f: function (v) { return sgn(getDexER(v)); } }
       ] : [],
       con: (typeof getConHpRegenMax === 'function') ? [
-        { h: 'HP恢復/次', fx: '原作逐格對照表（體質 11 起，每點增量不固定）；體質 100 封頂 1~55，見下表', f: function (v) { var m = getConHpRegenMax(v); return m > 0 ? ('1~' + m) : '—'; } },
+        { h: 'HP恢復/次', fx: '體質 11 起，每點增量不固定；體質 100 封頂 1~55', f: function (v) { var m = getConHpRegenMax(v); return m > 0 ? ('1~' + m) : '—'; } },
         { h: '藥水額外', fx: '體質 20~24＝+1%，之後大致每 +5 體質 +1%（56~60＝+8%、80＝+13%…）；100 封頂 +18%', f: function (v) { return '+' + getConPotionPct(v) + '%'; } }
       ] : [],
       int: (typeof getIntMagicDmg === 'function') ? [
-        { h: '魔法傷害', fx: '原作逐格對照表（每點增量不固定，多處 +2/+4 跳點）；智力 100 封頂 +35，見下表', f: function (v) { return sgn(getIntMagicDmg(v)); } },
-        { h: '魔法命中', fx: '原作逐格對照表（智力 8＝−4 起，每點增量不固定）；智力 100 封頂 +32，見下表', f: function (v) { return sgn(getIntMagicHit(v)); } },
+        { h: '魔法傷害', fx: '每點增量不固定，多處 +2/+4 跳點；智力 100 封頂 +35', f: function (v) { return sgn(getIntMagicDmg(v)); } },
+        { h: '魔法命中', fx: '智力 8＝−4 起，每點增量不固定；智力 100 封頂 +32', f: function (v) { return sgn(getIntMagicHit(v)); } },
         { h: '爆擊率', fx: '智力 35~39＝1%、40~44＝2%、45~49＝4%，之後每 +5 智力 +1%（50~54＝5%…95~99＝14%）、100＝15%', f: function (v) { return getIntMagicCrit(v) + '%'; } },
         { h: '額外魔法點數', fx: '智力 11~59：每 +4 智力 +1（+2→+14）；60↑ 轉逐格對照（夾 +2 跳點），100 封頂 +35。⚠ 但拿去算法術傷害時，<b>智力給的這份最多只算到 33</b>（智力 96 到頂）；裝備給的不受此限', f: function (v) { return sgn(getIntExtraMp(v)); } },
-        { h: 'MP消耗減', fx: '原作逐格對照表（智力 8 起，多為每 +1~2 智力 +1%）；智力 45↑ 封頂 30%，見下表', f: function (v) { return getIntMpReduce(v) + '%'; } },
+        { h: 'MP消耗減', fx: '智力 8 起，多為每 +1~2 智力 +1%；智力 45↑ 封頂 30%', f: function (v) { return getIntMpReduce(v) + '%'; } },
         { h: '治癒加成', fx: '治癒術專用：多擲幾顆骰。智力 9 以下 −1、10~11＝0、12~14＝+1、15~17＝+2、18＝+3、19~25＝智力−15；26 起每 +5 智力 +1，<b>智力 80 以上封頂 +21</b>', f: function (v) { var b = healBonusOf(v); return b == null ? '—' : sgn(b); } }
       ] : [],
       wis: (typeof getWisMpRegen === 'function') ? [
-        { h: 'MP恢復/次', fx: '原作逐格對照表（精神 9 起，每點增量不固定）；精神 100 封頂 +34，見下表', f: function (v) { return getWisMpRegen(v); } },
+        { h: 'MP恢復/次', fx: '精神 9 起，每點增量不固定；精神 100 封頂 +34', f: function (v) { return getWisMpRegen(v); } },
         { h: '擊殺回MP', fx: '分段（段寬不一）：精神 11~14＝1、15~19＝2、20~24＝3、25~29＝5、30~37＝6、38~44＝7、45~52＝8、53~59＝9、60~63＝10、64~66＝11、67~69＝12、70~72＝13、73~75＝14、76~78＝15、79~83＝16、84~86＝17、87~89＝18、90~92＝19、93~95＝20、96~98＝21、99↑＝22', f: function (v) { return getWisMpOnKill(v); } },
         { h: '魔防', fx: '(精神 − 10) × 4（精神 11 起；精神以 60 計，上限 +200）', f: function (v) { return sgn(getWisMR(v)); } },
-        { h: '藍藥加成', fx: '原作逐格對照表（精神 11 起，每點增量不固定）；每級精確值見下表', f: function (v) { return sgn(getWisBlueBonus(v)); } }
+        { h: '藍藥加成', fx: '精神 11 起，每點增量不固定；每級精確值見下表', f: function (v) { return sgn(getWisBlueBonus(v)); } }
       ] : [],
       cha: [
         { h: '召喚隻數（低階示意）', fx: '(魅力＋6) ÷ 8（低階怪；高階怪係數更大→隻數更少，64 階 2 隻、68/72 階固定 1 隻）', f: function (v) { return Math.max(1, Math.floor((Math.min(60, v) + 6) / 8)); } },
@@ -2777,7 +2784,7 @@
       return '<div class="m-wiki-stbl-wrap"><table class="m-wiki-stbl m-wiki-captbl"><thead><tr><th>屬性</th><th>效果</th><th>封頂於</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
     var capSection = '<div class="m-wiki-sub">📊 各效果在多少能力值封頂</div>' +
-      '<div class="m-wiki-note">練到「封頂於」的值後，再加就<b>不會再加這效果</b>（練過頭是浪費）；升級 HP／MP 成長例外、<b>無上限</b>。</div>' +
+      '<div class="m-wiki-note">練到「封頂於」的值後，再加就<b>不會再加這效果</b>；升級 HP／MP 成長例外、<b>無上限</b>。</div>' +
       '<div class="m-wiki-card">' + capTableHTML() + '</div>';
     // 📐 換算公式：逐項列出每個效果「怎麼從能力值算出來」（線性給公式、分段查表的標分段+封頂），再附逐級表當精確值
     function fxBlock(key) {
@@ -2789,11 +2796,11 @@
     }
     function statCard(s, i) {
       var key = ORDER[i];
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + fxBlock(key) + ((COLS[key] || []).length ? tbl(COLS[key]) : '') + '</div>';
     }
     function capCard(s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }
     return note + capSection +
@@ -2805,7 +2812,7 @@
   function renderTower() {
     var note = '<div class="m-wiki-note">「傲慢之塔」是往上爬的塔：可以一層層「攀登」，也可以選一段「樓層區間」固定刷。下面說明玩法，以及進塔／換怪會用到的各種符與卷軸。</div>';
     var secs = TOWER_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }).join('');
     return note + secs;
@@ -2814,7 +2821,7 @@
   function renderOblivion() {
     var note = '<div class="m-wiki-note">「遺忘之島」是搭船前往的特殊離島：先到「途中」打掉傳送門才能登島，<b>島上不能用任何傳送（瞬移）</b>，離開就得回海音重新搭船。</div>';
     var secs = OBLIVION_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }).join('');
     return note + secs;
@@ -2856,7 +2863,7 @@
   function renderRift() {
     var note = '<div class="m-wiki-note">「時空裂痕」是一次性的<b>計時生存挑戰</b>:撐越久,敵人越強、獎勵越好。狀態不存檔,中途關掉就作廢。</div>';
     var secs = RIFT_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }).join('');
     return note + secs;
@@ -2865,7 +2872,7 @@
   function renderKingroom() {
     var note = '<div class="m-wiki-note">「軍王之室」是四間獨立的純 BOSS 房，<b>進場與重生都要消耗「軍王的鑰匙」</b>。下面說明四間軍王、鑰匙怎麼拿、續打與掉落規則。</div>';
     var secs = KINGROOM_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }).join('');
     return note + secs;
@@ -2911,7 +2918,7 @@
     ]},
     { t: '素材、積分與「多魯嘉7世傳家之寶」', lines: [
       '最終頭目掉<b>安塔瑞斯的素材</b>（鱗／骨／爪／血／肉／牙／眼／心）。把<b>心</b>以外的素材拿去威頓村<b>萊利的輔佐官</b>可<b>兌換積分</b>（同一模式角色共通累積）：鱗 +1、骨 +2、爪 +3、血 +4、肉 +5、牙 +6、眼 +7（<b>心只能拿來製作、不能換積分</b>）。',
-      '<b>每滿 10 積分</b>可開一次「<b>多魯嘉7世傳家之寶</b>」：依機率開出金幣、四靈戒指、各式名武具、<b>古代龍鱗盔甲</b>、古代臂甲，稀有時甚至有賢者之戒、底比斯遺產；<b>若開到裝備有一成機率附帶祝福</b>。（抽獎結果綁存檔，讀檔重開不能重抽。）'
+      '<b>每滿 10 積分</b>可開一次「<b>多魯嘉7世傳家之寶</b>」：依機率開出金幣、四靈戒指、各式名武具、<b>古代龍鱗盔甲</b>、古代臂甲，稀有時甚至有賢者之戒、底比斯遺產；<b>若開到裝備有一成機率附帶祝福</b>。'
     ]},
     { t: '安塔瑞斯裝備怎麼做（威頓村・米米）', lines: [
       '<b>米米</b>解開「受封印 地龍之魔眼」的封印，並鍛造龍鱗與安塔瑞斯系列盔甲（完整材料在「製作」分頁、素材來源在「掉落查詢」都查得到）：',
@@ -2927,7 +2934,7 @@
   function renderAntharas() {
     var note = '<div class="m-wiki-note">「侵蝕的安塔瑞斯巢穴」是威頓村開放的<b>副本</b>：四區一路往深處推，最終頭目會三段變身。<b>相同模式所有角色每天只能通關一次</b>，還能指定其他存檔角色當「助戰者」加持自己。</div>';
     var secs = ANTHARAS_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }).join('');
     return note + secs;
@@ -2962,7 +2969,7 @@
       + '</tbody></table></div></div>';
     var capTbl = '';   // 已併入 formula card
     var secs = LOAD_SECTIONS.map(function (s) {
-      var lines = s.lines.map(function (l) { return '<div class="m-wiki-desc" style="margin-top:4px;">・' + l + '</div>'; }).join('');
+      var lines = s.lines.map(bulletHTML).join('');
       return '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(s.t) + '</div>' + lines + '</div>';
     }).join('');
     return note + pen + formula + capTbl + extra + secs;
@@ -3163,11 +3170,10 @@
         ['陳列格數', '<b>' + ((typeof PANDORA_SLOT_COUNT !== 'undefined') ? PANDORA_SLOT_COUNT : 24) + ' 格</b>'],
         ['輪換速度', '<b>每 10 分鐘換掉 1 格</b>'],
         ['單件在架多久', '<b>' + ((typeof PANDORA_LIFETIME_TICKS !== 'undefined') ? Math.round(PANDORA_LIFETIME_TICKS / 600) : 240) + ' 分鐘</b>（＝格數 × 輪換速度）'],
-        ['會不會祝福', '<b>上架那一刻就決定好了</b>——固定 <b>1%</b> 機率是「祝福的」（<b>不吃席琳世界倍率</b>，那是擊殺掉落才有的）。買下去只是把既定結果交給你，<b>不是付錢當下才擲</b>']
+        ['會不會祝福', '固定 <b>1%</b>（<b>不吃席琳世界倍率</b>，那是擊殺掉落才有的）']
       ]) +
       wDesc('<b>收購單</b>：你可以指定「想要的物品名稱＋願意出的價錢」掛著。之後<b>每次有新東西要上架時，系統會先幫那個物品擲一次市價</b>；<b>只要擲出來的價錢不高於你的出價，就算命中</b>，直接用<b>你的出價</b>把它擺上架給你買。命中一次就清空，要再掛得重設。') +
       wDesc('可以指定的範圍：<b>魔法書、萬能藥、怪物卡片，以及耳環以外的一般穿戴裝備</b>。<b>材料、支配符、遺物、魔法娃娃、寵物裝備不能指定</b>。') +
-      wDesc('價格是<b>當下就定死</b>的（存讀檔重洗不掉），不能靠反覆讀檔洗到便宜價；<b>會不會祝福同理</b>，讀檔重買也是同一件。') +
       wDesc('🎴 <b>怪物卡片也會上架</b>，而且因為卡片種類極多（每隻怪三階、上千張），它們的權重加起來就佔了整個抽選池的 <b>' + cardStockPct() + '%</b>——實際逛起來<b>大半格子都是卡片</b>。價錢也不照一般公式走，是各階自己一個區間隨機：') +
       wTbl(['卡片', '黑市價格區間'], [
         ['普卡', '<b>100,000 ～ 10,000,000</b> 金'],
@@ -3783,7 +3789,7 @@
       if (state.magicChar) learnedSet = charLearnedSet(state.magicChar);
     }
     // ⚔️ 攻擊魔法實際傷害公式(以 castSkill 為準):別只比「威力」骰子,階級係數才是大頭
-    html += '<div class="m-wiki-note">⚔️ <b>攻擊魔法的實際傷害不只看「威力」骰子。</b>每段傷害 ≈ <b>（骰子＋魔法傷害＋固定加值）×（1＋3×額外魔法點數÷32）×（1＋階級÷10）</b>，最後被目標魔防減免。<b>骰子小但固定加值高的高階魔法，實際往往更強</b>——別只比骰子。<br>⚠️ <b>魔法傷害只由「智力」換算——所有攻擊魔法都吃智、不吃力</b>（含龍騎的岩漿噴吐／岩漿之箭）；<b>治癒術則只吃智力</b>，不吃魔法傷害與階級。<br>每招下方金框 <b style="color:#fbbf24;">📐 實際數據</b> 是逐條追程式碼查證的真實公式（含吃哪個屬性、隱藏數字）。</div>';
+    html += '<div class="m-wiki-note">⚔️ 每段傷害 ≈ <b>（骰子＋魔法傷害＋固定加值）×（1＋3×額外魔法點數÷32）×（1＋階級÷10）</b>，最後被目標魔防減免——<b>骰子小但固定加值高的高階魔法往往更強</b>。<br>⚠️ 魔法傷害<b>只由智力換算</b>，所有攻擊魔法都吃智、不吃力（含龍騎的岩漿噴吐／岩漿之箭）；<b>治癒術只吃智力</b>，不吃魔法傷害與階級。</div>';
     if (magicCls !== 'all') {
       var rows = [];
       for (var id in DB.skills) {
