@@ -59,9 +59,10 @@ run('node scripts/apply-core-patches.mjs');
 run('node tools/gen-anim-manifest.js');
 run('node scripts/gen-manifests.mjs');
 run('node scripts/stamp-code-versions.mjs');
-run('node scripts/stamp-sw-version.mjs');
 
 // ── 5) 更新同步錨點（upstream-checkpoint.json）─────────────────
+//   ⚠ 必須排在 stamp-sw-version 之前：version.json 的 upstreamAt（首頁「最後同步原版」那行）讀的就是這裡的 syncedAt，
+//     順序反了會永遠慢一次同步。
 //   clone 需帶 .git（rev-parse 取目前 checkout 的 commit）；沒有就跳過並警告（不擋流程）。
 try {
   const upSha = execSync('git -C "' + UP + '" rev-parse HEAD', { encoding: 'utf8' }).trim();
@@ -76,6 +77,7 @@ try {
 } catch (e) {
   console.warn('[sync] ⚠ upstream-checkpoint.json 未更新：' + e.message);
 }
+run('node scripts/stamp-sw-version.mjs');   // 錨點更新後才 stamp，version.json 的 upstreamAt 才是這次同步的時間
 
 // ── 6) 冒煙檢查（外掛掛點）──────────────────────────────────────
 //   CI 想把 smoke 拆成獨立 step（失敗→開 issue 而非整包紅）時，設 AFK_SKIP_SMOKE=1 跳過這裡、自己另跑。
