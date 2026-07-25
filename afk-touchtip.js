@@ -34,7 +34,7 @@
     if (window.AFK_TOGGLES) {
         AFK_TOGGLES.register({
             id: 'touchtip', name: '手機長按看資料', group: '遊戲介面', def: true,
-            desc: '手機上長按技能格/商店商品/製作成品/收集冊卡片/背包列,顯示原版的資料提示框(長按不會誤觸該格原本的動作)'
+            desc: '手機長按技能、商品、背包物品就能看說明（僅手機）'
         });
         if (!AFK_TOGGLES.enabled('touchtip')) return;
     }

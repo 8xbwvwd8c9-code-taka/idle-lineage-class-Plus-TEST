@@ -64,7 +64,7 @@
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
         id: 'lzcache',
         name: '存檔解壓快取',
-        desc: '同一份壓縮資料只解壓一次。核心每殺一隻怪都會重讀整包血盟狀態，開著可大幅減少卡頓、離線結算約快 4 倍。',
+        desc: '減少讀存檔的重複解壓，戰鬥比較不卡、離線結算快約 4 倍',
         group: '系統與其他',
         def: true
     });

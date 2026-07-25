@@ -512,9 +512,7 @@
     if (window.AFK_TOGGLES) {
       AFK_TOGGLES.register({
         id: 'reissueid', name: '換發身分證', group: '存檔工具', def: true,
-        desc: '⚠️ 進階工具,平常用不到。把所有角色的身分碼換新:讓複製出來的角色各自獨立,' +
-          '舊備份檔也能重複匯入成不同角色;同時解除所有招募中的傭兵(可重新招募)。會改寫每一格存檔且無法復原,' +
-          '只在遇到「相同角色已存在」、寵物/血盟互相打架、或角色卡在受僱身份出不了安全區時才需要。'
+        desc: '⚠️ 進階工具，平常用不到：把每個角色換成各自獨立的身分（複製出來的角色互相打架時才需要）。會改寫全部存檔且無法復原。'
       });
     }
     window.AFK_SETTINGS = window.AFK_SETTINGS || { _items: [], add: function (it) { this._items.push(it); } };
