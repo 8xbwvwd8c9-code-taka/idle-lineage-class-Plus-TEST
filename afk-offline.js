@@ -30,6 +30,7 @@
   var CAP_HOURS        = 24;                      // 離線收益上限(小時)
   var CAP_MS           = CAP_HOURS * 3600 * 1000;
   var HEARTBEAT_MS     = 5 * 1000;              // 活著時多久蓋一次時間戳
+  var BIG_BAG_HINT     = 800;                   // 🎒 背包超過幾件才在結算畫面提醒(低於此的差異玩家感覺不到,顯示只是雜訊)
   var CKPT_MS          = 5 * 1000;              // 💾 結算檢查點間隔(真實毫秒):每滿就把已結算收益 saveGame＋錨點推進到已結算時點;結算被中斷最多丟這麼久的量
   // ⚠ iOS 上「結算到一半變白畫面」= Safari 把整個分頁回收掉。檢查點是最可疑的記憶體來源:
   //   每次都把整份存檔明文寫進 localStorage,並再 postMessage 一份給壓縮 Worker(結構化複製=再一份),
@@ -217,6 +218,18 @@
     overlayEl.appendChild(title);
     overlayEl.appendChild(barWrap);
     overlayEl.appendChild(overlayTxt);
+
+    // 🎒 背包很大時才提醒:結算時間與背包件數成正比(掉落疊放、自動賣出規則都要逐件跑)。
+    //   刻意「有大背包才顯示」——一般玩家看到只會變成沒意義的常駐雜訊。
+    try {
+      var _invN = (player && Array.isArray(player.inv)) ? player.inv.length : 0;
+      if (_invN >= BIG_BAG_HINT) {
+        var hint = document.createElement('div');
+        hint.setAttribute('style', 'font-size:12.5px;color:#fbbf24;max-width:min(80vw,460px);text-align:center;line-height:1.6;margin-top:2px;');
+        hint.textContent = '背包 ' + _invN.toLocaleString() + ' 件，件數越多結算越久；賣掉或存進倉庫可以加快。';
+        overlayEl.appendChild(hint);
+      }
+    } catch (e) {}
 
     // 「長按放棄剩餘收益」按鈕 + 上方「放棄中」讀條。
     //   ⚠ 讀條用 transform:scaleX(走合成器/GPU 執行緒),不用 width transition——補跑會卡住主執行緒,
