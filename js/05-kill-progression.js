@@ -534,7 +534,7 @@ function killMob(idx) {
         if (!_kbNoReward && _or && Math.random() < partyDropRate(_or / 100 * classicDropMult())) gainItem('mat_silverore', 1);   // 🗝️ 軍王之室小怪零產出
     }
     // === 🏛️ 聖地遺物掉落：持有死亡騎士之印記、於拉斯塔巴德區域擊敗任何怪物，0.1% 機率獲得（製作長老之室武器秘笈用） ===
-    if (!_kbNoReward && player.inv.some(i => i.id === 'item_dk_insignia') && typeof mapRegionOf === 'function' && mapRegionOf(mapState.current) === 'rastabad') {   // 🗝️ 軍王之室屬 rastabad 地區→小怪必須排除，否則成為無限刷聖地遺物點
+    if (!_kbNoReward && typeof mapRegionOf === 'function' && mapRegionOf(mapState.current) === 'rastabad' && player.inv.some(i => i.id === 'item_dk_insignia')) {   // 🗝️ 軍王之室屬 rastabad 地區→小怪必須排除，否則成為無限刷聖地遺物點
         if (Math.random() < partyDropRate(0.001 * classicDropMult())) gainItem('mat_holy_relic', 1);
     }
     // === 🔧 黑暗妖精武器掉落 ===

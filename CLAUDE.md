@@ -13,7 +13,7 @@
 **🚨 絕不直接手改核心檔(`js/NN-*.js`/`css/*`/`index.html`)——下次同步上游會整包覆蓋,改了就丟。** 要動遊戲行為,依序考慮:
 
 1. **外掛 monkey-patch(首選)**:核心函式都是全域,外掛包裝(`var _orig = fn; fn = function(){...}`)能解決絕大多數需求。afk-offline 連整套離線結算都是這樣掛的。
-2. **錨點式核心補丁(最後手段)**:只有「外掛包不住」的才用——要抽函式、改函式簽名、改寫死的字面值。加進 `scripts/apply-core-patches.mjs`:靠「上游原文特徵字串」定位、冪等、**錨點找不到就 exit 1 大聲失敗**(不會默默壞)。補丁越少越好,現有 7 個:
+2. **錨點式核心補丁(最後手段)**:只有「外掛包不住」的才用——要抽函式、改函式簽名、改寫死的字面值、或改核心的熱點寫法。加進 `scripts/apply-core-patches.mjs`:靠「上游原文特徵字串」定位、冪等、**錨點找不到就 exit 1 大聲失敗**(不會默默壞)。補丁越少越好,現有 8 個:
    | # | 檔 | 內容 |
    |---|---|---|
    | 1 | js/03 | `maybeSpawnMobs` 抽出(tick 出怪塊→具名函式,離線快速結算共用同一份排程) |
@@ -23,6 +23,7 @@
    | 5 | js/07 | 迴避頭目 × 自動找BOSS 互斥(`AFK_BOSSRING.huntActive`) |
    | 6 | js/08 | `useItem` 加 `keepModal` 參數(自動瞬移不關玩家視窗) |
    | 7 | js/10 | 「立即賣出」總開關關閉時不強制套規則(免誤賣沒標記的裝備) |
+   | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 3. **index.html 不手改**:它=上游 index＋`scripts/afk-plugin-block.html` 注入到 `</body>` 前(sync 時自動重組)。**新增外掛 → 改 `afk-plugin-block.html`**(載入順序也在那裡管:afk-toggles 最先、afk-skin 最後),再把它的 `<script>` 行同步補進現行 index.html(或重跑 sync),有 DOM 掛點的加進 `scripts/smoke-hooks.mjs` 的 `need`。
 4. **CSS 覆寫**寫在外掛注入的 `<style>` 裡(如 afk-mobile),不改 `css/*.css`。
 

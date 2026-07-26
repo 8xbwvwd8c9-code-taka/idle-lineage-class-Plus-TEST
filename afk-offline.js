@@ -1140,6 +1140,8 @@
     }
     if (state.ff !== prevFf0) { state.ff = prevFf0; state.inTick = prevInTick0; }   // 還原 ff(攀登存活分支上面已還原 → 此處不動作)
     wallHoldsRestore();   // ⏳ 還原追蹤／追殺的原到期時間(見補跑開頭;一定要在下方 saveGame 之前)
+    // 🗑️ 補跑期間自動賣出被節流(見 installOfflineHooks),收尾強制跑一次,免得最後一段的廢品沒賣到
+    try { if (typeof window.__afkAutoSellFlush === 'function') window.__afkAutoSellFlush(); } catch (e) {}
 
     // 重啟 live loop(startGameTimers 內含去重,且重設 _loopLast=null → 不會把結算花掉的真實秒數再補一次)
     try { startGameTimers(); } catch (e) {}
@@ -1352,6 +1354,28 @@
     if (typeof changeMap === 'function') {
       var _cm = changeMap;
       window.changeMap = function () { var r = _cm.apply(this, arguments); try { stamp(); } catch (e) {} return r; };
+    }
+    // 🗑️ 自動賣出在補跑期間節流:核心每 10 遊戲秒就把「整個背包」逐件跑一次規則判定(applyAutoSellRules)。
+    //   12 小時補跑＝4,320 次全背包掃描,大背包(2000 件)在低階手機上這一項就佔掉結算時間的一半以上(6x 限速實測)。
+    //   補跑期間改成每 AUTOSELL_CKPT_TICKS(5 遊戲分鐘)一次:賣出總量與金幣不變(規則的等待秒數本來就只有 60 秒,
+    //   5 分鐘一輪照樣過門檻),只是賣出時點在「壓縮時間」裡稍晚——玩家看不到中間狀態。線上行為完全不動。
+    if (typeof autoSellJunk === 'function') {
+      var AUTOSELL_CKPT_TICKS = 3000;
+      var _asj = autoSellJunk, _asjLastTick = -1e9;
+      window.autoSellJunk = function (manual) {
+        if (catchingUp && !manual) {
+          var t = (typeof state !== 'undefined' && state) ? (state.ticks || 0) : 0;
+          if (t - _asjLastTick < AUTOSELL_CKPT_TICKS) return;   // 還沒到節流間隔 → 這次跳過(下一輪再賣,總量不變)
+          _asjLastTick = t;
+        }
+        return _asj.apply(this, arguments);
+      };
+      // 收尾用:重設節流後跑一次「正常」自動賣(仍會先套規則、仍吃規則的延遲秒數;不是玩家的一鍵賣)
+      window.__afkAutoSellFlush = function () {
+        _asjLastTick = -1e9;
+        if (!player || player.autoSellOn === false) return;
+        try { _asj.call(window); } catch (e) {}
+      };
     }
     if (typeof loadGame === 'function') {
       var _load = loadGame;
