@@ -2,8 +2,10 @@ window.CUSTOM_CONFIG = {
 
     RATES: {
         EXP: 10,
-        GOLD: 10,
+        GOLD: 5,
         DROP: 3,
+        PET_EXP: 10,
+        ALLY_EXP: 10
     },
 
     PANDORA: {

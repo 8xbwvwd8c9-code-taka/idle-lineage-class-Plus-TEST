@@ -374,8 +374,10 @@ function killMob(idx) {
     // 🤝 v3.7.62 組隊經驗不再拆分：主玩家、每名未倒地傭兵、每隻未倒地寵物各取得完整經驗；既有組隊加成保留。
     let _expEach = mob.exp * (1 + partyExpBonusPct() / 100);
     let _petExpGain = Math.floor(_expEach * (1 + dollFieldVal('expBonus') / 100));   // 🐾 每隻存活寵物各得完整玩家份額；玩家滿等不影響養寵
-    let _playerExpGain = Math.floor(_petExpGain * getExpGainMult(player.lv));   // ⚠️v3.0.82 經典×0.5 已移除；Lv100 玩家自身仍不獲得經驗
-    player.exp += _playerExpGain;
+    let _playerExpGain = Math.floor(_petExpGain * getExpGainMult(player.lv) * (window.CUSTOM_CONFIG?.RATES?.EXP ?? 1)
+     );
+
+player.exp += _playerExpGain;
     checkLvUp();
     // 🐾 寵物經驗：每隻未倒地出戰寵物各得完整份額；不受玩家 Lv100 經驗封頂影響（升級需求＝玩家表 1/10）
     if (typeof petsGainExp === 'function') petsGainExp(_petExpGain);
@@ -383,7 +385,7 @@ function killMob(idx) {
     if (player.allies && player.allies.length && mob.exp) {
         player.allies.forEach(a => {
             if (!a || a._downed) return;
-            let _gain = Math.floor(_expEach * getExpGainMult(a.lv || 1));
+            let _gain = Math.floor( _expEach * getExpGainMult(a.lv || 1) * (window.CUSTOM_CONFIG?.RATES?.EXP ?? 1));
             if (_gain <= 0) return;
             a.exp = (a.exp || 0) + _gain;
             a._expGained = (a._expGained || 0) + _gain;
