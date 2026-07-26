@@ -1248,12 +1248,9 @@ function getWeightedGachaResult(doubleNonRare, excludeCards) {
 //    以遊戲 tick 計時（存讀檔保留·離線經補跑自然推進）；離線超過一圈(240分鐘)直接全面換貨。
 //    出現機率＝原始 gachaWeight（v3.0.81 起 initGachaWeights 的 ≥50 ×2 加倍已移除）。
 // ==========================================
-const PANDORA_SLOT_COUNT =
-    window.CUSTOM_CONFIG?.PANDORA?.SLOT_COUNT ?? 24;
-const PANDORA_SLOT_TICKS =
-    (window.CUSTOM_CONFIG?.PANDORA?.SLOT_MINUTES ?? 10) * 600;   // 10 分鐘 = 600 秒 × 10 tick/秒
-const PANDORA_LIFETIME_TICKS =
-    (window.CUSTOM_CONFIG?.PANDORA?.KEEP_MINUTES ?? 240) * 600;   // 240 分鐘
+function getPandoraSlotCount() { return window.CUSTOM_CONFIG?.PANDORA?.SLOT_COUNT ?? 24; }
+function getPandoraSlotTicks() { return (window.CUSTOM_CONFIG?.PANDORA?.SLOT_MINUTES ?? 10) * 600; }   // 10 分鐘 = 600 秒 × 10 tick/秒
+function getPandoraLifetimeTicks() { return (window.CUSTOM_CONFIG?.PANDORA?.KEEP_MINUTES ?? 240) * 600; }   // 240 分鐘
 const PANDORA_CARD_LIMIT = 5;       // 普卡／銀卡／金卡合計最多同時佔用 5 個黑市商品格（僅限制隨機輪換；玩家收購單上架的卡片不計入也不受限）
 let _pandoraDiv = null;            // 目前黑市面板容器（購買/輪換後重繪用）
 
@@ -1518,31 +1515,38 @@ function refreshPandoraMarket(force) {
     let nowT = (typeof state !== 'undefined' && state) ? (state.ticks || 0) : 0;
     let m = player.pandoraMarket2;
     let changed = false, latest = null, orderHit = null;
-    let bad = !m || !Array.isArray(m.slots) || m.slots.length !== PANDORA_SLOT_COUNT || m.slots.some(s => !s || !DB.items[s.id]) || pandoraMarketCardCount(m) > PANDORA_CARD_LIMIT;
-    if (force || bad || (nowT - (m ? (m.lastTick || 0) : 0)) >= PANDORA_LIFETIME_TICKS) {
+    let bad = !m || !Array.isArray(m.slots) || m.slots.length !== getPandoraSlotCount() || m.slots.some(s => !s || !DB.items[s.id]) || pandoraMarketCardCount(m) > PANDORA_CARD_LIMIT;
+    if (force || bad || (nowT - (m ? (m.lastTick || 0) : 0)) >= getPandoraLifetimeTicks()) {
         // 初次進場／資料損壞／離線超過一圈：全面換貨（日誌只公告最新一件，不洗版）
         let nextMarket = {
-            slots: [], seq: 0, lastTick: nowT, lastIdx: PANDORA_SLOT_COUNT - 1,
+            slots: [],
+            seq: 0,
+            lastTick: nowT,
+            lastIdx: getPandoraSlotCount() - 1,
             buyOrder: m && m.buyOrder ? m.buyOrder : null,
             notice: m && m.notice ? m.notice : null
         };
-        for (let i = 0; i < PANDORA_SLOT_COUNT; i++) {
+        for (let i = 0; i < getPandoraSlotCount(); i++) {
             let s = _pandoraStock(nowT, nextMarket);
             if (s.buyOrder) orderHit = s;
             nextMarket.slots.push(s);
         }
         let slots = nextMarket.slots;
         m = player.pandoraMarket2 = nextMarket;
-        latest = slots[PANDORA_SLOT_COUNT - 1]; changed = true;
+        latest = slots[getPandoraSlotCount() - 1];
+        changed = true;
     } else {
         let n = 0;
-        while ((nowT - m.lastTick) >= PANDORA_SLOT_TICKS && n < PANDORA_SLOT_COUNT) {
-            m.lastTick += PANDORA_SLOT_TICKS;
-            let i = (m.seq || 0) % PANDORA_SLOT_COUNT;   // round-robin：每格恰好 240 分鐘輪到一次
+        while ((nowT - m.lastTick) >= getPandoraSlotTicks() && n < getPandoraSlotCount()) {
+            m.lastTick += getPandoraSlotTicks();
+            let i = (m.seq || 0) % getPandoraSlotCount();   // round-robin：每格恰好 240 分鐘輪到一次
             m.slots[i] = _pandoraStock(nowT, m, i);
             if (m.slots[i].buyOrder) orderHit = m.slots[i];
-            latest = m.slots[i]; m.lastIdx = i;
-            m.seq = (m.seq || 0) + 1; n++; changed = true;
+            latest = m.slots[i];
+            m.lastIdx = i;
+            m.seq = (m.seq || 0) + 1;
+            n++;
+            changed = true;
         }
     }
     if (!changed) return false;
@@ -1617,7 +1621,7 @@ function pandoraTipShow(ev, i) {
     let inst = { id: s.id, bless: s.bless === true };
     let desc = ''; try { desc = buildItemDescHTML(inst); } catch (e) {}
     let nowT = (typeof state !== 'undefined' && state) ? (state.ticks || 0) : 0;
-    let mins = Math.max(1, Math.ceil((PANDORA_LIFETIME_TICKS - (nowT - (s.setTick || 0))) / 600));
+    let mins = Math.max( 1, Math.ceil((getPandoraLifetimeTicks() - (nowT - (s.setTick || 0))) / 600) );
     let el = _pandoraTipEl();
     el.innerHTML = `<div class="font-bold ${getItemColor(inst)}">${getItemFullName(inst)}</div>
         <div class="text-yellow-300 font-bold">售價 ${s.price.toLocaleString()} 金幣${s.weight === 1 ? '<span style="color:#c084fc;">（珍稀）</span>' : ''}${s.sold ? '<span style="color:#64748b;">（已售出）</span>' : ''}</div>
@@ -1644,7 +1648,7 @@ function pandoraRenderMarket(div) {
     if (!m || !Array.isArray(m.slots) || !m.slots.length) { refreshPandoraMarket(true); m = player.pandoraMarket2; }
     if (!m) { div.innerHTML = '<div class="p-6 text-center text-slate-300">黑市目前沒有商品，請稍候。</div>'; return; }
     let nowT = (typeof state !== 'undefined' && state) ? (state.ticks || 0) : 0;
-    let nextMin = Math.max(1, Math.ceil((PANDORA_SLOT_TICKS - (nowT - (m.lastTick || 0))) / 600));
+    let nextMin = Math.max( 1, Math.ceil((getPandoraSlotTicks() - (nowT - (m.lastTick || 0))) / 600) );
     let order = m.buyOrder;
     let orderItem = order && DB.items[order.id];
     let buyerName = String(player.name || '').trim() || ({

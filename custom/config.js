@@ -9,10 +9,9 @@ window.CUSTOM_CONFIG = {
     },
 
     PANDORA: {
-        PRICE_RATE: 0.4,
         SLOT_COUNT: 30,
         SLOT_MINUTES: 1,
         KEEP_MINUTES: 24,
+        PRICE_RATE: 0.4
     }
-
 };
