@@ -1215,8 +1215,7 @@
         let dropBase = mob.grace ? 10 : (mob.sherine ? (mob.sherineMad ? 5 : 3) : 1);
         let classic = typeof classicDropMult === 'function' ? classicDropMult() : 1;
         let party = typeof partyRewardMult === 'function' ? Math.max(1, Number(partyRewardMult()) || 1) : 1;
-        let dropRate = window.CUSTOM_CONFIG?.RATES?.DROP ?? 1;
-        let dropMult = dropBase * classic * party * dropRate;
+        let dropMult = dropBase * classic * party;
         let oldSherine = _sherineLootCtx;
         let oldForceBless = _forceBless;
         try {
@@ -1228,7 +1227,7 @@
             if (mob.lv >= 40 && mob.race !== '血盟' && !mob.siegeV2) {
                 let panRate = mob.boss ? (map === 'dream_island' ? 0 : 0.01) : 0.0001;
                 if (panRate > 0) {
-                    let panacea = _offlineBinomial(kills, Math.min(1, panRate * dropMult));
+                    let panacea = _offlineBinomial(kills, Math.min(1, panRate * dropMult * dropRate));
                     let split = _offlineSplitUniform(['panacea_str','panacea_dex','panacea_con','panacea_int','panacea_wis','panacea_cha'], panacea);
                     Object.keys(split).forEach(id => _offlineGainItem(id, split[id], mob, loot));
                 }
@@ -1243,9 +1242,9 @@
                 _offlineGainItem('mat_blackstone4', _offlineBinomial(kills, Math.min(1, 0.001 * classic * party * dropRate)), mob, loot);
             }
             let oreRates = { '石頭高崙':1, '鋼鐵高崙':1, '侏儒':0.5, '侏儒戰士':0.5, '黑騎士':0.5, '哈柏哥布林':0.5, '蜥蜴人':0.5 };
-            if (oreRates[mob.n]) _offlineGainItem('mat_silverore', _offlineBinomial(kills, Math.min(1, oreRates[mob.n] * classic * party)), mob, loot);
+            if (oreRates[mob.n]) _offlineGainItem('mat_silverore', _offlineBinomial(kills, Math.min(1, oreRates[mob.n] * classic * party * dropRate)), mob, loot);
             if (player.inv.some(i => i.id === 'item_dk_insignia') && typeof mapRegionOf === 'function' && mapRegionOf(map) === 'rastabad') {
-                _offlineGainItem('mat_holy_relic', _offlineBinomial(kills, Math.min(1, 0.001 * classic * party)), mob, loot);
+                _offlineGainItem('mat_holy_relic', _offlineBinomial(kills, Math.min(1, 0.001 * classic * party * dropRate)), mob, loot);
             }
             if (typeof DARK_WEAPON_DROPS !== 'undefined') _offlineRollTable(mob, kills, DARK_WEAPON_DROPS, dropMult, loot, false);
             if (typeof DARK_CRYSTAL_DROPS !== 'undefined') _offlineRollTable(mob, kills, DARK_CRYSTAL_DROPS, dropMult, loot, false);
@@ -1258,7 +1257,7 @@
                 let worldTree = Array.isArray(player.skills) && player.skills.includes('sk_elf_worldtree');
                 AREA_BONUS_ITEMS.forEach(id => {
                     let baseRate = id === 'new_item_195' ? (worldTree ? 0.30 : 0.20) : (worldTree ? 0.03 : 0.02);
-                    _offlineGainItem(id, _offlineBinomial(kills, Math.min(1, baseRate * dropMult)), mob, loot);
+                    _offlineGainItem(id, _offlineBinomial(kills, Math.min(1, baseRate * dropMult * dropRate)), mob, loot);
                 });
             }
             if (mob.sherine) {
