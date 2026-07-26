@@ -1180,7 +1180,7 @@
         entries.forEach(entry => {
             let id = entry && entry[0], d = id && DB.items[id];
             if (!d || _offlineTrialItem(id)) return;
-            let chance = (Number(entry[1]) || 0) * mult / 100;
+            let chance = (Number(entry[1]) || 0) * mult * (window.CUSTOM_CONFIG?.RATES?.DROP ?? 1) / 100;
             if (relicMult) chance *= _offlineRelicDropMult(id);
             let count = _offlineBinomial(kills, Math.min(1, chance));
             if (count) _offlineGainItem(id, count, mob, loot);
@@ -1215,31 +1215,32 @@
         let dropBase = mob.grace ? 10 : (mob.sherine ? (mob.sherineMad ? 5 : 3) : 1);
         let classic = typeof classicDropMult === 'function' ? classicDropMult() : 1;
         let party = typeof partyRewardMult === 'function' ? Math.max(1, Number(partyRewardMult()) || 1) : 1;
-        let dropMult = dropBase * classic * party;
+        let dropRate = window.CUSTOM_CONFIG?.RATES?.DROP ?? 1;
+        let dropMult = dropBase * classic * party * dropRate;
         let oldSherine = _sherineLootCtx;
         let oldForceBless = _forceBless;
         try {
             _sherineLootCtx = mob.sherine ? { mad: !!mob.sherineMad } : null;
-            if (typeof MOB_DROPS !== 'undefined') _offlineRollTable(mob, kills, MOB_DROPS, dropBase * party, loot, true);
+            if (typeof MOB_DROPS !== 'undefined') _offlineRollTable(mob, kills, MOB_DROPS, dropMult, loot, true);
             // 🩹 v3.7.90 對照線上 js/05:463-465：閘門＝!siegeV2 && lv>=40 && race!=='血盟'；
             //   機率＝頭目 1%（夢幻之島頭目 0）／一般 0.01%。原本一律用 0.0001 且無 race 閘
             //   → 頭目短缺 100 倍、血盟怪反而多掉（線上根本不掉）。
             if (mob.lv >= 40 && mob.race !== '血盟' && !mob.siegeV2) {
                 let panRate = mob.boss ? (map === 'dream_island' ? 0 : 0.01) : 0.0001;
                 if (panRate > 0) {
-                    let panacea = _offlineBinomial(kills, Math.min(1, panRate * classic * party));
+                    let panacea = _offlineBinomial(kills, Math.min(1, panRate * dropMult));
                     let split = _offlineSplitUniform(['panacea_str','panacea_dex','panacea_con','panacea_int','panacea_wis','panacea_cha'], panacea);
                     Object.keys(split).forEach(id => _offlineGainItem(id, split[id], mob, loot));
                 }
             }
             let refine = Array.isArray(player.skills) && player.skills.includes('sk_dark_refine');
             if (map === 'silent_outer') {
-                _offlineGainItem('mat_blackstone2', _offlineBinomial(kills, Math.min(1, (refine ? 0.30 : 0.20) * classic * party)), mob, loot);
-                _offlineGainItem('mat_blackstone3', _offlineBinomial(kills, Math.min(1, (refine ? 0.15 : 0.10) * classic * party)), mob, loot);
+                _offlineGainItem('mat_blackstone2', _offlineBinomial(kills, Math.min(1, (refine ? 0.30 : 0.20) * classic * party * dropRate)), mob, loot);
+                _offlineGainItem('mat_blackstone3', _offlineBinomial(kills, Math.min(1, (refine ? 0.15 : 0.10) * classic * party * dropRate)), mob, loot);
             } else if (refine && typeof mapCategoryOf === 'function' && ['wild','dungeon'].includes(mapCategoryOf(map))) {
-                _offlineGainItem('mat_blackstone2', _offlineBinomial(kills, Math.min(1, 0.01 * classic * party)), mob, loot);
-                _offlineGainItem('mat_blackstone3', _offlineBinomial(kills, Math.min(1, 0.005 * classic * party)), mob, loot);
-                _offlineGainItem('mat_blackstone4', _offlineBinomial(kills, Math.min(1, 0.001 * classic * party)), mob, loot);
+                _offlineGainItem('mat_blackstone2', _offlineBinomial(kills, Math.min(1, 0.01 * classic * party * dropRate)), mob, loot);
+                _offlineGainItem('mat_blackstone3', _offlineBinomial(kills, Math.min(1, 0.005 * classic * party * dropRate)), mob, loot);
+                _offlineGainItem('mat_blackstone4', _offlineBinomial(kills, Math.min(1, 0.001 * classic * party * dropRate)), mob, loot);
             }
             let oreRates = { '石頭高崙':1, '鋼鐵高崙':1, '侏儒':0.5, '侏儒戰士':0.5, '黑騎士':0.5, '哈柏哥布林':0.5, '蜥蜴人':0.5 };
             if (oreRates[mob.n]) _offlineGainItem('mat_silverore', _offlineBinomial(kills, Math.min(1, oreRates[mob.n] * classic * party)), mob, loot);
