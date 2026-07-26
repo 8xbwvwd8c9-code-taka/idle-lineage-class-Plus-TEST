@@ -23,10 +23,9 @@
   if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('battlebuffs')) return;   // 🎚️ 外掛開關:關掉就沒有這塊(狀態欄仍在能力分頁裡)
 
   // 與 css/style.css 手機版面那條完全一致（afk-mapbar / afk-battlehud 也用同一條）
-  var MOBILE_MQ = '(max-width: 820px), (pointer: coarse)';   // ⚠ 刻意比上游那條(768px/520px)寬:條件要跟「afk-mobile 何時套手機殼」一致
-  //   (coarse 或寬 ≤820)。踩過:平板直向 890px＋觸控 → 我方已切成單欄手機殼+底部導覽,但上游眼中是桌機,
-  //   於是上游 #mobile-vitals 不顯示、本檔也不生效 → 平板玩家頂端完全沒有血量(2026-07-26 玩家回報)。
-  //   兩條同時成立時本檔會 display:none 蓋掉上游那條,所以放寬不會變成「兩條並存」。
+  var MOBILE_MQ = '(max-width: 768px), (max-height: 520px) and (pointer: coarse)';   // ⚠ 必須與上游顯示 #mobile-vitals 那條一字不差:本檔的 CSS(sticky/order:-11)
+  //   是「上游手機單欄版面」的一員,放寬到平板(890px)會讓它變成桌機三欄裡的第四欄 → 戰鬥區被擠掉、
+  //   喝水鈕消失(2026-07-26 玩家回報,已回退)。平板要有狀態列得另做「不依賴上游手機版面」的版本。
   var host = null, lastHTML = '';
 
   function injectCSS() {

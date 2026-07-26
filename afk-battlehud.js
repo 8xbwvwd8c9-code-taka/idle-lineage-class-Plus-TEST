@@ -24,10 +24,9 @@
 
   // ⚠ 必須與 css/style.css 裡「顯示 #mobile-vitals」那條 media query 一字不差,否則會出現
   //   「兩條狀態列同時在」或「兩條都不見」的破口(例如橫向手機 max-height 那半條)。
-  var MOBILE_MQ = '(max-width: 820px), (pointer: coarse)';   // ⚠ 刻意比上游那條(768px/520px)寬:條件要跟「afk-mobile 何時套手機殼」一致
-  //   (coarse 或寬 ≤820)。踩過:平板直向 890px＋觸控 → 我方已切成單欄手機殼+底部導覽,但上游眼中是桌機,
-  //   於是上游 #mobile-vitals 不顯示、本檔也不生效 → 平板玩家頂端完全沒有血量(2026-07-26 玩家回報)。
-  //   兩條同時成立時本檔會 display:none 蓋掉上游那條,所以放寬不會變成「兩條並存」。
+  var MOBILE_MQ = '(max-width: 768px), (max-height: 520px) and (pointer: coarse)';   // ⚠ 必須與上游顯示 #mobile-vitals 那條一字不差:本檔的 CSS(sticky/order:-11)
+  //   是「上游手機單欄版面」的一員,放寬到平板(890px)會讓它變成桌機三欄裡的第四欄 → 戰鬥區被擠掉、
+  //   喝水鈕消失(2026-07-26 玩家回報,已回退)。平板要有狀態列得另做「不依賴上游手機版面」的版本。
   var MIRROR_MS = 300;   // 鏡射頻率:值多半沒變,只在真的變了才寫 DOM,300ms 對眼睛已是即時
 
   var SRC = {   // 鏡射來源:桌機狀態面板的元素 id(上游改 id 的話這裡會顯示 '--',不會壞遊戲)
