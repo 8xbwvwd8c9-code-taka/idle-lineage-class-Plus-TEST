@@ -478,6 +478,7 @@ function onSummonToggle(sid) {
             renderStatusEffects();
         }
         if (typeof summonV2DismissAll === 'function' && ((player._summonV2Sk || 'sk_summon') === sid)) summonV2DismissAll();   // 🧙 v3.2.21 召喚類 v2（召喚術/造屍術/屬性精靈）：取消勾選當前生效的召喚→全數解散＋關閉自動重施
+        if (sid === 'sk_zombie' && typeof necroDismissOwner === 'function') necroDismissOwner(player);
     }
     updateSummonLock();
 }
@@ -548,6 +549,7 @@ function renderSkillSelects() {
     
     sortedSkills.forEach(sid => {
         let sk = DB.skills[sid];
+        let skillDisplayName = (sid === 'sk_zombie' && player.eq && player.eq.shield && player.eq.shield.id === 'relic_necro_book') ? '骷髏復生' : sk.n;
         let isAvail = true;
         let __granted = player.grantedSkills && player.grantedSkills.includes(sid);
         let needLv = skillReqLv(sk, sid);   // 🏅 集中化：含魔導精通特例
@@ -557,8 +559,8 @@ function renderSkillSelects() {
         
         let dis = isAvail ? '' : 'disabled class="text-slate-500"';
         
-        if(sk.type === 'atk' && !sk.healSlot) aHtml += `<option value="${sid}" ${dis}>${sk.n}</option>`;
-        if((sk.type === 'heal' && !sk.autoBuff && !['sk_antidote','sk_holy_light','sk_cancel'].includes(sid)) || (sk.type === 'atk' && sk.healSlot)) hHtml += `<option value="${sid}" ${dis}>${sk.n}</option>`;
+        if(sk.type === 'atk' && !sk.healSlot) aHtml += `<option value="${sid}" ${dis}>${skillDisplayName}</option>`;
+        if((sk.type === 'heal' && !sk.autoBuff && !['sk_antidote','sk_holy_light','sk_cancel'].includes(sid)) || (sk.type === 'atk' && sk.healSlot)) hHtml += `<option value="${sid}" ${dis}>${skillDisplayName}</option>`;
         let __isPurify = (sid === 'sk_antidote' || sid === 'sk_holy_light' || sid === 'sk_cancel');
         if(sk.type === 'buff' || (sk.type === 'heal' && sk.autoBuff) || __isPurify) {
             let checked = document.getElementById(`auto-sk-${sid}`)?.checked ? 'checked' : '';
@@ -584,7 +586,7 @@ function renderSkillSelects() {
                     ? ` <button onclick="openSummonSelect()" class="text-cyan-300 underline" style="font-size:11px;" title="召喚控制戒指：挑選召喚物">［${__cur}▾］</button>`
                     : ` <span class="text-slate-500" style="font-size:11px;" title="裝備召喚控制戒指可挑選召喚物">［${__cur}］</span>`;
             }
-            buffHtml += `<label class="cursor-pointer flex items-center gap-2 ${(isAvail && !__locked && !__awakenLocked)?'':'opacity-50'}"${__ttl}><input type="checkbox" id="auto-sk-${sid}" ${checked} ${__dis}${sumAttr}${__awakenAttr}${__purAttr}${__autoBuffAttr}> <span class="${__span}">${sk.n}</span>${__sumSel}</label>`;
+            buffHtml += `<label class="cursor-pointer flex items-center gap-2 ${(isAvail && !__locked && !__awakenLocked)?'':'opacity-50'}"${__ttl}><input type="checkbox" id="auto-sk-${sid}" ${checked} ${__dis}${sumAttr}${__awakenAttr}${__purAttr}${__autoBuffAttr}> <span class="${__span}">${skillDisplayName}</span>${__sumSel}</label>`;
         }
         if(sk.type === 'convert') {
             if (needLv !== undefined) cHtml += `<option value="${sid}" ${dis}>${sk.n}</option>`;   // 🔧 該職業無法學習的轉換技直接不顯示（如法師的心靈轉換/魂體轉換）；等級未達者仍顯示為灰字
@@ -809,7 +811,10 @@ function relicPurposeLabels(d) {
     if (d.crushDr) out.push(`重擊防護（受到重擊傷害-${d.crushDr}%）`);
     if (d.physDrGated) out.push(`物理防護（一般攻擊傷害-${d.physDrGated}%，每3秒一次）`);
     if (d.fireNullify) out.push('火焰化解（每10秒可免疫一次火屬性傷害）');
-    if (d.wearerEle) out.push(`${eleName(d.wearerEle)}之化身（自身轉為${eleName(d.wearerEle)}屬性，承受傷害套用屬性剋制）`);
+    if (d.wearerEle === 'wind') out.push('風之化身（自身轉為風屬性；受到地屬性傷害增加、受到水屬性傷害減少）');
+    else if (d.wearerEle) out.push(`${eleName(d.wearerEle)}之化身（自身轉為${eleName(d.wearerEle)}屬性，承受傷害套用屬性剋制）`);
+    if (d.necroBook) out.push('骷髏復生（造屍術改為不消耗MP；敵人被擊敗時自動召喚1隻骷髏，全隊場上最多6隻；已達上限時完全恢復HP最低的骷髏）');
+    if (d.killTeamHealPct) out.push(`亡者餽贈（擊殺敵人時，全體玩家、傭兵、召喚物、寵物與護衛恢復${d.killTeamHealPct}%最大HP）`);
     if (d.stealth) out.push('常駐隱身（不主動吸引一般怪物）');
 
     if (d.fullHpMult) out.push(`滿血狙擊（對滿血敵人一般攻擊傷害×${d.fullHpMult}）`);
@@ -2250,11 +2255,71 @@ function updatePvpButtonTone() {
     btn.style.borderColor = border;
     btn.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.22), 0 1px 2px rgba(0,0,0,.35)';
 }
+let _socialPanelMode = 'pvp';
+function setSocialPanelMode(mode) {
+    _socialPanelMode = mode === 'private' ? 'private' : 'pvp';
+    renderPvpTab();
+}
+function _socialNpcRow(rec) {
+    if (!rec || !rec.n) return '';
+    let align = typeof pvpClampAlignment === 'function' ? pvpClampAlignment(rec.alignmentValue) : Number(rec.alignmentValue) || 0;
+    let name = typeof pvpNameHtml === 'function'
+        ? pvpNameHtml(rec.n, align, 'font-bold')
+        : `<span class="font-bold">${_pvpTabEsc(rec.n)}</span>`;
+    let arg = encodeURIComponent(rec.n).replace(/'/g, '%27');
+    let clan = rec.clanName ? `${rec.clanLeader ? '盟主・' : ''}${_pvpTabEsc(rec.clanName)}` : '無血盟';
+    return `<div class="bg-slate-900/80 border border-slate-700 rounded p-3 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+            <div class="truncate">${name}${rec.clanLeader ? '<span class="ml-2 text-xs text-amber-300">盟主</span>' : ''}</div>
+            <div class="text-xs text-slate-500 mt-1 truncate">${_pvpTabEsc(rec.avatar || '男戰士')}・${clan}</div>
+        </div>
+        <button class="btn shrink-0 px-3 py-2 text-sm font-bold bg-cyan-950 hover:bg-cyan-900 border-cyan-700 text-cyan-100" onclick="socialOpenPrivateByName('${arg}')">私訊</button>
+    </div>`;
+}
+function _socialPrivatePanelHtml() {
+    let recent = typeof socialGetRecentContacts === 'function' ? socialGetRecentContacts() : [];
+    return `<div class="flex flex-col gap-3">
+        <div class="bg-slate-900/80 border border-slate-700 rounded p-3">
+            <div class="text-sm font-bold text-slate-200 mb-2">搜尋玩家 NPC</div>
+            <input id="social-npc-search" type="search" maxlength="24" autocomplete="off"
+                class="w-full bg-slate-950 border border-slate-600 rounded px-3 py-2 text-slate-100 outline-none focus:border-cyan-500"
+                placeholder="輸入至少 2 個字" oninput="renderSocialNpcSearch(this.value)">
+            <div id="social-npc-search-results" class="flex flex-col gap-2 mt-3"></div>
+        </div>
+        <div class="flex items-center justify-between">
+            <div class="font-bold text-cyan-200">最近私訊</div>
+            <div class="text-xs text-slate-500">${recent.length} / 20</div>
+        </div>
+        <div class="flex flex-col gap-2">
+            ${recent.map(_socialNpcRow).join('') || '<div class="text-slate-500 text-sm bg-slate-900/60 border border-slate-800 rounded p-4 text-center">目前沒有私訊紀錄。</div>'}
+        </div>
+    </div>`;
+}
+function renderSocialNpcSearch(query) {
+    let box = document.getElementById('social-npc-search-results');
+    if (!box) return;
+    let clean = String(query || '').trim();
+    if (clean.replace(/\s+/g, '').length < 2) {
+        box.innerHTML = '';
+        return;
+    }
+    let rows = typeof socialSearchNpcCandidates === 'function' ? socialSearchNpcCandidates(clean) : [];
+    box.innerHTML = rows.map(_socialNpcRow).join('') ||
+        '<div class="text-slate-500 text-sm border border-slate-800 rounded p-3 text-center">找不到符合的玩家 NPC。</div>';
+}
 function renderPvpTab() {
     let div = document.getElementById('tab-pvp');
     if (!div || !player || !player.cls) return;
     if (typeof pvpEnsureState === 'function') pvpEnsureState();
     updatePvpButtonTone();
+    let socialNav = `<div class="grid grid-cols-2 gap-2 mb-3">
+        <button class="btn py-2 font-bold ${_socialPanelMode === 'pvp' ? 'bg-red-950 border-red-600 text-red-100' : 'bg-slate-900 border-slate-700 text-slate-400'}" onclick="setSocialPanelMode('pvp')">PVP</button>
+        <button class="btn py-2 font-bold ${_socialPanelMode === 'private' ? 'bg-cyan-950 border-cyan-600 text-cyan-100' : 'bg-slate-900 border-slate-700 text-slate-400'}" onclick="setSocialPanelMode('private')">私訊</button>
+    </div>`;
+    if (_socialPanelMode === 'private') {
+        div.innerHTML = socialNav + _socialPrivatePanelHtml();
+        return;
+    }
     let align = (typeof pvpClampAlignment === 'function') ? pvpClampAlignment(player.alignmentValue) : (Number(player.alignmentValue) || 0);
     let color = (typeof pvpAlignmentColor === 'function') ? pvpAlignmentColor(align) : '#fff';
     let label = (typeof pvpAlignmentLabel === 'function') ? pvpAlignmentLabel(align) : '中立';
@@ -2287,7 +2352,7 @@ function renderPvpTab() {
             <button class="btn shrink-0 px-3 py-2 text-sm font-bold ${disabled ? 'opacity-50' : 'bg-red-900 hover:bg-red-800 border-red-600 text-red-100'}" ${disabled} onclick="openPvpRevengeTauntMenu(decodeURIComponent('${_nArg}'),event)">${chasing ? '追殺中' : '嗆他'}</button>
         </div>`;
     }).join('');
-    div.innerHTML = `
+    div.innerHTML = socialNav + `
         <div class="flex flex-col gap-3">
             <div class="bg-slate-900/80 border border-slate-700 rounded p-3">
                 <div class="flex items-center justify-between gap-3">
@@ -2512,7 +2577,8 @@ function _allyAutoBuffChips(a) {
     let s = a._slot;
     let chips = list.map(it => {
         let on = (typeof _mercAutoOn === 'function') ? _mercAutoOn(a, it.sid) : false;
-        return `<label class="flex items-center gap-0.5 px-1 rounded border cursor-pointer" style="border-color:${on ? '#0891b2' : '#475569'};background:${on ? 'rgba(8,145,178,0.18)' : 'rgba(15,23,42,0.4)'};" title="自動維持 ${it.n}（${it.cat}）"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAllyAutoBuff('${s}','${it.sid}',this.checked)" style="width:11px;height:11px;margin:0;"><span style="color:${on ? '#67e8f9' : '#94a3b8'};">${it.n}</span></label>`;
+        let name = (it.sid === 'sk_zombie' && a.eq && a.eq.shield && a.eq.shield.id === 'relic_necro_book') ? '骷髏復生' : it.n;
+        return `<label class="flex items-center gap-0.5 px-1 rounded border cursor-pointer" style="border-color:${on ? '#0891b2' : '#475569'};background:${on ? 'rgba(8,145,178,0.18)' : 'rgba(15,23,42,0.4)'};" title="自動維持 ${name}（${it.cat}）"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAllyAutoBuff('${s}','${it.sid}',this.checked)" style="width:11px;height:11px;margin:0;"><span style="color:${on ? '#67e8f9' : '#94a3b8'};">${name}</span></label>`;
     }).join('');
     return `<div class="flex flex-col gap-0.5" style="margin-top:1px;"><span class="text-cyan-400 font-bold" style="font-size:10px;">自動維持（增益／召喚／回復／淨化）</span><div class="flex flex-wrap gap-1" style="font-size:10px;line-height:1.4;">${chips}</div></div>`;
 }
@@ -2528,6 +2594,7 @@ function renderSquadPanel() {
     let allies = (player && player.allies) ? player.allies.filter(Boolean) : [];
     let _pets = (typeof petsOutList === 'function' && player && player.cls) ? petsOutList() : [];   // 🐾 v3.2.17 出戰寵物：顯示於隊伍清單下方
     let _summons = (typeof summonV2List === 'function' && player && player.cls) ? summonV2List().filter(s => s && !s._downed && (s.hp || 0) > 0) : [];
+    if (typeof necroSkeletonList === 'function' && player && player.cls) _summons = _summons.concat(necroSkeletonList().filter(s => s && !s._downed && (s.hp || 0) > 0));
     let _summonSk = (typeof summonV2ActiveSk === 'function') ? summonV2ActiveSk() : '';
     let _summonVisible = _summons.length > 0 || !!(player && player._summonV2On && _summonSk && typeof summonV2Knows === 'function' && summonV2Knows(_summonSk));
     let _guards = (typeof guardV2List === 'function' && player && player.cls) ? guardV2List() : [];   // 🏰 城堡護衛（可招募的協同角色）

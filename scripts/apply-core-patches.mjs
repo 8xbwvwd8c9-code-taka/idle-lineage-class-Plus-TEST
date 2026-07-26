@@ -140,17 +140,8 @@ function patch16Slots() {
   } else { already++; }
   if (dirty06 && !CHECK) writeFileSync(F06, s06);
 
-  // js/05：安塔瑞斯副本「模式共用每日通關」的舊資料遷移掃描
-  const F05 = 'js/05-kill-progression.js';
-  let s05 = readFileSync(F05, 'utf8');
-  if (s05.indexOf(A3B_FROM) >= 0) {
-    s05 = s05.split(A3B_FROM).join(A3B_TO);
-    if (!CHECK) writeFileSync(F05, s05);
-    changed++;
-    console.log(`[patch] 安塔瑞斯通關遷移掃描 16 格（${F05}）`);
-  } else if (s05.indexOf(A3B_TO) < 0) {
-    throw new Error(`[${F05}] 找不到 antharasSharedClearDay 的 8 格迴圈錨點——上游可能改了副本每日通關遷移。`);
-  } else { already++; }
+  // js/05：不再需要補丁——上游 v3.8.34 把安塔瑞斯每日通關改成「逐參與者（enSeed 身分）各記一把 key」，
+  //   原本那個「掃存檔位 1~8 遷移舊資料」的迴圈整段移除，沒有 8 格上限可補。第 9~16 格照樣正常。
 
   // js/25：血盟成員掃描（成員清單＋貢獻度、clanLeaderRole 找盟主、城鎮 NPC 的「有無君主」判斷都經這裡）
   const F25 = 'js/25-clan-system.js';

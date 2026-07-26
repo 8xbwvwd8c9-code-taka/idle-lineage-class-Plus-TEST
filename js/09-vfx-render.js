@@ -143,7 +143,7 @@ function _preloadDeathFx(name, n) {
     _deathFxCache[name] = arr;
     return arr;
 }
-// ⚡ 在目標怪身上疊播一輪法術特效。skn=技能顯示名（須在 SPELL_FX 註冊·未註冊者靜默略過）。
+// ⚡ 在目標怪身上疊播一輪法術特效。skn=技能顯示名（須在 SPELL_FX 註冊·未註冊者靜默略過）；caster 可傳傭兵以決定方向與投射物起點。
 //    v2.7.16：立即渲染（不再等 first.load）＋ _spellFxActive[技能名|uid] 去重（修「一次顯示兩個／忽多忽少」）。
 //    v2.7.18：支援 shadowPrefix→特效自身影子層（疊在特效下·同畫布同步·如地裂術地面裂痕）；targetVc→地面型錨點下移。
 // 🚀 v3.2.65 一次性戰鬥特效總閘：關特效(__vfxOff) 或 背景補跑期間(state.ff) 皆略過生成——避免切分頁/縮小回來時，
@@ -152,13 +152,14 @@ function _preloadDeathFx(name, n) {
 //    WAAPI onfinish 暫停、保險 setTimeout 被 Chrome 節流到每分鐘 1 次 → 特效元素「只進不出」越積越多。
 //    隱藏時本來就看不見，跳過生成對特效表現零影響；配合檔尾 visibilitychange→_vfxClearAll() 立即釋放已存在的。
 function _vfxMute() { return !!(window.__vfxOff || (typeof document !== 'undefined' && document.hidden) || (typeof state !== 'undefined' && state.ff)); }
-function playSpellFx(skn, mob) {
+function playSpellFx(skn, mob, caster) {
     try {
         if (_vfxMute() || !mob) return;
         let cfg = SPELL_FX[skn]; if (!cfg) return;
         // 🔮 v2.7.44 屬性變體(cfg.byEle)：依「目標怪屬性 mob.e」選對應幀組(如能量感測 火/水/地/風)·目標無對應屬性(none等)→靜默不播
         if (cfg.byEle) { let _v = cfg.byEle[mob.e]; if (!_v) return; cfg = Object.assign({}, cfg, _v); }
-        let fxKey = skn + '|' + mob.uid;
+        let _casterKey = caster && caster !== player ? ('ally:' + String(caster._slot || caster.enSeed || 'unknown')) : 'player';
+        let fxKey = skn + '|' + mob.uid + '|' + _casterKey;
         if (_spellFxActive[fxKey]) return;   // 🔒 該目標的此特效還在播 → 不疊第二個
         let ml = document.getElementById('mob-list');
         let slot = ml && ml.querySelector('.mob-target[data-uid="' + mob.uid + '"]');
@@ -177,7 +178,7 @@ function playSpellFx(skn, mob) {
         let _effPrefix = cfg.prefix, _flipX = false, _shadowPrefix = cfg.shadowPrefix;
         if (cfg.dirs && cfg.dirPrefix) {
             let _bv0 = document.getElementById('battle-view'); let _br0 = _bv0 && _bv0.getBoundingClientRect();
-            let _pr0 = (typeof _pmCasterRect === 'function') ? _pmCasterRect() : null;
+            let _pr0 = (caster && typeof _partyMemberRect === 'function') ? _partyMemberRect(caster) : ((typeof _pmCasterRect === 'function') ? _pmCasterRect() : null);
             let _ox0 = _pr0 ? (_pr0.left + _pr0.width * 0.5) : (_br0 ? (_br0.left + _br0.width * 0.5) : ax);
             let _oy0 = _pr0 ? (_pr0.top + _pr0.height * 0.35) : (_br0 ? (_br0.top + _br0.height * 0.98) : (ay + 120));
             let _deg = (Math.atan2(ax - _ox0, -(ay - _oy0)) * 180 / Math.PI + 360) % 360;   // 0=正上·順時針
@@ -217,11 +218,11 @@ function playSpellFx(skn, mob) {
         };
         let _applyGeom = (elm) => { if (elm) { elm.style.width = fxW + 'px'; elm.style.height = fxH + 'px'; elm.style.left = left; elm.style.top = top; } };
         // 🎯 v3.0.5 投射物「飛行」：proj 型特效由施法者飛向目標命中點(ax,ay)·途中循環播放幀·抵達即消失(取代原地疊播·符合「取代丟出去的投射物」)。
-        //    v3.0.49 施法者＝玩家變身 sprite 顯示中→sprite 胸口(_pmCasterRect)·否則戰鬥區底部中央。
+        //    施法者優先用傳入的隊伍成員 sprite；未傳時才以玩家變身 sprite／戰鬥區底部中央為起點。
         if (cfg.proj) {
             let bv = document.getElementById('battle-view');
             let br = bv && bv.getBoundingClientRect();
-            let pr = (typeof _pmCasterRect === 'function') ? _pmCasterRect() : null;   // 🧝 v3.0.49 玩家變身 sprite 顯示中→由 sprite 身上(胸口高度)發射
+            let pr = (caster && typeof _partyMemberRect === 'function') ? _partyMemberRect(caster) : ((typeof _pmCasterRect === 'function') ? _pmCasterRect() : null);
             let ox = pr ? (pr.left + pr.width * 0.5) : (br ? (br.left + br.width * 0.5) : ax);                       // 施法者水平＝變身 sprite 中央·退回戰鬥區中央
             let oy = pr ? (pr.top + pr.height * 0.35) : (br ? (br.top + br.height * 0.98) : (ay + (fxH || 40) * 3));  // 施法者垂直＝sprite 胸口·退回戰鬥區底部(玩家視角)
             let axf = (cfg.ax != null ? cfg.ax : 0.5), ayf = (cfg.ay != null ? cfg.ay : 0.5);   // 投射物錨點(哪一點沿路徑走)
@@ -1266,7 +1267,7 @@ function _renderMobsImpl() {
                 ? `<span class="px-1 rounded text-[10px] font-bold border" style="color:${(typeof RELIC_ELE_COLOR !== 'undefined' && RELIC_ELE_COLOR[m.e]) || '#cbd5e1'};background:rgba(15,23,42,.72);border-color:${(typeof RELIC_ELE_COLOR !== 'undefined' && RELIC_ELE_COLOR[m.e]) || '#cbd5e1'};" title="敵人屬性（巨大螞蟻的複眼）">${(typeof RELIC_ELE_LABEL !== 'undefined' && RELIC_ELE_LABEL[m.e]) || ''}屬性</span>`
                 : '';
             if(_showMobStatus && m.st) {   // 🩹 狀態開關關閉時不顯示異常狀態徽章
-                let order = ['freeze','stun','stone','sleep','paralyze','bind','blind','weaken','disease','vacuum','broken','slow','mrhalf','magicseal','fragile','armorbreak','confuse','panic','guardbreak','terror','doom','muddywater'];   // 🕸️ v3.7.75 束縛（排在硬控類之後）   // 🔮 含脆弱、🔧 破甲(黑妖破壞盔甲)、🔮 混亂/恐慌、🐉 護衛毀滅/恐懼/死神、🌊 污濁、⚡ 麻痺；中毒不顯示、出血改用 🩸 emoji（見下方圖片下方列）
+                let order = ['freeze','stun','stone','sleep','paralyze','bind','blind','weaken','disease','vacuum','broken','slow','mrhalf','magicseal','fragile','shatter','armorbreak','confuse','panic','guardbreak','terror','doom','muddywater'];   // 🕸️ v3.7.75 束縛（排在硬控類之後）   // 🔮 含脆弱、碎裂、🔧 破甲(黑妖破壞盔甲)、🔮 混亂/恐慌、🐉 護衛毀滅/恐懼/死神、🌊 污濁、⚡ 麻痺；中毒不顯示、出血改用 🩸 emoji（見下方圖片下方列）
                 _badgeTags = order.filter(k => m.st[k] > 0).map(k =>
                     `<span class="px-1 rounded bg-purple-900/70 text-purple-200 text-[10px]">${STATUS_NAME[k]}</span>`).join(' ');
             }
