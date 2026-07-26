@@ -38,7 +38,18 @@
 
 **同一個雷第二次(2026-07-23 平板玩家回報)**:「讓開橫幅」整組規則(量橫幅→`--orig-bar-h`→位移 `#app-stage`/`#creation-screen`/`#game-screen`)當時也寫在 afk-mobile 裡 → 平板玩家為了換回三欄版面把「手機版面」關掉,頂端(冒險地圖標題、黑市/瞬移/出發、右欄分頁)整排被橫幅蓋住。**橫幅是所有裝置、所有外掛狀態下都存在的東西,讓位就必須跟它同級** → 已抽成 `afk-banner.js`(基礎設施、無開關、載入序僅次 afk-toggles);彈窗清單 `MODAL_HOSTS`/`MODAL_BOXES` 也由它單一維護,afk-mobile 只留手機幾何專屬規則。smoke 第三輪已加「關掉手機版面後 `--orig-bar-h` 與 `#app-stage`/`#creation-screen` 仍讓開假橫幅」的檢查。判準:**要寫進 afk-mobile 的規則,先問「桌機/平板關掉手機版面時還需不需要它?」需要就不屬於那支。**
 
-**同一道縫的第三次(2026-07-26 平板玩家回報):手機專屬元素的「何時生效」要跟『何時套手機殼』一致,不是照抄上游那條 media query**:afk-mobile 的 `detectMobile()`(coarse 或寬 ≤820)比上游 CSS 的手機斷點(`max-width:768px` / `max-height:520px and pointer:coarse`)寬 → **平板直向 890px＋觸控會落在縫裡**:我方已切成單欄手機殼＋底部導覽,但上游眼中是桌機 → 上游 `#mobile-vitals` 不顯示、照抄上游條件的 `afk-battlehud`/`afk-battlebuffs` 也不生效 → **平板頂端完全沒有 HP/MP**。已把這兩支的 `MOBILE_MQ` 放寬為 `(max-width: 820px), (pointer: coarse)`(兩條同時成立時本來就會 `display:none` 蓋掉上游那條,不會並存)。判準:**問「手機殼套上了就該有它嗎?」是 → 條件跟 detectMobile 同範圍;只是窄畫面排版優化(如 afk-mapbar 把標題列壓兩排)才留上游那條窄的。** smoke 第四輪已加檢查:平板 context 下,手機專屬外掛注入的 `@media` 條件必須有一條成立(反向驗證過會紅)。
+**同一道縫的第三次(2026-07-26 平板玩家回報):手機專屬元素在平板要「另一套版面」,不是把上游那條 media query 放寬**:afk-mobile 的 `detectMobile()`(coarse 或寬 ≤820)比上游 CSS 的手機斷點(`max-width:768px` / `max-height:520px and pointer:coarse`)寬 → **平板直向 890px＋觸控落在縫裡**:我方已切成單欄手機殼＋底部導覽,但上游眼中是桌機 → 上游 `#mobile-vitals` 不顯示、照抄上游條件的 `afk-battlehud`/`afk-battlebuffs` 也不生效 → 平板頂端完全沒有 HP/MP。
+
+**踩過的錯解(同日二次回報,已回退)**:直接把 `MOBILE_MQ` 放寬成 `(max-width:820px),(pointer:coarse)`。狀態列的 CSS(`position:sticky;order:-11;width:100%`)是**上游手機單欄版面的一員**,平板的 `#game-screen` 其實還是桌機三欄 flex → 它變成**第四欄**把戰鬥區與喝水鈕擠出畫面(玩家:「有血條了但不能手動喝水 然後怪看不到了」)。
+
+**正解=同一支外掛做兩套版面,自己判在哪一套**(`afk-battlehud` 的 `inTabletGap()`/`placeStrip()`):
+- 手機(上游那條窄 MQ 成立)→ 位置照舊:`#game-screen` 單欄流的第一個子項、sticky 釘頂。
+- 平板缺口(`body.m-mobile` 在、窄 MQ 不成立)→ 掛 `body.afk-hud-tab`,並把元素**放進「目前顯示的那一欄」**(`#col-left/center/right`)當普通區塊;切分頁時跟著搬。
+- ⚠ **`#game-screen` 是 `position:absolute`(釘在 `#app-stage` 裡)→ 放它「外面」當兄弟節點會被整張畫面蓋住**(第一版這樣做,狀態列躲在冒險地圖卡下面)。
+- ⚠ 元素的**內部外觀**(內距/顏色/血條)不要包在 media query 裡,不然平板模式只拿到骨架沒有樣式(踩過:HP/MP 變兩行純文字)。整條沒啟用時本來就 `display:none`,無條件宣告不影響桌機。
+- 這裡讀 `body.m-mobile` 是對的(不違反「不依賴可關外掛」):手機殼被關掉＝畫面回三欄,桌機完整狀態面板本來就看得到,這條不該出現。
+
+判準:**問「手機殼套上了就該有它嗎?」是 → 該外掛必須在平板尺寸有一條生效路徑(自己的 body class),不是放寬上游那條 MQ;只是窄畫面排版優化(如 afk-mapbar 把標題列壓兩排)才單純留上游那條窄的。** smoke 第四輪已加檢查:平板 context 下,手機專屬外掛注入的樣式必須有「某條 `@media` 成立」或「某條 `body.afk-*` 規則的 class 真的掛在 body 上」(兩支各自反向驗證過會紅)。
 
 **新增「釘在畫面上」(fixed/sticky)的手機元素 → 自己量橫幅,並用「帶文字」的假橫幅驗遮蔽**:橫幅 z-index 是 int 上限、壓得過任何外掛,而各外掛認橫幅是**比對文字**(`/shines871|官方|非官方|轉載/`,見 findBanner)——**沒文字的假橫幅在偵測邏輯眼中不存在**,只測得到「z-index 硬蓋」,驗不到「量測→讓位」那條路徑(smoke 第三輪的假橫幅原本就漏了文字,已補)。判準:元素釘死在頂端 → ①讓位讀 `--orig-bar-h` / `AFK_BANNER`(afk-banner 提供、不可停用);真的要自己量就照 findBanner 那組特徵②測試裡的假橫幅要有文字。
 
