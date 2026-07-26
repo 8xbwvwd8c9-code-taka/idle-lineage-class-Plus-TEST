@@ -1248,9 +1248,12 @@ function getWeightedGachaResult(doubleNonRare, excludeCards) {
 //    以遊戲 tick 計時（存讀檔保留·離線經補跑自然推進）；離線超過一圈(240分鐘)直接全面換貨。
 //    出現機率＝原始 gachaWeight（v3.0.81 起 initGachaWeights 的 ≥50 ×2 加倍已移除）。
 // ==========================================
-const PANDORA_SLOT_COUNT = 24;
-const PANDORA_SLOT_TICKS = 6000;   // 10 分鐘 = 600 秒 × 10 tick/秒
-const PANDORA_LIFETIME_TICKS = PANDORA_SLOT_TICKS * PANDORA_SLOT_COUNT;   // 240 分鐘
+const PANDORA_SLOT_COUNT =
+    window.CUSTOM_CONFIG?.PANDORA_SLOT_COUNT ?? 24;
+const PANDORA_SLOT_TICKS =
+    (window.CUSTOM_CONFIG?.PANDORA_SLOT_MINUTES ?? 10) * 600;   // 10 分鐘 = 600 秒 × 10 tick/秒
+const PANDORA_LIFETIME_TICKS =
+    (window.CUSTOM_CONFIG?.PANDORA_KEEP_MINUTES ?? 240) * 600;   // 240 分鐘
 const PANDORA_CARD_LIMIT = 5;       // 普卡／銀卡／金卡合計最多同時佔用 5 個黑市商品格（僅限制隨機輪換；玩家收購單上架的卡片不計入也不受限）
 let _pandoraDiv = null;            // 目前黑市面板容器（購買/輪換後重繪用）
 
@@ -1288,7 +1291,7 @@ function pandoraPrice(id) {
     if (w === 1) { base = Math.max(base, 100000); lo = 11; hi = 1000; }
     else { lo = Math.max(1, 11 - 0.1 * w); hi = lo * 100; }
     let mult = lo + lootRng('pandoraPrice') * (hi - lo);   // 🎲 committed RNG：同一次上架的商品抽選已走 lootRng，價格若用 Math.random 就能靠 SL 重讀洗出低價
-    return Math.max(1, Math.round(base * mult));
+    return Math.max(1, Math.round(base * mult * (window.CUSTOM_CONFIG?.PANDORA_PRICE_RATE ?? 1)));
 }
 
 const PANDORA_BUY_EQUIP_SLOTS = new Set(['helm', 'armor', 'cloak', 'gloves', 'boots', 'tshirt', 'shield', 'ring', 'amulet', 'belt']);
