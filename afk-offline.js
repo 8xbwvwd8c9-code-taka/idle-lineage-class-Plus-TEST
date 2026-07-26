@@ -1368,7 +1368,69 @@
       var _cm = changeMap;
       window.changeMap = function () { var r = _cm.apply(this, arguments); try { stamp(); } catch (e) {} return r; };
     }
-    // 🗑️ 自動賣出在補跑期間節流:核心每 10 遊戲秒就把「整個背包」逐件跑一次規則判定(applyAutoSellRules)。
+    // ⚡ 補跑熱點:純函式記憶化 + 補跑期間跳過白做的整理。
+  //   全部只吃「同一個輸入 → 同一個答案」這條性質,所以地圖在補跑中換來換去(攀登逐層、遺忘之島途中→本島、
+  //   軍王之室被傳回村)也不影響——快取的 key 就是輸入本身,不是「假設地圖不變」。
+  function installFfPerfHooks() {
+    // 1) _saveUnwrap(raw):驗簽章要對整包 payload 算雜湊,而核心每殺一隻怪都重讀整包血盟狀態 → 同一份字串重複驗。
+    //    純函式(同字串必同結果),用「最近 8 份字串」的小快取即可;回傳物件每次複製一份,避免呼叫端改到共用物件。
+    if (typeof _saveUnwrap === 'function') {
+      var _uw = _saveUnwrap, _uwKeys = [], _uwVals = Object.create(null), UW_MAX = 8;
+      window._saveUnwrap = function (raw) {
+        if (typeof raw !== 'string' || raw.length < 64) return _uw.apply(this, arguments);
+        var hit = _uwVals[raw];
+        if (!hit) {
+          hit = _uw.call(this, raw);
+          _uwVals[raw] = hit; _uwKeys.push(raw);
+          while (_uwKeys.length > UW_MAX) delete _uwVals[_uwKeys.shift()];
+        }
+        return { payload: hit.payload, signed: hit.signed, ok: hit.ok };
+      };
+    }
+    // 2) _seedHash(str):純雜湊,被簽章/身分指紋反覆呼叫同一批字串
+    if (typeof _seedHash === 'function') {
+      var _sh = _seedHash, _shKeys = [], _shVals = Object.create(null), SH_MAX = 64;
+      window._seedHash = function (str) {
+        if (typeof str !== 'string' || str.length < 32) return _sh.apply(this, arguments);
+        if (!(str in _shVals)) {
+          _shVals[str] = _sh.call(this, str); _shKeys.push(str);
+          while (_shKeys.length > SH_MAX) delete _shVals[_shKeys.shift()];
+        }
+        return _shVals[str];
+      };
+    }
+    // 3) isSiegeArea(地圖 id):純查表(SIEGE_OUTER_INNER 是常數清單),換圖只是查新 key
+    if (typeof isSiegeArea === 'function') {
+      var _isa = isSiegeArea, _isaVals = Object.create(null);
+      window.isSiegeArea = function (v) {
+        var k = String(v);
+        if (!(k in _isaVals)) _isaVals[k] = _isa.call(this, v);
+        return _isaVals[k];
+      };
+    }
+    // 4) pvpEnsureState():每次呼叫都把性向鎖、復仇名單、社交私訊名單(最多 20 人 × 12 則)整理一遍。
+    //    補跑期間用便宜簽章判斷「有沒有變」,沒變就跳過;非補跑一律照跑(線上行為不動)。
+    if (typeof pvpEnsureState === 'function') {
+      var _pes = pvpEnsureState, _pesSig = null;
+      window.pvpEnsureState = function () {
+        if (!(typeof state !== 'undefined' && state && state.ff && !state.ffSmall)) { _pesSig = null; return _pes.apply(this, arguments); }
+        var sig;
+        try {
+          var sc = player.socialNpcContacts, rv = player.pvpRevengeList, tp = player.trollPlayers;
+          sig = (player.alignmentValue || 0) + '|' + (sc ? sc.length : -1) + '|' + (sc && sc[0] ? (sc[0].lastChatAt || 0) : 0)
+              + '|' + (rv ? rv.length : -1) + '|' + (tp ? tp.length : -1) + '|' + (player.pvpOn ? 1 : 0);
+        } catch (e) { sig = null; }
+        if (sig != null && sig === _pesSig) return;   // 這幾樣都沒動 → 整理過的結果仍然有效
+        var r = _pes.apply(this, arguments);
+        _pesSig = sig;
+        return r;
+      };
+    }
+    console.log('[AFK] ⚡ 補跑熱點快取已掛上(_saveUnwrap/_seedHash/isSiegeArea/pvpEnsureState)');
+  }
+  installFfPerfHooks();
+
+  // 🗑️ 自動賣出在補跑期間節流:核心每 10 遊戲秒就把「整個背包」逐件跑一次規則判定(applyAutoSellRules)。
     //   12 小時補跑＝4,320 次全背包掃描,大背包(2000 件)在低階手機上這一項就佔掉結算時間的一半以上(6x 限速實測)。
     //   補跑期間改成每 AUTOSELL_CKPT_TICKS(5 遊戲分鐘)一次:賣出總量與金幣不變(規則的等待秒數本來就只有 60 秒,
     //   5 分鐘一輪照樣過門檻),只是賣出時點在「壓縮時間」裡稍晚——玩家看不到中間狀態。線上行為完全不動。
