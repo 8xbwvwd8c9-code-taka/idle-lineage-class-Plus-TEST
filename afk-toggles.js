@@ -30,13 +30,15 @@
                 desc: spec.desc || '',
                 group: spec.group || '其他',
                 def: spec.def !== false,  // 預設開；傳 def:false 才預設關
-                locked: spec.locked || ''  // 非空＝暫時停用：一律當關閉、面板上不可勾，字串是給玩家看的原因
+                locked: spec.locked || '', // 非空＝暫時停用：一律當關閉、面板上不可勾，字串是給玩家看的原因
+                parent: spec.parent || ''  // 非空＝這是某支外掛的子選項：面板上縮排排在該支底下（父項關掉時子項一律當關閉）
             });
         },
         // 這支外掛現在是否啟用（讀 localStorage，未設過→用預設；讀不到 localStorage→啟用）
         enabled: function (id) {
             var r = find(id), def = r ? r.def : true;
             if (r && r.locked) return false;   // 暫時停用中：不管 localStorage 存過什麼都當關閉
+            if (r && r.parent && !api.enabled(r.parent)) return false;   // 父項關掉 → 子選項一律失效（子選項自己不必再問一次父項）
             try { var v = localStorage.getItem(LS + id); return v === null ? def : v === '1'; }
             catch (e) { return def; }
         },
@@ -108,7 +110,15 @@
         card.style.maxHeight = 'calc(100dvh - ' + (bannerPadPx() + 16) + 'px - env(safe-area-inset-bottom, 0px))';
 
         var groups = {};
-        registry.forEach(function (r) { (groups[r.group] = groups[r.group] || []).push(r); });
+        registry.forEach(function (r) { if (!r.parent) (groups[r.group] = groups[r.group] || []).push(r); });
+        registry.forEach(function (r) {   // 子選項緊接排在自己的父項後面（同一組內）
+            if (!r.parent) return;
+            var pr = find(r.parent), g = groups[(pr && pr.group) || r.group];
+            if (!g) { (groups[r.group] = groups[r.group] || []).push(r); return; }
+            var at = -1;
+            for (var i = 0; i < g.length; i++) if (g[i].id === r.parent) { at = i; break; }
+            if (at < 0) g.push(r); else g.splice(at + 1, 0, r);
+        });
 
         var html = '<div style="padding:16px 18px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;">'
             + '<div><div style="font-size:17px;font-weight:700;">🎚️ 外掛開關</div>'
@@ -123,7 +133,7 @@
                 html += '<div style="font-size:12px;color:#7dd3fc;font-weight:700;margin:12px 4px 6px;">' + esc(g) + '</div>';
                 groups[g].forEach(function (r) {
                     var on = api.enabled(r.id);
-                    html += '<label style="display:flex;align-items:center;gap:12px;padding:9px 10px;border:1px solid #1e293b;border-radius:10px;margin-bottom:6px;background:#0b1222;'
+                    html += '<label style="display:flex;align-items:center;gap:12px;padding:9px 10px;border:1px solid #1e293b;border-radius:10px;margin-bottom:6px;background:#0b1222;' + (r.parent ? 'margin-left:22px;' : '')
                         + (r.locked ? 'cursor:not-allowed;opacity:.6;' : 'cursor:pointer;') + '">'
                         + '<input type="checkbox" data-tgid="' + esc(r.id) + '" ' + (on ? 'checked' : '') + (r.locked ? ' disabled' : '')
                         + ' style="width:18px;height:18px;flex:none;accent-color:#38bdf8;">'

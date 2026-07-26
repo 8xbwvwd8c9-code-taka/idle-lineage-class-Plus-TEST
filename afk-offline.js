@@ -22,6 +22,9 @@
 (function () {
   'use strict';
   if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('offline')) return;   // 🎚️ 外掛開關:關掉→不掛任何鉤子,遊戲回原版(無離線結算)
+  // 子選項:掛機期間持續遭到追殺(預設關)。核心用牆鐘比對追殺到期時間,補跑時牆鐘幾乎凍結 → 不處理就等於離線自動豁免追殺。
+  if (window.AFK_TOGGLES) AFK_TOGGLES.register({ id: 'offlinechase', name: '掛機期間持續遭到追殺', group: '遊戲玩法', parent: 'offline', def: false });
+  function chaseOn() { return !!(window.AFK_TOGGLES && AFK_TOGGLES.enabled('offlinechase')); }
 
   // ----- 可調參數 ---------------------------------------------------------
   var CAP_HOURS        = 24;                      // 離線收益上限(小時)
@@ -505,11 +508,19 @@
     //   (過期的照樣過期、沒過期的剩餘時數不變,線上行為零影響)。
     //   offStart=離線起點:真實離線用心跳 closeTs;debug forceCatchup 無 timing → 視同「剛剛過去 totalTicks」。
     var offStart = (timing && timing.closeTs) || (Date.now() - totalTicks * TICK_MS);
-    var trackUntil0 = null;
-    if (player.tracking && player.tracking.until && player.tracking.until > offStart) {
-      trackUntil0 = player.tracking.until;
-      player.tracking.until = Date.now() + totalTicks * TICK_MS + 3600000;   // 撐過整段補跑(含結算本身的真實耗時)綽綽有餘
+    // ⏳ 牆鐘型效期(追蹤／被追殺)的「補跑期間暫時延長」——原值記在 _wallHolds,結算結束與**每次檢查點存檔前**都要還原,
+    //   否則被撐長的到期時間會被寫進存檔(結算中途關頁就白賺一段效期;追殺則變成白賺被追殺的時間)。
+    var _extendTo = Date.now() + totalTicks * TICK_MS + 3600000;   // 撐過整段補跑(含結算本身的真實耗時)綽綽有餘
+    var _wallHolds = [];   // [{obj, orig}] —— obj.until 會被暫時改寫
+    if (player.tracking && player.tracking.until && player.tracking.until > offStart) _wallHolds.push({ obj: player.tracking, orig: player.tracking.until });
+    if (chaseOn() && Array.isArray(player.trollPlayers)) {   // 😤 子選項開啟:關遊戲當下還沒過期的追殺,離線期間照樣有效
+      player.trollPlayers.forEach(function (t) {
+        if (t && t.until && !t.noExpire && !t.pvpRevenge && t.until > offStart) _wallHolds.push({ obj: t, orig: t.until });
+      });
     }
+    function wallHoldsApply() { _wallHolds.forEach(function (h) { h.obj.until = _extendTo; }); }
+    function wallHoldsRestore() { _wallHolds.forEach(function (h) { h.obj.until = h.orig; }); }
+    wallHoldsApply();
 
     var sliceMs = sliceFor(totalTicks);   // 依補跑長短決定畫面更新間隔:短→順、長→快
     var isClimb = !!(prePride && prePride.climb && !prePride.ranked && typeof enterPrideFloor === 'function');   // 排名挑戰不自動續
@@ -956,7 +967,8 @@
     function doCheckpoint() {
       try {
         var _sq = _saveSquelch; _saveSquelch = false;   // ⚡ 檢查點是「該存的存檔」:暫時放行 saveGame 擋板
-        try { if (typeof saveGame === 'function') saveGame(); } finally { _saveSquelch = _sq; }   // ff 下 logSys 靜音,不會洗「進度已儲存」;saveGame 尾端的 offlineStamp 被 catchingUp 擋掉,不影響錨點
+        wallHoldsRestore();   // 💾 存檔前先把被撐長的效期(追蹤／追殺)還原,結算中途關頁也不會把假到期時間留在存檔裡
+        try { if (typeof saveGame === 'function') saveGame(); } finally { _saveSquelch = _sq; wallHoldsApply(); }   // ff 下 logSys 靜音,不會洗「進度已儲存」;saveGame 尾端的 offlineStamp 被 catchingUp 擋掉,不影響錨點
         stampCore(timing.closeTs + done * TICK_MS);       // 錨點=已結算到的時間點(絕不用 now,剩餘離線時間才不會被吃掉)
         recordHistory(buildHistRec());                    // 已結算部分先寫進離線紀錄(同 closeTs 覆寫,不會多筆)
       } catch (eCk) {}
@@ -1127,7 +1139,7 @@
       gotoMap(homeTown());
     }
     if (state.ff !== prevFf0) { state.ff = prevFf0; state.inTick = prevInTick0; }   // 還原 ff(攀登存活分支上面已還原 → 此處不動作)
-    if (trackUntil0 !== null && player.tracking) player.tracking.until = trackUntil0;   // 🎯 還原魔物追蹤原到期時間(見補跑開頭;一定要在下方 saveGame 之前,免得撐長的假 until 被存進存檔)
+    wallHoldsRestore();   // ⏳ 還原追蹤／追殺的原到期時間(見補跑開頭;一定要在下方 saveGame 之前)
 
     // 重啟 live loop(startGameTimers 內含去重,且重設 _loopLast=null → 不會把結算花掉的真實秒數再補一次)
     try { startGameTimers(); } catch (e) {}
