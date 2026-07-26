@@ -150,6 +150,31 @@ const tabletProblems = await tpage.evaluate(() => {
   return bad;
 });
 
+// 🩸 同一道縫的第二個症狀:手機殼在(單欄+底部導覽)但「我方戰鬥狀態列」用上游那條窄 media query 判手機
+//   → 平板拿不到頂端血量列,而上游 #mobile-vitals 在它眼中是桌機也不顯示 → 兩條都沒有(2026-07-26 玩家回報)。
+//   判準:凡「手機殼套用了就該有」的手機專屬元素,條件必須跟 afk-mobile 何時套殼一致(coarse 或寬 ≤820)。
+//   ⚠ smoke 停在主選單(沒載入角色),戰鬥畫面本來就沒開 → 不能驗「元素看不看得到」,
+//     改驗「樣式的手機條件涵不涵蓋這個視窗」:手機殼套上了,手機專屬外掛的 @media 條件就必須成立。
+const tabletHudProblems = await tpage.evaluate(() => {
+  const bad = [];
+  if (!document.body.classList.contains('m-mobile')) return bad;   // 沒套手機殼就不適用
+  const check = [['afk-battlehud-style', '手機戰鬥狀態列'], ['afk-battlebuffs-style', '手機戰鬥狀態欄']];
+  for (const [styleId, label] of check) {
+    const st = document.getElementById(styleId);
+    if (!st) continue;   // 該外掛被關掉 → 不適用
+    let hit = false, conds = [];
+    try {
+      for (const rule of st.sheet.cssRules) {
+        if (rule.type !== CSSRule.MEDIA_RULE) continue;
+        conds.push(rule.conditionText);
+        if (matchMedia(rule.conditionText).matches) { hit = true; break; }
+      }
+    } catch (e) { continue; }
+    if (conds.length && !hit) bad.push(label + '的手機條件在平板不成立(' + conds.join(' / ') + ') → 手機殼套上了卻拿不到這個元素');
+  }
+  return bad;
+});
+
 // 🗺️ 地圖名翻譯覆蓋檢查:掉落查詢的「出沒地圖」來源＝DB.maps 的 key,經 AFK_EXTRA.mapName 解析。
 //   mapName 查不到任一中文來源時會原樣回傳英文 id(name === id),這就是「漏翻」的精準訊號。
 //   作者新增「不在 MAP_CATEGORIES/MAP_REGIONS/DB.towns…」的地圖結構時會被這裡擋下 → 提醒補進 mapName。
@@ -184,6 +209,14 @@ if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
+  process.exit(1);
+}
+
+if (tabletHudProblems.length) {
+  console.error('冒煙測試失敗:平板(觸控·寬 820)上戰鬥狀態列/血條顯示不正確:');
+  for (const p of tabletHudProblems) console.error('  ' + p);
+  console.error('  判準:手機專屬元素的生效條件要跟 afk-mobile 何時套手機殼一致(coarse 或寬 ≤820),');
+  console.error('       不要照抄上游那條較窄的 media query,否則平板會落在縫裡兩邊都沒有。');
   process.exit(1);
 }
 
