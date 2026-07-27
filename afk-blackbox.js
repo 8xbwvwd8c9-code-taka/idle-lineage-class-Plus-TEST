@@ -37,7 +37,7 @@
   }
 
   // 崩潰回報端點。空字串＝只在本機留紀錄、完全不連外(端點還沒部署時就是這個狀態)。
-  var REPORT_URL = '';
+  var REPORT_URL = 'https://crash-collector.pp771007.workers.dev';
   var DB_NAME = 'afk-blackbox', STORE = 'rec', DB_VER = 1;
   var HEARTBEAT_MS = 10000;   // 心跳間隔。調小不會讓證據變準，只會多寫幾筆——維持 10 秒
   var KEEP = 6;               // 保留最近幾次啟動的紀錄（看得到「連續多次異常」這種模式）

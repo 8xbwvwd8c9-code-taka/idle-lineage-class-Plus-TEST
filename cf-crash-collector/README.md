@@ -12,36 +12,40 @@
 
 玩家可在遊戲的外掛開關面板關掉「當掉時自動回報」（預設開）。
 
-## 部署（只需做一次）
+## 已部署（2026-07-27）
+
+端點：`https://crash-collector.pp771007.workers.dev`（已填進 `afk-blackbox.js` 的 `REPORT_URL`）
+D1：`idle-crash`　金鑰：`wrangler secret put VIEW_KEY` 設定，**不在版控裡**。
+
+要重建或換帳號時：
 
 ```bash
 cd cf-crash-collector
 npx wrangler d1 create idle-crash          # 把印出的 database_id 填進 wrangler.toml
 npx wrangler d1 execute idle-crash --remote --file=./schema.sql
-npx wrangler secret put VIEW_KEY           # 自己設一組看資料用的密碼
+npx wrangler secret put VIEW_KEY
 npx wrangler deploy
 ```
 
-部署完會給一個 `https://crash-collector.<你的帳號>.workers.dev` 網址。
-**把它填進 `afk-blackbox.js` 最上面的 `REPORT_URL`**，然後照常 `/prepush` 上線。
-
-> `REPORT_URL` 留空時整套回報不會啟用、完全不連外——端點還沒好之前推上線也不會有任何影響。
+> `REPORT_URL` 留空時整套回報不會啟用、完全不連外。
 
 ## 看資料
 
 ```
-https://crash-collector.<帳號>.workers.dev/list?k=你的VIEW_KEY     最近 200 筆
-https://crash-collector.<帳號>.workers.dev/stats?k=你的VIEW_KEY    依機型聚合
+https://crash-collector.pp771007.workers.dev/data?k=你的VIEW_KEY        （預設明細 200 筆）
+https://crash-collector.pp771007.workers.dev/data?k=你的VIEW_KEY&n=500  （調筆數，上限 1000）
 ```
 
-`/stats` 直接回答關鍵問題：**哪個機型在當、當的時候 JS 記憶體多少、上限多少、圖片幾張、撐了幾分鐘**。
+**刻意不做網頁介面**——這份資料是要整包貼給 AI 判讀的，所以回應自帶「怎麼判讀」與「欄位」說明，
+拿到就能直接分析，不必另外解釋 schema。內容包含：總覽、依機型統計（含 `記憶體用量比`、`版面異常次數`）、明細。
 
-判讀重點：
+判讀重點（回應裡也有一份）：
 
-- `ml`（記憶體上限）手機通常 256~512 MB、桌機 3500+。`mu/ml` 逼近 1 → JS 記憶體吃爆。
+- `ml`（記憶體上限）手機通常 256~512 MB、桌機 3500+。`mu/ml` ≥ 0.85 → JS 記憶體吃爆。
 - `mu` 不高但 `img` 很大 → 兇手是**圖片解碼佔用**（`performance.memory` 量不到那塊），方向是減少同時存在的怪物動畫圖。
 - `view` 不是 `ok` → 根本不是記憶體，是版面把畫面推走了。
 - `how = auto-reload` → 就是玩家回報的「白畫面跳回選角」。
+- 同一個 `did` 反覆出現 → 同一台一直當，不是普遍現象。
 
 ## 費用
 

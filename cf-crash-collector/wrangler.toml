@@ -8,7 +8,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "idle-crash"
-database_id = "填入 wrangler d1 create idle-crash 之後給的 id"
+database_id = "e79e6494-f270-46ac-9ca1-e674d5c17880"
 
 # 讀取端點(/list、/stats)的金鑰不放這裡：
 #   npx wrangler secret put VIEW_KEY
