@@ -590,7 +590,7 @@
     <!-- afk-banner：非官方轉載橫幅讓位（基礎設施、無開關；不可掛在 afk-mobile 裡，玩家關掉手機版面就會整個頂端被蓋住） -->
     <script src="afk-banner.js?v=29fa2d5746"></script>
     <!-- afk-blackbox：崩潰黑盒子（白畫面/被系統回收的事後取證）。排這麼前面是為了盡早掛上 error 監聽；資料寫 IndexedDB，不佔存檔的 localStorage -->
-    <script src="afk-blackbox.js?v=696a3e2c74"></script>
+    <script src="afk-blackbox.js?v=67bd80c980"></script>
     <!-- 存檔解壓快取：必須排在所有會讀 localStorage 的外掛之前（核心每殺一隻怪都重解壓一次血盟狀態） -->
     <script src="afk-lzcache.js?v=08cb8a005d"></script>
     <!-- afk-synccompress：存檔即時壓縮（預設關）——開啟後把 _lzSet 換回同步壓縮，根治登出/多開後存檔未壓縮爆滿。緊接 lzcache、在任何會存檔的外掛之前 -->
