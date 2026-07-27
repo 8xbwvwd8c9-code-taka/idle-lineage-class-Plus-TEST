@@ -34,22 +34,20 @@
   判準:**只有「父關掉＝子真的失效」才做父子**(資料源或入口依賴,如 offline→離線紀錄/選角掛機資訊、storage→設定選單裡的工具);
   「看起來相關」不算——手機那批(battlehud/mapbar/nozoom…)刻意各自判手機、不讀 `body.m-mobile`,掛成 mobile 的子項等於把上面那條死結耦合綁回去。
 
-**🚨 不可停用的基礎設施,不能依賴「可被關掉的外掛」提供的東西**:afk-toggles 是逃生門(設計上不可停用),但它的左上角按鈕位置讀 `--orig-bar-h`,而那變數當時**全專案只有 afk-mobile 在設**(現已搬到不可停用的 `afk-banner.js`);afk-skin 判斷手機也只看 afk-mobile 掛的 `body.m-mobile`。玩家一關「手機版面」→ 逃生門縮到橫幅底下點不到(遊戲橫幅 z-index 是 int 上限 2147483647,壓得過任何外掛)、入口全被收進手機上失準的 fixed Modal ——**壞掉後連「把外掛開回來」的入口都沒了,是死結**(2026-07-20 玩家回報)。判準:**寫 `var(--某變數)` 或讀 `body.某class` 前,先問「這誰設的?那支能不能被關?」** 能被關就要自己有保底(自己量一次/用同一組規則自己判)。⚠️ 這類「A 外掛量測、B 外掛使用」的跨外掛耦合在全開狀態下永遠測得過 → smoke 已加**第三輪**(手機+關掉 afk-mobile)驗逃生門可點與入口可見,新增這類耦合時順手擴充該輪。
+**🚨 不可停用的基礎設施,不能依賴「可被關掉的外掛」提供的東西**:逃生門(afk-toggles)、「讓開橫幅」這種所有裝置/所有外掛狀態都成立的需求,一旦去讀某支可關外掛設的變數或 class(`--orig-bar-h`、`body.m-mobile`),玩家把那支關掉就壞——最慘是連「把外掛開回來」的入口都被橫幅蓋住(橫幅 z-index 是 int 上限,壓得過任何外掛),形成無解死結。故橫幅讓位整組(量橫幅→`--orig-bar-h`/`body.afk-bar`→位移全螢幕容器＋彈窗清單 `MODAL_HOSTS`/`MODAL_BOXES`)已抽成 `afk-banner.js`(無開關、載入序僅次 afk-toggles),afk-mobile 只留手機幾何專屬規則。兩條判準:
+- **寫 `var(--某變數)` 或讀 `body.某class` 前先問「這誰設的?那支能不能被關?」** 能被關就要自己有保底(自己量一次/用同一組規則自己判)。
+- **要寫進 afk-mobile 的規則,先問「桌機/平板關掉手機版面時還需不需要它?」** 需要就不屬於那支。
 
-**同一個雷第二次(2026-07-23 平板玩家回報)**:「讓開橫幅」整組規則(量橫幅→`--orig-bar-h`→位移 `#app-stage`/`#creation-screen`/`#game-screen`)當時也寫在 afk-mobile 裡 → 平板玩家為了換回三欄版面把「手機版面」關掉,頂端(冒險地圖標題、黑市/瞬移/出發、右欄分頁)整排被橫幅蓋住。**橫幅是所有裝置、所有外掛狀態下都存在的東西,讓位就必須跟它同級** → 已抽成 `afk-banner.js`(基礎設施、無開關、載入序僅次 afk-toggles);彈窗清單 `MODAL_HOSTS`/`MODAL_BOXES` 也由它單一維護,afk-mobile 只留手機幾何專屬規則。smoke 第三輪已加「關掉手機版面後 `--orig-bar-h` 與 `#app-stage`/`#creation-screen` 仍讓開假橫幅」的檢查。判準:**要寫進 afk-mobile 的規則,先問「桌機/平板關掉手機版面時還需不需要它?」需要就不屬於那支。**
+⚠️ 這類「A 外掛量測、B 外掛使用」的耦合在全開狀態永遠測得過 → smoke **第三輪**(手機+關掉 afk-mobile)驗逃生門可點、入口可見、`--orig-bar-h` 與 `#app-stage`/`#creation-screen` 仍讓開假橫幅;新增這類耦合時順手擴充該輪。
 
-**同一道縫的第三次(2026-07-26 平板玩家回報):手機專屬元素在平板要「另一套版面」,不是把上游那條 media query 放寬**:afk-mobile 的 `detectMobile()`(coarse 或寬 ≤820)比上游 CSS 的手機斷點(`max-width:768px` / `max-height:520px and pointer:coarse`)寬 → **平板直向 890px＋觸控落在縫裡**:我方已切成單欄手機殼＋底部導覽,但上游眼中是桌機 → 上游 `#mobile-vitals` 不顯示、照抄上游條件的 `afk-battlehud`/`afk-battlebuffs` 也不生效 → 平板頂端完全沒有 HP/MP。
-
-**踩過的錯解(同日二次回報,已回退)**:直接把 `MOBILE_MQ` 放寬成 `(max-width:820px),(pointer:coarse)`。狀態列的 CSS(`position:sticky;order:-11;width:100%`)是**上游手機單欄版面的一員**,平板的 `#game-screen` 其實還是桌機三欄 flex → 它變成**第四欄**把戰鬥區與喝水鈕擠出畫面(玩家:「有血條了但不能手動喝水 然後怪看不到了」)。
-
-**正解=同一支外掛做兩套版面,自己判在哪一套**(`afk-battlehud` 的 `inTabletGap()`/`placeStrip()`):
+**手機專屬元素在平板要「另一套版面」,不是把上游那條 media query 放寬**:afk-mobile 的 `detectMobile()`(coarse 或寬 ≤820)比上游 CSS 的手機斷點(`max-width:768px` / `max-height:520px and pointer:coarse`)寬 → 平板直向落在縫裡:我方已切成單欄手機殼,上游眼中卻還是桌機(`#mobile-vitals` 不顯示、照抄上游條件的 `afk-battlehud`/`afk-battlebuffs` 也不生效)。**放寬 MQ 是錯解**:上游那些樣式是「手機單欄版面的一員」(如狀態列的 `position:sticky;order:-11;width:100%`),平板的 `#game-screen` 其實還是桌機三欄 flex → 元素變成第四欄,把戰鬥區與喝水鈕擠出畫面。正解=**同一支外掛做兩套版面、自己判在哪一套**(`afk-battlehud` 的 `inTabletGap()`/`placeStrip()`):
 - 手機(上游那條窄 MQ 成立)→ 位置照舊:`#game-screen` 單欄流的第一個子項、sticky 釘頂。
-- 平板缺口(`body.m-mobile` 在、窄 MQ 不成立)→ 掛 `body.afk-hud-tab`,並把元素**放進「目前顯示的那一欄」**(`#col-left/center/right`)當普通區塊;切分頁時跟著搬。
-- ⚠ **`#game-screen` 是 `position:absolute`(釘在 `#app-stage` 裡)→ 放它「外面」當兄弟節點會被整張畫面蓋住**(第一版這樣做,狀態列躲在冒險地圖卡下面)。
-- ⚠ 元素的**內部外觀**(內距/顏色/血條)不要包在 media query 裡,不然平板模式只拿到骨架沒有樣式(踩過:HP/MP 變兩行純文字)。整條沒啟用時本來就 `display:none`,無條件宣告不影響桌機。
-- 這裡讀 `body.m-mobile` 是對的(不違反「不依賴可關外掛」):手機殼被關掉＝畫面回三欄,桌機完整狀態面板本來就看得到,這條不該出現。
+- 平板缺口(`body.m-mobile` 在、窄 MQ 不成立)→ 掛自己的 `body.afk-hud-tab`,把元素**放進「目前顯示的那一欄」**(`#col-left/center/right`)當普通區塊;切分頁時跟著搬。
+- ⚠ **`#game-screen` 是 `position:absolute`(釘在 `#app-stage` 裡)→ 放它「外面」當兄弟節點會被整張畫面蓋住**。
+- ⚠ 元素的**內部外觀**(內距/顏色/血條)不要包在 media query 裡,不然平板模式只拿到骨架沒有樣式。整條沒啟用時本來就 `display:none`,無條件宣告不影響桌機。
+- 這裡讀 `body.m-mobile` 是對的(不違反上一條):手機殼被關掉＝畫面回三欄,桌機完整狀態面板本來就看得到,這條不該出現。
 
-判準:**問「手機殼套上了就該有它嗎?」是 → 該外掛必須在平板尺寸有一條生效路徑(自己的 body class),不是放寬上游那條 MQ;只是窄畫面排版優化(如 afk-mapbar 把標題列壓兩排)才單純留上游那條窄的。** smoke 第四輪已加檢查:平板 context 下,手機專屬外掛注入的樣式必須有「某條 `@media` 成立」或「某條 `body.afk-*` 規則的 class 真的掛在 body 上」(兩支各自反向驗證過會紅)。
+判準:**問「手機殼套上了就該有它嗎?」是 → 該外掛必須在平板尺寸有一條生效路徑(自己的 body class),不是放寬上游那條 MQ;只是窄畫面排版優化(如 afk-mapbar 把標題列壓兩排)才單純留上游那條窄的。** smoke 第四輪已加檢查:平板 context 下,手機專屬外掛注入的樣式必須有「某條 `@media` 成立」或「某條 `body.afk-*` 規則的 class 真的掛在 body 上」。
 
 **新增「釘在畫面上」(fixed/sticky)的手機元素 → 自己量橫幅,並用「帶文字」的假橫幅驗遮蔽**:橫幅 z-index 是 int 上限、壓得過任何外掛,而各外掛認橫幅是**比對文字**(`/shines871|官方|非官方|轉載/`,見 findBanner)——**沒文字的假橫幅在偵測邏輯眼中不存在**,只測得到「z-index 硬蓋」,驗不到「量測→讓位」那條路徑(smoke 第三輪的假橫幅原本就漏了文字,已補)。判準:元素釘死在頂端 → ①讓位讀 `--orig-bar-h` / `AFK_BANNER`(afk-banner 提供、不可停用);真的要自己量就照 findBanner 那組特徵②測試裡的假橫幅要有文字。
 
@@ -209,11 +207,12 @@ CI 版:GitHub Actions `sync-upstream.yml`(**只有 `workflow_dispatch`,無 GitHu
 ## 🚨 push 前檢查清單(→ `/prepush` skill;hook 兜底)
 
 1. `node scripts/stamp-code-versions.mjs`——**js/css/afk-*.js 的 `?v=` 全部自動對齊內容 sha1**,不要手動 bump、不要只 bump「有印象改到」的。漏 bump 的後果是**新舊混搭**(玩家快取時序決定,低機率無法重現,踩過整晚收益歸零)。
-2. `node scripts/stamp-sw-version.mjs`(PWA 更新偵測)。動過 assets → `gen-manifests.mjs`。
-3. `node scripts/smoke-hooks.mjs` exit 0(外掛掛點;手機限定外掛在第二輪 iPhone context 驗)。
-4. `grep -nE "^<<<<<<< |^>>>>>>> |^=======$" index.html sw.js afk-*.js` 必須為空(sw.js 一定要一起 grep——標記躺在裡面頁面照常渲染、smoke 照過);每支外掛在 index.html 只出現一次。
-5. `apply-core-patches.mjs --check` exit 0(核心補丁都在)。
-6. commit 階段**不** bump/stamp——那是 push/發版流程的事(使用者明訂:功能做完就 commit,等說要 push 才跑 /prepush 一次處理)。
+2. `node scripts/smoke-hooks.mjs` exit 0(外掛掛點;手機限定外掛在第二輪 iPhone context 驗)。
+3. `apply-core-patches.mjs --check` exit 0(核心補丁都在)。
+4. 動過 assets → `node scripts/gen-manifests.mjs`(圖桶對帳清單;音檔那半 hook 有擋、圖沒有)。
+5. commit 階段**不** bump/stamp——那是 push/發版流程的事(使用者明訂:功能做完就 commit,等說要 push 才跑 /prepush 一次處理)。
+
+> 另外三項不必自己記:sw.js 的 `CODE_VERSION` 過時、rebase 衝突標記殘留、afk-*.js 沒在 index.html 引用 —— `.claude/hooks/prepush-guard.mjs` 會在 `git push` 前 exit 2 硬擋,並把要跑的指令印出來,照著做即可。
 
 **push 後要等 GitHub Pages 重建**(~40s-1min)才算上線:輪詢丟背景跑(`run_in_background`,不要同步 sleep 佔住回合),判準=curl 線上 `version.json`/`?v=`(不要只信 pages/builds API,連續 push 時它會落後);BUILT 才通知使用者。
 
