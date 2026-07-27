@@ -57,6 +57,10 @@ const GUIDE = {
   },
   版本怎麼看: 'code_ver 才是「玩家實際跑的是哪一版」的依據(app 只是人看的 semver、同一版可能重建過)。當掉集中在某個 code_ver → 是那次改版引入的。⚠ proto=file: 的那些讀不到 version.json(瀏覽器擋 file:// 的 fetch)，所以 app/code_ver/build 會是空的，只能用 ver(afk-blackbox.js 的內容 sha)去 git 反查是哪一版；而且他們跑的是下載當下凍結的版本，不會隨網站更新，判斷「這版修好了沒」時要把他們排除。',
   沒有收集: '角色名稱、角色身分碼、寵物歸屬、倉庫內容都不會送，查白畫面用不到。',
+  '⚠️已知資料缺陷': 'code_ver 是 code-9b50193a7793 或 code-281644a8f2db 的那批(2026-07-27 最早兩版)，' +
+    'map/tk/run/inv/ally/ff 一律是空值或 0 —— 那是回報端的 bug(用 window.state 讀核心變數，但核心是頂層 let 宣告、不掛 window)，' +
+    '**不代表玩家真的在選角畫面、也不代表沒在戰鬥**。判讀那批只能用 dom/img/beats/how/save_kb；' +
+    '同一批的 dom≈3500、img≈240 其實正是「戰鬥中」的量級(選角畫面約 600)。之後的版本已修正。',
 };
 
 export default {

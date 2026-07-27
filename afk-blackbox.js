@@ -107,7 +107,10 @@
   function snap() {
     var o = {};
     var ff = false;
-    try { ff = !!(window.state && state.ff); } catch (e) {}
+    // 🚨 核心是用頂層 `let state / let player / let mapState` 宣告的 → **不會掛到 window**。
+    //   寫成 window.state 一律讀不到(2026-07-27 上線後才發現:回報全部變成「未載入角色」,
+    //   但 dom/img 明明是戰鬥中的數字)。一律用 typeof 直接取全域，比照 afk-offline 的寫法。
+    try { ff = !!(typeof state !== 'undefined' && state && state.ff); } catch (e) {}
     if (ff) o.ff = 1;
     try {
       var m = performance.memory;
@@ -131,11 +134,11 @@
       o.imgmb = Math.round(px * 4 / 1048576);
     } catch (e) {}
     try { o.vfx = cnt('vfx-layer'); o.mob = cnt('mob-list'); o.log = cnt('combat-log') + cnt('sys-log'); } catch (e) {}
-    try { if (window.state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
+    try { if (typeof state !== 'undefined' && state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
     // 規模(不是身分):背包/傭兵件數直接決定 DOM 與記憶體,是「大存檔才崩」這個假設的驗證依據。
     //   兩個都是陣列長度 O(1);倉庫件數要解壓所以不在這裡量(上傳前才算存檔大小)。
-    try { if (window.player) { o.inv = (player.inv || []).length; o.ally = (player.allies || []).length; } } catch (e) {}
-    try { if (window.mapState) o.map = String(mapState.current || '').slice(0, 24); } catch (e) {}
+    try { if (typeof player !== 'undefined' && player) { o.inv = (player.inv || []).length; o.ally = (player.allies || []).length; } } catch (e) {}
+    try { if (typeof mapState !== 'undefined' && mapState) o.map = String(mapState.current || '').slice(0, 24); } catch (e) {}
     try { o.view = viewHealth(); } catch (e) { o.view = '?'; }
     return o;
   }
