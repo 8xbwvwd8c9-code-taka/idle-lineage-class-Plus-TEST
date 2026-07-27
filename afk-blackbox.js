@@ -28,9 +28,16 @@
       id: 'blackbox', name: '崩潰黑盒子', group: '系統與其他', def: true,
       desc: '背景低頻記錄畫面與記憶體狀態；若遊戲當掉/畫面全白，下次可在「快取診斷」看到當掉前的最後狀態'
     });
+    // 子選項:父項關掉＝沒有紀錄可送,回報自然失效 → 符合做父子的條件
+    AFK_TOGGLES.register({
+      id: 'crashreport', parent: 'blackbox', name: '當掉時自動回報', group: '系統與其他', def: true,
+      desc: '偵測到上次是「玩到一半突然當掉」時，把當掉前的記憶體/畫面數據回報給維護者。只送這些數字與裝置型號，不含角色名稱、身分碼或存檔內容'
+    });
     if (!AFK_TOGGLES.enabled('blackbox')) return;
   }
 
+  // 崩潰回報端點。空字串＝只在本機留紀錄、完全不連外(端點還沒部署時就是這個狀態)。
+  var REPORT_URL = '';
   var DB_NAME = 'afk-blackbox', STORE = 'rec', DB_VER = 1;
   var HEARTBEAT_MS = 10000;   // 心跳間隔。調小不會讓證據變準，只會多寫幾筆——維持 10 秒
   var KEEP = 6;               // 保留最近幾次啟動的紀錄（看得到「連續多次異常」這種模式）
@@ -120,6 +127,9 @@
     try { o.img = document.images.length; } catch (e) {}
     try { o.vfx = cnt('vfx-layer'); o.mob = cnt('mob-list'); o.log = cnt('combat-log') + cnt('sys-log'); } catch (e) {}
     try { if (window.state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
+    // 規模(不是身分):背包/傭兵件數直接決定 DOM 與記憶體,是「大存檔才崩」這個假設的驗證依據。
+    //   兩個都是陣列長度 O(1);倉庫件數要解壓所以不在這裡量(上傳前才算存檔大小)。
+    try { if (window.player) { o.inv = (player.inv || []).length; o.ally = (player.allies || []).length; } } catch (e) {}
     try { if (window.mapState) o.map = String(mapState.current || '').slice(0, 24); } catch (e) {}
     try { o.view = viewHealth(); } catch (e) { o.view = '?'; }
     return o;
@@ -178,6 +188,57 @@
     } catch (e) {}
   }, HEARTBEAT_MS);
 
+  // ── 自動回報 ────────────────────────────────────────────────────────────
+  //   崩潰當下什麼都送不出去(頁面已經沒了)→ 一律等「下次啟動」補送上一筆。
+  //   只送數字與裝置型號:不含角色名稱/身分碼/存檔內容——查白畫面只需要記憶體與畫面規模，
+  //   帶身分資料既沒幫助又是在蒐集玩家資料。
+  var META_ID = '__meta';
+  var CODE_VER = (function () {   // 比照 afk-diag:從自己的 <script src ?v=> 取內容 sha 當程式版本
+    try {
+      var s = document.querySelector('script[src*="afk-blackbox.js"]');
+      var m = s && s.getAttribute('src').match(/[?&]v=([^&]+)/);
+      return m ? m[1] : '';
+    } catch (e) { return ''; }
+  })();
+  function reportOn() {
+    if (!REPORT_URL) return false;
+    if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('crashreport')) return false;
+    return true;
+  }
+  function saveKB() {   // 存檔佔用(KB)。只在要送的時候算一次,不進心跳。
+    try {
+      var n = 0;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('lineage_idle_save_') === 0) n += (localStorage.getItem(k) || '').length * 2;
+      }
+      return Math.round(n / 1024);
+    } catch (e) { return -1; }
+  }
+  function send(r, did) {
+    var L = r.last || {};
+    var body = {
+      v: 1, did: did, at: r.t0, ua: r.ua, pwa: r.pwa || 0,
+      how: r.autoReload ? 'auto-reload' : 'gone',   // APP 自己重載回來 vs 就這樣沒了
+      beats: r.beats, mins: Math.round(r.beats * HEARTBEAT_MS / 60000),
+      mu: L.mu, ml: L.ml, dom: L.dom, img: L.img, vfx: L.vfx, mob: L.mob, log: L.log,
+      tk: L.tk, map: L.map, view: L.view, ff: L.ff || 0, run: L.run || 0,
+      inv: L.inv, ally: L.ally, saveKB: saveKB(),
+      errs: (r.errs || []).slice(0, 3),
+      ver: CODE_VER,   // 這支外掛的 ?v=(內容 sha)＝認得出玩家跑的是哪一版程式
+      dm: (navigator.deviceMemory || 0), cores: (navigator.hardwareConcurrency || 0),
+      w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1
+    };
+    // 送不出去(離線/端點掛了)就維持未標記,下次啟動再試——不重試、不排隊,失敗完全無感。
+    fetch(REPORT_URL, {
+      method: 'POST', mode: 'cors', keepalive: true,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      if (res && res.ok) { r.sent = 1; put(r); }
+    }).catch(function () {});
+  }
+
   // ── 開機：撈上次的紀錄，順手滾掉舊的 ────────────────────────────────────
   var NAV = '';
   try { var _n = performance.getEntriesByType('navigation')[0]; NAV = _n ? _n.type : ''; } catch (e) {}
@@ -187,7 +248,10 @@
 
   var PREV = null;
   getAll(function (all) {
-    var old = all.filter(function (r) { return r.id !== ID; })
+    if (!all) return;   // 這台存不了(直接開檔案玩/無痕/被擋)→ 安靜放棄，不影響遊戲
+    var meta = null;
+    all.forEach(function (r) { if (r.id === META_ID) meta = r; });
+    var old = all.filter(function (r) { return r.id !== ID && r.id !== META_ID; })
                  .sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
     PREV = old[0] || null;
     // 玩家自己按「重新整理」時只會觸發 pagehide、不會觸發 visibilitychange → 收尾標記常寫不進去，
@@ -199,13 +263,23 @@
     if (PREV && !PREV.clean && NAV === 'reload' && !STANDALONE) { PREV.reloaded = 1; put(PREV); }
     if (PREV && !PREV.clean && NAV === 'reload' && STANDALONE) { PREV.autoReload = 1; put(PREV); }
     if (old.length > KEEP) del(old.slice(KEEP).map(function (r) { return r.id; }));
+
+    // 上一次是「玩到一半突然沒了」且還沒送過 → 現在補送(玩家自己重整的那種不送)
+    if (reportOn() && PREV && !PREV.clean && !PREV.reloaded && !PREV.sent) {
+      var did = meta && meta.did;
+      if (!did) {   // 匿名裝置碼:只用來看「是不是同一台一直當」與去重,不含任何個人資訊
+        did = 'd' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+        put({ id: META_ID, did: did });
+      }
+      try { send(PREV, did); } catch (e) {}
+    }
   });
   flush();
 
   // afk-diag 讀這裡（唯讀，不讓它碰寫入）
   window.AFK_BLACKBOX = {
     prev: function () { return PREV; },
-    all: function (cb) { getAll(function (a) { cb(a && a.filter(function (r) { return r.id !== ID; })); }); },
+    all: function (cb) { getAll(function (a) { cb(a && a.filter(function (r) { return r.id !== ID && r.id !== META_ID; })); }); },
     now: function () { return snap(); },
     beatMs: HEARTBEAT_MS
   };

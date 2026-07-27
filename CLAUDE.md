@@ -85,7 +85,7 @@ CI 版:GitHub Actions `sync-upstream.yml`(**只有 `workflow_dispatch`,無 GitHu
 |---|---|
 | `afk-toggles.js` | 外掛開關中樞(最先載;逃生門,自己不可關) |
 | `afk-banner.js` | 非官方轉載橫幅讓位(量橫幅→`--orig-bar-h`/`body.afk-bar`→位移全螢幕容器+桌機/平板彈窗讓位;基礎設施,無開關) |
-| `afk-blackbox.js` | 崩潰黑盒子(白畫面/被系統回收的事後取證;10 秒心跳記記憶體·DOM·特效層·主容器尺寸→**IndexedDB**,由 afk-diag 讀出。載入序排前面才捕捉得到早期錯誤) |
+| `afk-blackbox.js` | 崩潰黑盒子(白畫面/被系統回收的事後取證;10 秒心跳記記憶體·DOM·圖片數·主容器尺寸→**IndexedDB**,由 afk-diag 讀出。載入序排前面才捕捉得到早期錯誤)＋**當掉自動回報**(子開關 `crashreport`,下次啟動補送到 `cf-crash-collector`;端點填在檔頭 `REPORT_URL`,**留空＝完全不連外**) |
 | `afk-synccompress.js` | 存檔即時壓縮(預設關;把 `_lzSet` 換回同步壓縮,根治登出/多開後存檔未壓縮爆滿;代價=存檔當下多花 0.02~0.4 秒) |
 | `afk-lzcache.js` | 存檔解壓快取(同一份壓縮字串只解一次;核心每殺一隻怪都重讀整包血盟狀態,離線結算 4×) |
 | `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層) |
