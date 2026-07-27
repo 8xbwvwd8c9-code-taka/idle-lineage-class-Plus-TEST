@@ -1,15 +1,19 @@
 /* ============================================================================
  * prepush-guard.mjs — PreToolUse hook:git push 前的硬性把關
  *
- * 擋掉 CLAUDE.md 記過、會壞掉線上版本的三類雷:
+ * 擋掉 CLAUDE.md 記過、會壞掉線上版本的雷:
  *   1. index.html / 外掛 / sw.js 殘留 rebase 衝突標記(<<<<<<< 等)→ 整頁壞掉
  *   2. 某支 afk-*.js 沒在 index.html 補 <script> 引用 → 功能失效 / 被同步洗掉
  *   3. sw.js 的 CODE_VERSION 與當前程式 hash 不一致 → 漏跑 stamp、PWA 不跳更新
+ *   4. js/sfx-index.js 與 assets/sfx|bgm 對不上 → 新音檔安靜失效
+ *   5. 某支 js/css/afk-*.js 的 `?v=` 沒對齊內容 → 玩家拿到新舊混搭(低機率、無法重現)
+ *   6. 核心補丁沒套上 → 依賴補丁的外掛安靜失效
  *
  * 任一不過 → exit 2 擋下 git push,並把要修什麼印到 stderr 給 Claude。
  * 非 git push 的指令一律放行(exit 0)。
  * ========================================================================== */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -96,6 +100,21 @@ try {
     check('BGM_INDEX', 'assets/bgm', '曲目');
   }
 } catch {}
+
+// ── 5+6. 直接跑既有的 --check 腳本(?v= 對齊 / 核心補丁就位)────────────
+//   兩者都是「漏跑會安靜壞掉、且腳本自己就會判」的東西,不要在這裡重刻一份算法。
+for (const [script, why] of [
+  ['scripts/stamp-code-versions.mjs', '先跑「node scripts/stamp-code-versions.mjs」再 push,否則玩家會拿到新舊混搭'],
+  ['scripts/apply-core-patches.mjs', '先跑「node scripts/apply-core-patches.mjs」再 push,否則靠補丁的外掛會安靜失效'],
+]) {
+  if (!existsSync(resolve(ROOT, script))) continue;
+  const r = spawnSync(process.execPath, [resolve(ROOT, script), '--check'], { cwd: ROOT, encoding: 'utf8' });
+  if (r.status !== 0) {
+    const lines = ((r.stderr || '') + '\n' + (r.stdout || '')).split('\n').map((s) => s.trim()).filter(Boolean);
+    const msg = lines.find((l) => /❌|不一致|尚未|過時/.test(l)) || lines[0] || script + ' --check 失敗';
+    fails.push(`${msg} → ${why}`);
+  }
+}
 
 if (fails.length) {
   console.error('⛔ push 前把關沒過,先修這些再 push:\n' + fails.map((x) => '  • ' + x).join('\n'));

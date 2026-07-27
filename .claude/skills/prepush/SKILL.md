@@ -31,12 +31,20 @@ disable-model-invocation: true
    - `grep -nE "^<<<<<<<|^=======|^>>>>>>>" index.html sw.js afk-*.js` 必須為空。
    - 順手確認每支外掛在 index.html 只出現一次 `<script>`(沒有重複)。
 
-6. **最後把關:`?v=` 全對得上**
+6. **核心補丁還在**
+   - `node scripts/apply-core-patches.mjs --check` → 必須 exit 0(印「全部 N 個核心補丁均已就位」;N 是錨點處數,不是補丁組數)。
+
+7. **最後把關:`?v=` 全對得上**
    - `node scripts/stamp-code-versions.mjs --check` → 必須 exit 0(「所有 js/css 的 `?v=` 都與內容一致」)。
    - 紅了代表步驟 2 漏跑或有人手改過 → 跑一次不帶 `--check` 的版本修好再 push。
 
-6. **回報結果**
+8. **回報結果**
    - 全綠：列出「bump 了哪幾支、sw 版本、smoke 通過」，告訴使用者可以 `git add -A && git commit && git push` 了(或直接幫忙 commit/push)。
    - 有紅：明確指出哪步、要修什麼，停在這裡別 push。
+
+9. **push 後要等 GitHub Pages 重建(~40s-1min)才算上線**
+   - 輪詢丟背景跑(`run_in_background`)，不要同步 sleep 佔住回合。
+   - 判準=curl 線上 `version.json` / `?v=` 是否已換成新的(**不要只信 pages/builds API**，連續 push 時它會落後)。
+   - 看到新版本才通知使用者「已上線」。
 
 > 註：實際 `git push` 時還有 `prepush-guard.mjs` hook 會再擋一次衝突標記/引用/sw 版本，這支 skill 是「主動把全部準備做完」。
