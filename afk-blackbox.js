@@ -59,13 +59,18 @@
       } catch (e) { /* 交易開不起來就算了，黑盒子不值得為自己冒任何風險 */ }
     });
   }
+  // 回 null＝這台根本存不了(直接開檔案玩／無痕／瀏覽器擋)。要跟「存得了但沒紀錄」分開,
+  //   否則報告看起來一樣空,分不出「沒當過」還是「根本沒在記」。
   function getAll(cb) {
+    var done = false;
+    var fin = function (v) { if (!done) { done = true; cb(v); } };
+    setTimeout(function () { fin(null); }, 2500);
     db(function (d) {
       try {
         var rq = d.transaction(STORE, 'readonly').objectStore(STORE).getAll();
-        rq.onsuccess = function () { cb(rq.result || []); };
-        rq.onerror = function () { cb([]); };
-      } catch (e) { cb([]); }
+        rq.onsuccess = function () { fin(rq.result || []); };
+        rq.onerror = function () { fin(null); };
+      } catch (e) { fin(null); }
     });
   }
   function del(ids) {
@@ -188,7 +193,7 @@
   // afk-diag 讀這裡（唯讀，不讓它碰寫入）
   window.AFK_BLACKBOX = {
     prev: function () { return PREV; },
-    all: function (cb) { getAll(function (a) { cb(a.filter(function (r) { return r.id !== ID; })); }); },
+    all: function (cb) { getAll(function (a) { cb(a && a.filter(function (r) { return r.id !== ID; })); }); },
     now: function () { return snap(); },
     beatMs: HEARTBEAT_MS
   };

@@ -56,7 +56,11 @@
 **外掛通用守則**(沿用、仍然有效):
 - 優雅降級:需要的全域函式/元素不存在就 `console.warn` 後安靜停用,不可弄壞遊戲。
 - **🚨 絕不可盲呼叫「會寫入玩家存檔」的原作函式**(踩過:主選單狀態呼叫 `saveGame()` 把玩家第 1 格蓋成 Lv.1 null、無備份可救)。要存檔資料**直接讀 `localStorage`**(`lineage_idle_save_<n>`);非寫不可時先驗 `player && player.cls`。任何會動玩家 localStorage 的操作,都要假設可能在「未載入角色/currentSlot 不是預期那格」被觸發。
-- **🚨 外掛自己要存的資料(診斷、記錄、統計)一律不准寫 `localStorage`**——那 5MB 是存檔的地盤、本來就吃緊(`afk-quotawarn` 在盯 80% 門檻),多佔一點就可能害玩家存檔寫不進去。要落地就用 **IndexedDB**(走 `navigator.storage` 的大配額,跟 localStorage 完全分開,且寫入非同步不阻塞主執行緒);`afk-blackbox` 是現成範例(含極簡 open/put/getAll 包裝)。只有「讀玩家存檔」才碰 localStorage。
+- **🚨 外掛要存資料時,先問「這東西壞掉會不會影響遊戲」——答案決定能用哪個儲存**:
+  - **會影響遊戲的(存檔、設定、任何遊戲行為讀得到的)→ 只能 `localStorage`**。**不少玩家是把 repo 下載下來直接開 `index.html` 玩(`file://`)**,而 `file://` 是 opaque origin、儲存政策各瀏覽器與版本都不同(2026-07-27 用本機 Chromium 實測 `file://` 下 IndexedDB 其實讀寫得了,**但這正是不能拿來賭的理由——一台可用不代表玩家那台可用**)。存檔賭不起,`localStorage` 在 `file://` 下相對穩、遊戲存檔本來就在那。
+  - **純診斷/取證、壞掉也不影響遊戲的 → 才可以放 IndexedDB**,而且**必須能在完全不可用時安靜停用**(`afk-blackbox` 是現成範例:open 包 try/catch＋`onerror` 一律轉成「這功能關掉」,絕不往上拋)。
+  - 反過來也成立:**這類附屬資料不可以去佔 `localStorage`**——那 5MB 是存檔的地盤、本來就吃緊(`afk-quotawarn` 在盯 80% 門檻),多佔一點就可能害玩家存檔寫不進去。
+  - 判準:**「file:// 打得開嗎」和「佔不佔存檔空間」兩條要一起過**;過不了就別存,改成算出來即用。
 - 外掛插 DOM 錨「穩定容器 id」,不要錨父子關係——錨不到只會安靜消失,smoke 驗不到,改過首頁版面要人工掃。
 - 覆寫「會被 `.hidden` 切換」的容器 display 時一律加 `:not(.hidden)`,否則畫面關不掉(踩過)。
 - **覆寫上游「寫在 media query 裡」的樣式時,自己的規則要包進同一條 media query**:afk-mobile 的 `detectMobile()`(`pointer:coarse` 或 UA 或寬 ≤820)跟上游 CSS 的手機斷點(`max-width:768px` 或 `max-height:520px and pointer:coarse`)**判定範圍不一樣**——觸控平板在我們眼中是手機、在上游 CSS 眼中是桌機。只寫 `body.m-mobile` 就去覆寫上游手機版的 `top`/`height`,平板會拿到「我們的定位＋上游的桌機 transform」→ 兩套幾何混搭,元素被 `translate(-50%,-50%)` 推出畫面(城鎮 NPC 視窗踩過,top 到 −489、上半截全在畫面外,**手機與桌機都測不出來**)。判準:**要覆寫的上游宣告是包在 media query 裡的嗎?** 是 → 自己的規則也包同一條;只有純位移／封頂(padding、max-height)這種「哪種幾何都成立」的才可以裸寫。**此規則已有 smoke 把關**:`smoke-hooks.mjs` 第四輪用 820×1180 觸控 context 驗「`#game-screen` 不捲時右欄分頁必須各自捲得動」,裸寫 `body.m-mobile` 覆寫上游手機規則會當場紅(捲動這組的條件常數=afk-mobile 的 `MOBILE_GEOM_MQ`)。

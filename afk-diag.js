@@ -337,13 +337,17 @@
         var done = false;
         AFK_BLACKBOX.all(function (rs) {
           if (done) return; done = true;
-          try { out.崩潰黑盒子 = bbSummary(rs); } catch (e) { out.崩潰黑盒子 = '⚠️ 整理失敗: ' + String(e.message).slice(0, 60); }
+          //   rs 為 null＝這台存不了紀錄。要跟「存得了但沒當過」講清楚,否則兩者都是空的、分不出來。
+          try {
+            out.崩潰黑盒子 = rs ? bbSummary(rs)
+              : '⚠️ 這台存不了紀錄(直接開檔案玩、無痕模式、或瀏覽器擋掉 IndexedDB 時會這樣)——不影響遊戲,但當掉時查不到現場';
+          } catch (e) { out.崩潰黑盒子 = '⚠️ 整理失敗: ' + String(e.message).slice(0, 60); }
           res();
         });
-        setTimeout(function () {   // IndexedDB 沒回應(無痕/被擋)也不可以卡住整份診斷
+        setTimeout(function () {   // 連 callback 都沒回也不可以卡住整份診斷
           if (done) return; done = true;
-          out.崩潰黑盒子 = '⚠️ 讀不到(IndexedDB 無回應,可能是無痕模式)'; res();
-        }, 3000);
+          out.崩潰黑盒子 = '⚠️ 讀不到(黑盒子沒有回應)'; res();
+        }, 4000);
       }));
     } else out.崩潰黑盒子 = '未啟用(「崩潰黑盒子」外掛被關掉了)';
 
