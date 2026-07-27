@@ -267,6 +267,38 @@
       '\n          ' + orphan.join('\n          ');
   }
 
+  // ── 崩潰黑盒子(afk-blackbox 記錄·這裡唯讀) ────────────────────────────
+  //   白屏/當掉的當下玩家開不了這個視窗,所以證據只能靠事前記錄、事後讀出來。
+  function bbLine(r) {
+    var beat = (window.AFK_BLACKBOX && AFK_BLACKBOX.beatMs) || 10000;
+    var mins = r.beats * beat / 60000;
+    // 三種結束方式要分開講:只有「前景玩到一半突然沒了」才是我們在找的當掉
+    var how = !r.clean
+      ? (r.reloaded ? ' / 玩家自己重新整理離開(不算當掉)'
+        : ' / 🚨 在前景玩到一半突然沒了(被系統回收記憶體,或整個當掉)')
+      : (r.vis === 'hidden' ? ' / 切到背景後才結束(正常關掉,或在背景被系統回收)' : ' / 正常關閉');
+    var s = r.t0 + ' 撐了約 ' + (mins < 1 ? '不到 1 分鐘' : Math.round(mins) + ' 分鐘') + how;
+    var L = r.last;
+    if (L) {
+      var mem = (L.mu != null && L.ml) ? L.mu + '/' + L.ml + ' MB(' + Math.round(L.mu / L.ml * 100) + '%)' : '此瀏覽器不提供';
+      s += '\n              最後狀態: 記憶體 ' + mem + ' / DOM ' + L.dom + ' 節點 / 特效 ' + L.vfx + ' / 怪卡 ' + L.mob + ' / 日誌 ' + L.log +
+        '\n                        畫面 ' + L.view + ' / 地圖 ' + (L.map || '?') + ' / tick ' + (L.tk != null ? L.tk : '?') + (L.run ? ' / 戰鬥中' : '');
+    }
+    if (r.errs && r.errs.length) {
+      s += '\n              錯誤: ' + r.errs.map(function (e) {
+        return e.at + ' ' + e.m + (e.n > 1 ? '(×' + e.n + ')' : '');
+      }).join('\n                    ');
+    }
+    return s;
+  }
+  function bbSummary(rs) {
+    if (!rs || !rs.length) return '沒有先前紀錄(剛啟用,或瀏覽器資料被清過)';
+    rs.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
+    var bad = rs.filter(function (r) { return !r.clean && !r.reloaded; }).length;   // 重新整理離開的不算
+    return '先前 ' + rs.length + ' 次啟動,其中 ' + bad + ' 次是「在前景玩到一半突然沒了」' + (bad ? '  🚨' : '  ✅') +
+      '\n          ' + rs.slice(0, 3).map(function (r) { return '· ' + bbLine(r); }).join('\n          ');
+  }
+
   function collect() {
     var out = {};
     var _jobs = [];
@@ -293,6 +325,28 @@
       return (navigator.connection.effectiveType || '?') +
         (navigator.connection.saveData ? ' / ⚠️ 省流量模式(圖可能抓不下來)' : '');
     });
+    // 黑盒子擺最前面:玩家是為了「當掉/白畫面」來開這個視窗的,證據要第一眼就看到
+    if (window.AFK_BLACKBOX) {
+      put('目前狀態', function () {
+        var n = AFK_BLACKBOX.now();
+        var mem = (n.mu != null && n.ml) ? n.mu + '/' + n.ml + ' MB(' + Math.round(n.mu / n.ml * 100) + '%)' : '此瀏覽器不提供';
+        return '記憶體 ' + mem + ' / DOM ' + n.dom + ' 節點 / 特效 ' + n.vfx + ' / 怪卡 ' + n.mob + ' / 日誌 ' + n.log +
+          '\n          畫面 ' + n.view + ' / 地圖 ' + (n.map || '?') + ' / tick ' + (n.tk != null ? n.tk : '?');
+      });
+      jobs.push(new Promise(function (res) {
+        var done = false;
+        AFK_BLACKBOX.all(function (rs) {
+          if (done) return; done = true;
+          try { out.崩潰黑盒子 = bbSummary(rs); } catch (e) { out.崩潰黑盒子 = '⚠️ 整理失敗: ' + String(e.message).slice(0, 60); }
+          res();
+        });
+        setTimeout(function () {   // IndexedDB 沒回應(無痕/被擋)也不可以卡住整份診斷
+          if (done) return; done = true;
+          out.崩潰黑盒子 = '⚠️ 讀不到(IndexedDB 無回應,可能是無痕模式)'; res();
+        }, 3000);
+      }));
+    } else out.崩潰黑盒子 = '未啟用(「崩潰黑盒子」外掛被關掉了)';
+
     put('存檔健康', saveHealth);   // 擺在角色前面:它是「進度到底有沒有在存」,比其他欄位都急
     put('角色', charSummary);
     put('角色身分碼', identitySeeds);
@@ -408,6 +462,24 @@
           btn.textContent = '請長按選取複製';
         }
       };
+      var sbtn = document.getElementById('m-diag-save');
+      sbtn.onclick = function () {
+        try {
+          var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+          var name = 'afk-diag-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+            '-' + p(d.getHours()) + p(d.getMinutes()) + '.txt';   // 純 ASCII 檔名:中文檔名經通訊軟體轉傳常變亂碼
+          var blob = new Blob(['﻿' + txt], { type: 'text/plain;charset=utf-8' });   // BOM:Windows 記事本開才不會整份中文變亂碼
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = name; a.style.display = 'none';
+          document.body.appendChild(a); a.click();
+          setTimeout(function () { try { URL.revokeObjectURL(url); a.remove(); } catch (e) {} }, 2000);
+          sbtn.textContent = '✅ 已下載';
+          setTimeout(function () { sbtn.textContent = '💾 下載檔案'; }, 1500);
+        } catch (e) {
+          sbtn.textContent = '下載失敗,請用複製';
+        }
+      };
     }).catch(function (e) { body.textContent = '診斷失敗:' + e.message; });
   }
 
@@ -428,6 +500,7 @@
         '<pre id="m-diag-body"></pre>' +
         '<div id="m-diag-foot">' +
           '<button id="m-diag-copy">📋 複製全部</button>' +
+          '<button id="m-diag-save">💾 下載檔案</button>' +
           '<span id="m-diag-note">回報問題時,把這份貼給維護者</span>' +
         '</div>' +
       '</div>';
@@ -450,8 +523,10 @@
       '#m-diag-close{color:#9ca3af;background:none;border:0;font-size:18px;cursor:pointer;padding:2px 6px}' +
       '#m-diag-body{margin:0;padding:12px 14px;overflow:auto;color:#e5e7eb;font-size:12px;line-height:1.65;white-space:pre-wrap;word-break:break-all;flex:1}' +
       '#m-diag-foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #374151}' +
-      '#m-diag-copy{background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}' +
-      '#m-diag-note{color:#6b7280;font-size:11px}';
+      '#m-diag-copy,#m-diag-save{background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;flex:none}' +
+      '#m-diag-save{background:#047857}' +
+      '#m-diag-note{color:#6b7280;font-size:11px}' +
+      '@media(max-width:420px){#m-diag-foot{flex-wrap:wrap}#m-diag-note{width:100%;order:3}}';
     document.head.appendChild(s);
   }
 
