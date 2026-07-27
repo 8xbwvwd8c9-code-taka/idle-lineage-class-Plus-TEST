@@ -3,7 +3,10 @@ CREATE TABLE IF NOT EXISTS crash (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
   ts       TEXT,     -- 伺服器收到的時間(UTC)
   did      TEXT,     -- 匿名裝置碼(隨機產生·只為了看「是不是同一台一直當」與去重)
-  ver      TEXT,     -- afk-blackbox.js 的 ?v=(內容 sha)＝玩家跑的程式版本
+  ver      TEXT,     -- afk-blackbox.js 自己的 ?v=(認得出黑盒子被快取到舊版)
+  app      TEXT,     -- 加掛版 semver(version.json 的 app·如 3.4.10)
+  code_ver TEXT,     -- version.json 的 code：index.html＋全部外掛＋遊戲 js/css 的 sha ＝實際部署內容
+  build    TEXT,     -- version.json 的 build(如 0726-1951)
   at       TEXT,     -- 當掉那次的啟動時間(玩家本地時間字串)
   ua       TEXT,
   ua_short TEXT,     -- 機型摘要(Android 機型名 / iPhone OS / 桌機瀏覽器)

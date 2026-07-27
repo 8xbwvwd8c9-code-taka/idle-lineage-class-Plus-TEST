@@ -202,6 +202,10 @@
   })();
   function reportOn() {
     if (!REPORT_URL) return false;
+    // 直接開 index.html 檔案玩的不回報：那份是玩家當初下載、之後不會更新的凍結版本，
+    //   混進來會讓「哪一版在當」對不上而誤導判讀（CORS 對 file:// 的 null origin 也未必放行）。
+    //   本機紀錄照留 → 想幫忙的玩家仍可自己開診斷、下載檔案給我們。
+    if (location.protocol === 'file:') return false;
     if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('crashreport')) return false;
     return true;
   }
@@ -216,6 +220,15 @@
     } catch (e) { return -1; }
   }
   function send(r, did) {
+    // 先問 version.json 拿整包版本(app/code/build)——單支 afk-blackbox.js 的 ?v= 只認得出那一支，
+    //   而 code 是「index.html＋全部外掛＋遊戲 js/css」的 sha，才定位得到玩家實際跑的是哪一版。
+    //   讀不到就照送，版本欄位留空總比不回報好。
+    fetch('version.json', { cache: 'no-store' })
+      .then(function (res) { return res.json(); })
+      .catch(function () { return null; })
+      .then(function (v) { postIt(r, did, v || {}); });
+  }
+  function postIt(r, did, v) {
     var L = r.last || {};
     var body = {
       v: 1, did: did, at: r.t0, ua: r.ua, pwa: r.pwa || 0,
@@ -225,7 +238,8 @@
       tk: L.tk, map: L.map, view: L.view, ff: L.ff || 0, run: L.run || 0,
       inv: L.inv, ally: L.ally, saveKB: saveKB(),
       errs: (r.errs || []).slice(0, 3),
-      ver: CODE_VER,   // 這支外掛的 ?v=(內容 sha)＝認得出玩家跑的是哪一版程式
+      ver: CODE_VER,                 // 這支外掛自己的 ?v=(認得出黑盒子被快取到舊版的情況)
+      app: v.app || '', code: v.code || '', build: v.build || '',   // 整包版本(version.json)
       dm: (navigator.deviceMemory || 0), cores: (navigator.hardwareConcurrency || 0),
       w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1
     };

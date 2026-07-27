@@ -45,8 +45,11 @@ const GUIDE = {
     vfx: '特效層子元素數', mob: '怪卡數', log: '日誌行數', tk: '遊戲tick', map: '地圖id',
     view: 'ok 或 版面異常描述', ff: '1=離線結算中', inv: '背包件數', ally: '傭兵數',
     save_kb: '存檔KB', dm: '裝置記憶體GB', cores: 'CPU核數', w: '視窗寬', h: '視窗高', dpr: '像素密度',
-    errs: '當掉前抓到的JS錯誤', ver: '玩家跑的程式版本(afk-blackbox.js 的 ?v=)', did: '匿名裝置碼',
+    errs: '當掉前抓到的JS錯誤', did: '匿名裝置碼',
+    app: '加掛版版本號(如 3.4.10)', code_ver: '實際部署內容的 sha(index.html＋全部外掛＋遊戲js/css)', build: '建置時間(如 0726-1951)',
+    ver: 'afk-blackbox.js 自己的 ?v=(跟 code_ver 對不起來 = 那支被快取到舊版)',
   },
+  版本怎麼看: 'code_ver 才是「玩家實際跑的是哪一版」的依據(app 只是人看的 semver、同一版可能重建過)。當掉集中在某個 code_ver → 是那次改版引入的。',
   沒有收集: '角色名稱、角色身分碼、寵物歸屬、倉庫內容都不會送，查白畫面用不到。',
 };
 
@@ -94,12 +97,14 @@ export default {
     else if ((m = ua.match(/(Edg|OPR|SamsungBrowser|Firefox|Chrome)\/(\d+)/))) uaShort = m[1] + ' ' + m[2];
 
     await env.DB.prepare(
-      `INSERT INTO crash (ts, did, ver, at, ua, ua_short, pwa, how, beats, mins,
+      `INSERT INTO crash (ts, did, ver, app, code_ver, build, at, ua, ua_short, pwa, how, beats, mins,
                           mu, ml, dom, img, vfx, mob, log, tk, map, view, ff, run,
                           inv, ally, save_kb, dm, cores, w, h, dpr, errs)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
-      new Date().toISOString(), str(b.did, 32), str(b.ver, 24), str(b.at, 40), ua, uaShort,
+      new Date().toISOString(), str(b.did, 32), str(b.ver, 24),
+      str(b.app, 24), str(b.code, 32), str(b.build, 24),
+      str(b.at, 40), ua, uaShort,
       int(b.pwa), str(b.how, 16), int(b.beats), int(b.mins),
       int(b.mu), int(b.ml), int(b.dom), int(b.img), int(b.vfx), int(b.mob), int(b.log),
       int(b.tk), str(b.map, 40), str(b.view, 120), int(b.ff), int(b.run),
