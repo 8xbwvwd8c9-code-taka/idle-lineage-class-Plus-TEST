@@ -275,13 +275,16 @@
     // 三種結束方式要分開講:只有「前景玩到一半突然沒了」才是我們在找的當掉
     var how = !r.clean
       ? (r.reloaded ? ' / 玩家自己重新整理離開(不算當掉)'
-        : ' / 🚨 在前景玩到一半突然沒了(被系統回收記憶體,或整個當掉)')
+        : r.autoReload ? ' / 🚨🚨 畫面突然沒了,而且 APP 自己重載回來(＝畫面白掉後跳回選角那個症狀)'
+          : ' / 🚨 在前景玩到一半突然沒了(被系統回收記憶體,或整個當掉)')
       : (r.vis === 'hidden' ? ' / 切到背景後才結束(正常關掉,或在背景被系統回收)' : ' / 正常關閉');
-    var s = r.t0 + ' 撐了約 ' + (mins < 1 ? '不到 1 分鐘' : Math.round(mins) + ' 分鐘') + how;
+    var s = r.t0 + (r.pwa ? '(APP)' : '(瀏覽器)') + ' 撐了約 ' +
+      (mins < 1 ? '不到 1 分鐘' : Math.round(mins) + ' 分鐘') + how;
     var L = r.last;
     if (L) {
       var mem = (L.mu != null && L.ml) ? L.mu + '/' + L.ml + ' MB(' + Math.round(L.mu / L.ml * 100) + '%)' : '此瀏覽器不提供';
-      s += '\n              最後狀態: 記憶體 ' + mem + ' / DOM ' + L.dom + ' 節點 / 特效 ' + L.vfx + ' / 怪卡 ' + L.mob + ' / 日誌 ' + L.log +
+      s += '\n              最後狀態: 記憶體 ' + mem + '(只算JS·不含圖片) / 圖片 ' + (L.img != null ? L.img + ' 張' : '?') +
+        ' / DOM ' + L.dom + ' 節點 / 特效 ' + L.vfx + ' / 怪卡 ' + L.mob + ' / 日誌 ' + L.log +
         '\n                        畫面 ' + L.view + ' / 地圖 ' + (L.map || '?') + ' / tick ' + (L.tk != null ? L.tk : '?') + (L.run ? ' / 戰鬥中' : '');
     }
     if (r.errs && r.errs.length) {
@@ -330,7 +333,8 @@
       put('目前狀態', function () {
         var n = AFK_BLACKBOX.now();
         var mem = (n.mu != null && n.ml) ? n.mu + '/' + n.ml + ' MB(' + Math.round(n.mu / n.ml * 100) + '%)' : '此瀏覽器不提供';
-        return '記憶體 ' + mem + ' / DOM ' + n.dom + ' 節點 / 特效 ' + n.vfx + ' / 怪卡 ' + n.mob + ' / 日誌 ' + n.log +
+        return '記憶體 ' + mem + '(只算JS·不含圖片) / 圖片 ' + (n.img != null ? n.img + ' 張' : '?') +
+          ' / DOM ' + n.dom + ' 節點 / 特效 ' + n.vfx + ' / 怪卡 ' + n.mob + ' / 日誌 ' + n.log +
           '\n          畫面 ' + n.view + ' / 地圖 ' + (n.map || '?') + ' / tick ' + (n.tk != null ? n.tk : '?');
       });
       jobs.push(new Promise(function (res) {

@@ -110,9 +110,14 @@
       var m = performance.memory;
       if (m) { o.mu = Math.round(m.usedJSHeapSize / 1048576); o.ml = Math.round(m.jsHeapSizeLimit / 1048576); }
     } catch (e) {}
-    // 唯一的 O(n) 欄位 → 離線補跑期間跳過（那段最忙）。記憶體水位是 O(1)，照量：
-    //   結算正是記憶體高峰，整段不記等於把最可疑的一段變成盲區。
-    try { if (!ff) o.dom = document.getElementsByTagName('*').length; } catch (e) {}
+    // 本來以為這條是 O(n)、想在補跑期間跳過，實測(2026-07-27·Lv97 存檔·DOM 3189 節點)單獨量
+    //   是 0.0000 ms —— live HTMLCollection 的 length 不必遍歷。既然不貴就照記，
+    //   不然結算期間少一個關鍵欄位卻什麼也沒省到。整次快照約 0.0155 ms。
+    try { o.dom = document.getElementsByTagName('*').length; } catch (e) {}
+    // ⚠ mu/ml 只涵蓋 JS 記憶體,**不含圖片解碼後佔的原生記憶體**——而手機上真正吃掉記憶體的
+    //   多半是怪物動畫/特效那幾百張圖(js/09 有 24 處在建 img)。只看 mu 會得到「記憶體很正常」
+    //   的錯誤結論,所以另外記圖片元素數量當旁證。document.images 是 live collection,取 length 不必遍歷。
+    try { o.img = document.images.length; } catch (e) {}
     try { o.vfx = cnt('vfx-layer'); o.mob = cnt('mob-list'); o.log = cnt('combat-log') + cnt('sys-log'); } catch (e) {}
     try { if (window.state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
     try { if (window.mapState) o.map = String(mapState.current || '').slice(0, 24); } catch (e) {}
@@ -176,6 +181,9 @@
   // ── 開機：撈上次的紀錄，順手滾掉舊的 ────────────────────────────────────
   var NAV = '';
   try { var _n = performance.getEntriesByType('navigation')[0]; NAV = _n ? _n.type : ''; } catch (e) {}
+  var STANDALONE = false;   // 安裝成 APP(PWA)在跑？影響下面怎麼解讀 reload
+  try { STANDALONE = !!((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone); } catch (e) {}
+  rec.pwa = STANDALONE ? 1 : 0;
 
   var PREV = null;
   getAll(function (all) {
@@ -185,7 +193,11 @@
     // 玩家自己按「重新整理」時只會觸發 pagehide、不會觸發 visibilitychange → 收尾標記常寫不進去，
     //   上一筆就長得跟「突然當掉」一模一樣。本次是 reload 進來的話就把上一筆註記起來，
     //   否則每重整一次就多一筆假警報，真正的當掉會被淹沒。
-    if (PREV && !PREV.clean && NAV === 'reload') { PREV.reloaded = 1; put(PREV); }
+    // 🚨 但「安裝成 APP(PWA)」時不可以這樣消音：standalone 沒有網址列、沒有重整鈕，玩家根本按不到，
+    //   而「畫面白掉→自己回到選角」正是 renderer 被系統回收後 PWA 自動重載 —— 那也是 type='reload'。
+    //   在 PWA 下把 reload 當成「玩家自己重整」，等於把真正要抓的當掉整個洗掉。
+    if (PREV && !PREV.clean && NAV === 'reload' && !STANDALONE) { PREV.reloaded = 1; put(PREV); }
+    if (PREV && !PREV.clean && NAV === 'reload' && STANDALONE) { PREV.autoReload = 1; put(PREV); }
     if (old.length > KEEP) del(old.slice(KEEP).map(function (r) { return r.id; }));
   });
   flush();
