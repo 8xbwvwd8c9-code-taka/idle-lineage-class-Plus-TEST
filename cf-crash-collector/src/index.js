@@ -21,6 +21,12 @@ const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, header
 
 const MAX_BODY = 8 * 1024;   // 一筆快照只有幾百 bytes，超過就是不對勁
 
+// 2026-07-27 最早兩版的 afk-blackbox.js：用 window.state 讀核心變數(核心是頂層 let、不掛 window)，
+//   map/tk/run/inv/ally/ff 一律空 → 統計要排除，否則「戰鬥中佔比」全被拉歪。
+//   明細仍照給(dom/img/beats/how 那些是有效的，是目前唯一的問題規模基線)。
+// ⚠ 判準看「資料本身有沒有 map」，不能看 ver——ver 是**送出當下**的版本，而快照是**上一次 session**
+//   記的，玩家更新後第一次回報就會是「新 ver ＋ 舊快照」。
+
 // 只留白名單欄位，且各自限型別/長度——別人亂送東西進來也不會把資料表撐爆
 const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : null);
 const int = (v) => (Number.isFinite(v) ? Math.trunc(v) : null);
@@ -72,20 +78,29 @@ export default {
     if (req.method === 'GET' && url.pathname === '/data') {
       if (!env.VIEW_KEY || url.searchParams.get('k') !== env.VIEW_KEY) return json({ err: 'nope' }, 403);
       const lim = Math.min(parseInt(url.searchParams.get('n') || '200', 10) || 200, 1000);
-      const [tot, stats, rows] = await Promise.all([
+      const [tot, bad, stats, rows] = await Promise.all([
         env.DB.prepare('SELECT COUNT(*) c, COUNT(DISTINCT did) d, MIN(ts) f, MAX(ts) l FROM crash').first(),
+        env.DB.prepare('SELECT COUNT(*) c FROM crash WHERE map IS NULL').first(),
         env.DB.prepare(`SELECT ua_short 機型, COUNT(*) 次數, COUNT(DISTINCT did) 幾台,
                                ROUND(AVG(mu)) 平均mu, ROUND(AVG(ml)) 平均ml,
                                ROUND(AVG(CASE WHEN ml>0 THEN 1.0*mu/ml END),3) 記憶體用量比,
                                ROUND(AVG(img)) 平均img, ROUND(AVG(imgmb)) 平均imgmb, ROUND(AVG(dom)) 平均dom,
-                               ROUND(AVG(mins),1) 平均撐幾分, SUM(CASE WHEN view<>'ok' THEN 1 ELSE 0 END) 版面異常次數
-                        FROM crash GROUP BY ua_short ORDER BY 次數 DESC LIMIT 50`).all(),
+                               ROUND(AVG(mins),1) 平均撐幾分,
+                               SUM(CASE WHEN run=1 THEN 1 ELSE 0 END) 戰鬥中次數,
+                               SUM(CASE WHEN ff=1 THEN 1 ELSE 0 END) 離線結算中次數,
+                               SUM(CASE WHEN view<>'ok' THEN 1 ELSE 0 END) 版面異常次數
+                        FROM crash WHERE map IS NOT NULL GROUP BY ua_short ORDER BY 次數 DESC LIMIT 50`).all(),
         env.DB.prepare(`SELECT * FROM crash ORDER BY id DESC LIMIT ?`).bind(lim).all(),
       ]);
       return json({
         ...GUIDE,
-        總覽: { 總筆數: tot?.c ?? 0, 不同裝置數: tot?.d ?? 0, 最早: tot?.f, 最新: tot?.l, 本次回傳明細筆數: rows.results.length },
-        依機型統計: stats.results,
+        總覽: {
+          總筆數: tot?.c ?? 0, 不同裝置數: tot?.d ?? 0, 最早: tot?.f, 最新: tot?.l,
+          本次回傳明細筆數: rows.results.length,
+          舊版缺欄位筆數: bad?.c ?? 0,
+          '註': '「依機型統計」已排除舊版缺欄位那批(見 ⚠️已知資料缺陷)；明細仍含全部，那批的 dom/img/beats/how 是有效的。',
+        },
+        依機型統計_已排除缺陷版本: stats.results,
         明細: rows.results,
       });
     }
