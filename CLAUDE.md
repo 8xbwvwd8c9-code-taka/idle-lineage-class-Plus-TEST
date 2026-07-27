@@ -58,7 +58,7 @@
 - **🚨 絕不可盲呼叫「會寫入玩家存檔」的原作函式**(踩過:主選單狀態呼叫 `saveGame()` 把玩家第 1 格蓋成 Lv.1 null、無備份可救)。要存檔資料**直接讀 `localStorage`**(`lineage_idle_save_<n>`);非寫不可時先驗 `player && player.cls`。任何會動玩家 localStorage 的操作,都要假設可能在「未載入角色/currentSlot 不是預期那格」被觸發。
 - **🚨 外掛要存資料時,先問「這東西壞掉會不會影響遊戲」——答案決定能用哪個儲存**:
   - **會影響遊戲的(存檔、設定、任何遊戲行為讀得到的)→ 只能 `localStorage`**。**不少玩家是把 repo 下載下來直接開 `index.html` 玩(`file://`)**,而 `file://` 是 opaque origin、儲存政策各瀏覽器與版本都不同(2026-07-27 用本機 Chromium 實測 `file://` 下 IndexedDB 其實讀寫得了,**但這正是不能拿來賭的理由——一台可用不代表玩家那台可用**)。存檔賭不起,`localStorage` 在 `file://` 下相對穩、遊戲存檔本來就在那。
-  - **純診斷/取證、壞掉也不影響遊戲的 → 才可以放 IndexedDB**,而且**必須能在完全不可用時安靜停用**(`afk-blackbox` 是現成範例:open 包 try/catch＋`onerror` 一律轉成「這功能關掉」,絕不往上拋)。
+  - **純診斷/取證、壞掉也不影響遊戲的 → 才可以放 IndexedDB**,而且**必須能在完全不可用時安靜停用**(open 包 try/catch＋`onerror` 一律轉成「這功能關掉」,絕不往上拋)。⚠️ 2026-07-27 曾為此做過 `afk-blackbox`(10 秒心跳寫 IndexedDB＋當機自動回報),上線後有玩家陷入「每 3 秒重載」的崩潰迴圈、又無「上線前」資料可比對來排除嫌疑,已整支移除、改回「請玩家手動交快取診斷」。**教訓:在效能敏感的裝置(iOS)上,為了查問題而常駐的背景寫入本身就是新變因——量測工具要能一鍵拿掉,而且最好只在玩家主動開診斷時才跑。**
   - 反過來也成立:**這類附屬資料不可以去佔 `localStorage`**——那 5MB 是存檔的地盤、本來就吃緊(`afk-quotawarn` 在盯 80% 門檻),多佔一點就可能害玩家存檔寫不進去。
   - 判準:**「file:// 打得開嗎」和「佔不佔存檔空間」兩條要一起過**;過不了就別存,改成算出來即用。
 - 外掛插 DOM 錨「穩定容器 id」,不要錨父子關係——錨不到只會安靜消失,smoke 驗不到,改過首頁版面要人工掃。
@@ -79,13 +79,12 @@
 
 CI 版:GitHub Actions `sync-upstream.yml`(**只有 `workflow_dispatch`,無 GitHub schedule**;**目前完全沒有定時觸發,同步時機由人決定**——`cf-sync-trigger/` 的 Cloudflare Worker 還在,但 cron 已於 2026-07-21 清空(`crons = []`,API 查 schedules 為空)。要恢復每天自動:把 `wrangler.toml` 的 `crons` 填回 `["20 10 * * *"]`(=台灣 18:20)再 `npx wrangler triggers deploy`;不用 GitHub 自家 schedule 是因為它常延遲 1~2 小時)做同一件事:ls-remote 比 checkpoint 早退 → 鏡像資產(`rsync --delete`)→ sync 腳本(AFK_SKIP_SMOKE=1)→ smoke → **全綠直推 main(Pages 自動部署)+ 發 Release(tag `vYYYYMMDD-HHMM`,標題帶原作者版本號)**;錨點失效/smoke 紅 → 各開 issue、不推壞版。commit 用路徑白名單 add(CI 臨時裝的 playwright/package.json 不進版控)。**因此 `assets/`、`public/` 下不可放我方獨有檔案**(會被 `--delete` 刪)——外掛需要圖優先引用上游既有檔(例:afk-training 背景用 `assets/area/1920x1080/新兵修練場.jpg`);真的要自有素材就放 assets 之外,或改 workflow 加 exclude。
 
-## 目前的外掛(52 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 目前的外掛(51 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
 | `afk-toggles.js` | 外掛開關中樞(最先載;逃生門,自己不可關) |
 | `afk-banner.js` | 非官方轉載橫幅讓位(量橫幅→`--orig-bar-h`/`body.afk-bar`→位移全螢幕容器+桌機/平板彈窗讓位;基礎設施,無開關) |
-| `afk-blackbox.js` | 當機自動回報(白畫面/被系統回收的事後取證;10 秒心跳記記憶體·DOM·圖片數·主容器尺寸→**IndexedDB**,由 afk-diag 讀出;當機後**下次啟動**補送到 `cf-crash-collector`。載入序排前面才捕捉得到早期錯誤;端點填在檔頭 `REPORT_URL`,**留空＝完全不連外**;`file://` 直開不回報——那是凍結的舊版本,混進來會讓「哪一版在當」對不上。**只有一個開關,關掉＝不記錄也不回報**) |
 | `afk-synccompress.js` | 存檔即時壓縮(預設關;把 `_lzSet` 換回同步壓縮,根治登出/多開後存檔未壓縮爆滿;代價=存檔當下多花 0.02~0.4 秒) |
 | `afk-lzcache.js` | 存檔解壓快取(同一份壓縮字串只解一次;核心每殺一隻怪都重讀整包血盟狀態,離線結算 4×) |
 | `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層) |

@@ -267,39 +267,42 @@
       '\n          ' + orphan.join('\n          ');
   }
 
-  // ── 崩潰黑盒子(afk-blackbox 記錄·這裡唯讀) ────────────────────────────
-  //   白屏/當掉的當下玩家開不了這個視窗,所以證據只能靠事前記錄、事後讀出來。
-  function bbLine(r) {
-    var beat = (window.AFK_BLACKBOX && AFK_BLACKBOX.beatMs) || 10000;
-    var mins = r.beats * beat / 60000;
-    // 三種結束方式要分開講:只有「前景玩到一半突然沒了」才是我們在找的當掉
-    var how = !r.clean
-      ? (r.reloaded ? ' / 玩家自己重新整理離開(不算當掉)'
-        : r.autoReload ? ' / 🚨🚨 畫面突然沒了,而且 APP 自己重載回來(＝畫面白掉後跳回選角那個症狀)'
-          : ' / 🚨 在前景玩到一半突然沒了(被系統回收記憶體,或整個當掉)')
-      : (r.vis === 'hidden' ? ' / 切到背景後才結束(正常關掉,或在背景被系統回收)' : ' / 正常關閉');
-    var s = r.t0 + (r.pwa ? '(APP)' : '(瀏覽器)') + ' 撐了約 ' +
-      (mins < 1 ? '不到 1 分鐘' : Math.round(mins) + ' 分鐘') + how;
-    var L = r.last;
-    if (L) {
-      var mem = (L.mu != null && L.ml) ? L.mu + '/' + L.ml + ' MB(' + Math.round(L.mu / L.ml * 100) + '%)' : '此瀏覽器不提供';
-      s += '\n              最後狀態: 記憶體 ' + mem + '(只算JS·不含圖片) / 圖片 ' + (L.img != null ? L.img + ' 張' : '?') +
-        ' / DOM ' + L.dom + ' 節點 / 特效 ' + L.vfx + ' / 怪卡 ' + L.mob + ' / 日誌 ' + L.log +
-        '\n                        畫面 ' + L.view + ' / 地圖 ' + (L.map || '?') + ' / tick ' + (L.tk != null ? L.tk : '?') + (L.run ? ' / 戰鬥中' : '');
-    }
-    if (r.errs && r.errs.length) {
-      s += '\n              錯誤: ' + r.errs.map(function (e) {
-        return e.at + ' ' + e.m + (e.n > 1 ? '(×' + e.n + ')' : '');
-      }).join('\n                    ');
-    }
-    return s;
-  }
-  function bbSummary(rs) {
-    if (!rs || !rs.length) return '沒有先前紀錄(剛啟用,或瀏覽器資料被清過)';
-    rs.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
-    var bad = rs.filter(function (r) { return !r.clean && !r.reloaded; }).length;   // 重新整理離開的不算
-    return '先前 ' + rs.length + ' 次啟動,其中 ' + bad + ' 次是「在前景玩到一半突然沒了」' + (bad ? '  🚨' : '  ✅') +
-      '\n          ' + rs.slice(0, 3).map(function (r) { return '· ' + bbLine(r); }).join('\n          ');
+  // ── 當下的記憶體／畫面量測(自己算,不依賴 afk-blackbox) ──────────────
+  //   黑盒子 2026-07-27 暫停載入後，這段若還掛在它身上，玩家手動交出來的診斷就剛好少了
+  //   最關鍵的欄位。這裡是純唯讀的一次性計算：不寫 IndexedDB、沒有心跳、不上傳，
+  //   只在玩家按下「快取診斷」那一刻跑一次。
+  function liveStats() {
+    var o = {};
+    try {
+      var m = performance.memory;
+      if (m) { o.mu = Math.round(m.usedJSHeapSize / 1048576); o.ml = Math.round(m.jsHeapSizeLimit / 1048576); }
+    } catch (e) {}
+    try { o.dom = document.getElementsByTagName('*').length; } catch (e) {}
+    try {
+      var px = 0, ims = document.images, n = ims.length;
+      for (var i = 0; i < n; i++) px += (ims[i].naturalWidth || 0) * (ims[i].naturalHeight || 0);
+      o.img = n; o.imgmb = Math.round(px * 4 / 1048576);   // iOS 沒有 performance.memory,這是那邊唯一的記憶體量化指標
+    } catch (e) {}
+    try {
+      var el = function (id) { var e2 = document.getElementById(id); return e2 ? e2.childElementCount : -1; };
+      o.vfx = el('vfx-layer'); o.mob = el('mob-list'); o.log = el('combat-log') + el('sys-log');
+    } catch (e) {}
+    try { if (typeof state !== 'undefined' && state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
+    try { if (typeof mapState !== 'undefined' && mapState) o.map = String(mapState.current || ''); } catch (e) {}
+    try { if (typeof player !== 'undefined' && player) { o.inv = (player.inv || []).length; o.ally = (player.allies || []).length; } } catch (e) {}
+    // 白畫面的直接證據:主容器被壓成 0 或整個推出視窗
+    try {
+      var bad = [];
+      ['app-stage', 'game-screen'].forEach(function (id) {
+        var e3 = document.getElementById(id);
+        if (!e3 || e3.classList.contains('hidden')) return;
+        if (e3.clientWidth < 50 || e3.clientHeight < 50) { bad.push(id + '=' + e3.clientWidth + 'x' + e3.clientHeight); return; }
+        var r = e3.getBoundingClientRect();
+        if (r.bottom < 20 || r.right < 20 || r.top > innerHeight - 20 || r.left > innerWidth - 20) bad.push(id + '離屏');
+      });
+      o.view = bad.length ? bad.join(' ') : 'ok';
+    } catch (e) { o.view = '?'; }
+    return o;
   }
 
   function collect() {
@@ -328,33 +331,17 @@
       return (navigator.connection.effectiveType || '?') +
         (navigator.connection.saveData ? ' / ⚠️ 省流量模式(圖可能抓不下來)' : '');
     });
-    // 黑盒子擺最前面:玩家是為了「當掉/白畫面」來開這個視窗的,證據要第一眼就看到
-    if (window.AFK_BLACKBOX) {
-      put('目前狀態', function () {
-        var n = AFK_BLACKBOX.now();
-        var mem = (n.mu != null && n.ml) ? n.mu + '/' + n.ml + ' MB(' + Math.round(n.mu / n.ml * 100) + '%)' : '此瀏覽器不提供';
-        return '記憶體 ' + mem + '(只算JS·不含圖片) / 圖片 ' + (n.img != null ? n.img + ' 張' : '?') +
-          ' / DOM ' + n.dom + ' 節點 / 特效 ' + n.vfx + ' / 怪卡 ' + n.mob + ' / 日誌 ' + n.log +
-          '\n          畫面 ' + n.view + ' / 地圖 ' + (n.map || '?') + ' / tick ' + (n.tk != null ? n.tk : '?');
-      });
-      jobs.push(new Promise(function (res) {
-        var done = false;
-        AFK_BLACKBOX.all(function (rs) {
-          if (done) return; done = true;
-          //   rs 為 null＝這台存不了紀錄。要跟「存得了但沒當過」講清楚,否則兩者都是空的、分不出來。
-          try {
-            out.當機紀錄 = rs ? bbSummary(rs)
-              : '⚠️ 這台存不了紀錄(直接開檔案玩、無痕模式、或瀏覽器擋掉 IndexedDB 時會這樣)——不影響遊戲,但當掉時查不到現場';
-          } catch (e) { out.當機紀錄 = '⚠️ 整理失敗: ' + String(e.message).slice(0, 60); }
-          res();
-        });
-        setTimeout(function () {   // 連 callback 都沒回也不可以卡住整份診斷
-          if (done) return; done = true;
-          out.當機紀錄 = '⚠️ 讀不到(黑盒子沒有回應)'; res();
-        }, 4000);
-      }));
-    } else out.當機紀錄 = '未啟用(「當機自動回報」被關掉了→不記錄也不回報)';
-
+    // 這段擺最前面:玩家是為了「當掉/白畫面」來開這個視窗的,證據要第一眼就看到
+    put('目前狀態', function () {
+      var n = liveStats();
+      var mem = (n.mu != null && n.ml) ? n.mu + '/' + n.ml + ' MB(' + Math.round(n.mu / n.ml * 100) + '%)'
+        : '此瀏覽器不提供(iPhone 都是這樣→改看下面的圖片量)';
+      return '記憶體 ' + mem + '(只算JS·不含圖片)' +
+        '\n          圖片 ' + (n.img != null ? n.img + ' 張·解碼約 ' + n.imgmb + ' MB' : '?') +
+        ' / DOM ' + n.dom + ' 節點 / 特效 ' + n.vfx + ' / 怪卡 ' + n.mob + ' / 日誌 ' + n.log +
+        '\n          畫面 ' + n.view + ' / 地圖 ' + (n.map || '?') + ' / tick ' + (n.tk != null ? n.tk : '?') +
+        (n.run ? ' / 戰鬥中' : '') + ' / 背包 ' + (n.inv != null ? n.inv + ' 件' : '?');
+    });
     put('存檔健康', saveHealth);   // 擺在角色前面:它是「進度到底有沒有在存」,比其他欄位都急
     put('角色', charSummary);
     put('角色身分碼', identitySeeds);
