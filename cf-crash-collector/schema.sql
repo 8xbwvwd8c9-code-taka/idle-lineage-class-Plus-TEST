@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS crash (
   ml       INTEGER,  -- JS 記憶體上限 MB(手機通常 256~512·桌機 3500+)
   dom      INTEGER,
   img      INTEGER,  -- 頁面上的 img 元素數(圖片吃記憶體的旁證)
+  imgmb    INTEGER,  -- 圖片解碼佔用估算MB(naturalW×naturalH×4)。iOS 沒有 mu/ml,這是那邊唯一的記憶體量化指標
   vfx      INTEGER,
   mob      INTEGER,
   log      INTEGER,

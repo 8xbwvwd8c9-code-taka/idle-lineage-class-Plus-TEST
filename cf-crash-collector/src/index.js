@@ -29,8 +29,13 @@ const int = (v) => (Number.isFinite(v) ? Math.trunc(v) : null);
 const GUIDE = {
   這是什麼: '放置天堂(加掛版)的當掉回報。玩家「玩到一半畫面突然沒了」時，由 afk-blackbox 在下一次啟動補送當掉前最後一筆快照。',
   怎麼判讀: [
+    '🍎 iPhone 是本案的重災區(回報幾乎都是 iOS)，而 Safari 沒有 performance.memory → mu/ml 一律 null。' +
+      '看到 mu/ml 是 null 就走 iOS 判讀路徑：改看 imgmb(圖片解碼佔用估算) 與 dom。' +
+      'iOS 對單一分頁有硬性記憶體上限(iPhone 約 200~400MB 視機型)，而且「圖片解碼後的點陣圖」也算進去，超過直接砍掉分頁 → 畫面瞬間全白、PWA 隨即自動重載(how=auto-reload)。',
     'mu/ml 是 JS 記憶體的用量與上限(MB)。比值 >= 0.85 → JS 記憶體吃爆，方向是減少 JS 物件。',
-    '⚠ mu 不含圖片解碼佔用。若 mu 比值不高但 img(頁面 img 元素數)很大 → 兇手是圖片記憶體，方向是減少同時存在的怪物動畫/特效圖。',
+    '⚠ mu 不含圖片解碼佔用。若 mu 比值不高但 img/imgmb 很大 → 兇手是圖片記憶體，方向是減少同時存在的怪物動畫/特效圖。',
+    'imgmb = 所有 <img> 的 naturalWidth×naturalHeight×4bytes 估算值(MB)。⚠ 只涵蓋 <img>、不含 CSS 背景圖，所以是低估；' +
+      '參考值：桌機 zone_09 戰鬥中約 295 張圖 ≈ 14MB。若玩家當掉時明顯高於這個量級，圖片就是主嫌。',
     'ml 可反推裝置等級：手機通常 256~512、桌機 3500+。ml 小又常當 = 低階機專屬問題。',
     'view 不是 ok → 主容器被量到 0 或整個離屏，那是版面(CSS)問題，跟記憶體無關，別往記憶體查。',
     'how=auto-reload 代表 APP 自己重載回來(玩家看到的是「畫面白掉→跳回選角」)；how=gone 代表就這樣沒了。',
@@ -41,7 +46,7 @@ const GUIDE = {
   欄位: {
     ts: '伺服器收到時間(UTC)', at: '當掉那次的啟動時間(玩家本地)', mins: '那次撐了幾分鐘',
     ua_short: '機型摘要', pwa: '1=安裝成APP在跑', how: 'gone|auto-reload',
-    mu: 'JS記憶體用量MB(不含圖片)', ml: 'JS記憶體上限MB', dom: 'DOM節點數', img: '頁面img元素數',
+    mu: 'JS記憶體用量MB(不含圖片)', ml: 'JS記憶體上限MB', dom: 'DOM節點數', img: '頁面img元素數', imgmb: '圖片解碼佔用估算MB(iOS 沒有 mu/ml 時的替代指標)',
     vfx: '特效層子元素數', mob: '怪卡數', log: '日誌行數', tk: '遊戲tick', map: '地圖id',
     view: 'ok 或 版面異常描述', ff: '1=離線結算中', inv: '背包件數', ally: '傭兵數',
     save_kb: '存檔KB', dm: '裝置記憶體GB', cores: 'CPU核數', w: '視窗寬', h: '視窗高', dpr: '像素密度',
@@ -68,7 +73,7 @@ export default {
         env.DB.prepare(`SELECT ua_short 機型, COUNT(*) 次數, COUNT(DISTINCT did) 幾台,
                                ROUND(AVG(mu)) 平均mu, ROUND(AVG(ml)) 平均ml,
                                ROUND(AVG(CASE WHEN ml>0 THEN 1.0*mu/ml END),3) 記憶體用量比,
-                               ROUND(AVG(img)) 平均img, ROUND(AVG(dom)) 平均dom,
+                               ROUND(AVG(img)) 平均img, ROUND(AVG(imgmb)) 平均imgmb, ROUND(AVG(dom)) 平均dom,
                                ROUND(AVG(mins),1) 平均撐幾分, SUM(CASE WHEN view<>'ok' THEN 1 ELSE 0 END) 版面異常次數
                         FROM crash GROUP BY ua_short ORDER BY 次數 DESC LIMIT 50`).all(),
         env.DB.prepare(`SELECT * FROM crash ORDER BY id DESC LIMIT ?`).bind(lim).all(),
@@ -99,15 +104,15 @@ export default {
 
     await env.DB.prepare(
       `INSERT INTO crash (ts, did, ver, app, code_ver, build, proto, at, ua, ua_short, pwa, how, beats, mins,
-                          mu, ml, dom, img, vfx, mob, log, tk, map, view, ff, run,
+                          mu, ml, dom, img, imgmb, vfx, mob, log, tk, map, view, ff, run,
                           inv, ally, save_kb, dm, cores, w, h, dpr, errs)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       new Date().toISOString(), str(b.did, 32), str(b.ver, 24),
       str(b.app, 24), str(b.code, 32), str(b.build, 24), str(b.proto, 12),
       str(b.at, 40), ua, uaShort,
       int(b.pwa), str(b.how, 16), int(b.beats), int(b.mins),
-      int(b.mu), int(b.ml), int(b.dom), int(b.img), int(b.vfx), int(b.mob), int(b.log),
+      int(b.mu), int(b.ml), int(b.dom), int(b.img), int(b.imgmb), int(b.vfx), int(b.mob), int(b.log),
       int(b.tk), str(b.map, 40), str(b.view, 120), int(b.ff), int(b.run),
       int(b.inv), int(b.ally), int(b.saveKB), int(b.dm), int(b.cores),
       int(b.w), int(b.h), Number.isFinite(b.dpr) ? b.dpr : null,

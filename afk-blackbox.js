@@ -121,6 +121,15 @@
     //   多半是怪物動畫/特效那幾百張圖(js/09 有 24 處在建 img)。只看 mu 會得到「記憶體很正常」
     //   的錯誤結論,所以另外記圖片元素數量當旁證。document.images 是 live collection,取 length 不必遍歷。
     try { o.img = document.images.length; } catch (e) {}
+    // 🍎 iOS 沒有 performance.memory(mu/ml 一律 null)，而 iPhone 正是白畫面的重災區。
+    //   Safari 把「圖片解碼後的點陣圖」也算進分頁的記憶體預算，超過就直接砍掉分頁 → 瞬間全白。
+    //   張數看不出輕重(400×300 跟 40×30 差 100 倍)，所以另外估解碼後佔用：像素×4 bytes(RGBA)。
+    //   這是 iOS 上唯一拿得到的記憶體量化指標。⚠ 只涵蓋 <img>，CSS 背景圖抓不到，故為低估。
+    try {
+      var px = 0, ims = document.images, n = ims.length;
+      for (var i = 0; i < n; i++) px += (ims[i].naturalWidth || 0) * (ims[i].naturalHeight || 0);
+      o.imgmb = Math.round(px * 4 / 1048576);
+    } catch (e) {}
     try { o.vfx = cnt('vfx-layer'); o.mob = cnt('mob-list'); o.log = cnt('combat-log') + cnt('sys-log'); } catch (e) {}
     try { if (window.state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
     // 規模(不是身分):背包/傭兵件數直接決定 DOM 與記憶體,是「大存檔才崩」這個假設的驗證依據。
@@ -238,11 +247,15 @@
       w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1
     };
     // 送不出去(離線/端點掛了)就維持未標記,下次啟動再試——不重試、不排隊,失敗完全無感。
-    fetch(REPORT_URL, {
+    //   非同步且不 await：畫面不會因為這個等，斷網時 catch 吃掉就結束。
+    //   逾時保險：怕的不是斷網(那會馬上 reject)，是「連上了卻一直不回應」而留下永遠 pending 的請求。
+    var opt = {
       method: 'POST', mode: 'cors', keepalive: true,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body)
-    }).then(function (res) {
+    };
+    try { if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) opt.signal = AbortSignal.timeout(15000); } catch (e) {}
+    fetch(REPORT_URL, opt).then(function (res) {
       if (res && res.ok) { r.sent = 1; put(r); }
     }).catch(function () {});
   }
