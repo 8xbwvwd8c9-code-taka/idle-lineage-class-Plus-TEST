@@ -4,8 +4,12 @@
     <script src="afk-toggles.js"></script>
     <!-- afk-banner：非官方轉載橫幅讓位（基礎設施、無開關；不可掛在 afk-mobile 裡，玩家關掉手機版面就會整個頂端被蓋住） -->
     <script src="afk-banner.js"></script>
-    <!-- afk-blackbox：崩潰黑盒子（白畫面/被系統回收的事後取證）。排這麼前面是為了盡早掛上 error 監聽；資料寫 IndexedDB，不佔存檔的 localStorage -->
+    <!-- afk-blackbox：崩潰黑盒子（白畫面/被系統回收的事後取證）。排這麼前面是為了盡早掛上 error 監聽；資料寫 IndexedDB，不佔存檔的 localStorage
+         🚨 2026-07-27 暫停載入：上線後收到大量當機回報，其中有玩家處於「每 3 秒重載一次」的崩潰迴圈。
+            雖然量過成本(每 10 秒 0.32ms)、且崩潰時的 dom/img 是遊戲自身狀態，仍無法與「上線前」比較 →
+            先整支移除以排除變因。要恢復：把下面這行的註解拿掉，並把 smoke-hooks.mjs 的 '[AFK-blackbox]' 加回 need。
     <script src="afk-blackbox.js"></script>
+    -->
     <!-- 存檔解壓快取：必須排在所有會讀 localStorage 的外掛之前（核心每殺一隻怪都重解壓一次血盟狀態） -->
     <script src="afk-lzcache.js"></script>
     <!-- afk-synccompress：存檔即時壓縮（預設關）——開啟後把 _lzSet 換回同步壓縮，根治登出/多開後存檔未壓縮爆滿。緊接 lzcache、在任何會存檔的外掛之前 -->

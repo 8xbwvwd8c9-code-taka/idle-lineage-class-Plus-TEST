@@ -50,6 +50,9 @@ for (const f of checkFiles) {
 let html = '';
 try { html = rd('index.html'); } catch {}
 for (const f of readdirSync(ROOT).filter((n) => /^afk-.*\.js$/.test(n))) {
+  // 刻意停用某支外掛時,要在 index.html 寫明「暫停載入 <完整檔名>」。
+  //   單純把 <script> 註解掉是不夠的——那樣「漏補引用」跟「刻意停用」長得一樣,這道把關就廢了。
+  if (new RegExp('暫停載入[^\\n]*' + f.replace(/\./g, '\\.')).test(html)) continue;
   if (!html.includes(f)) fails.push(`index.html 沒引用 ${f}(漏補 <script>,功能不生效或會被同步覆蓋)`);
 }
 
