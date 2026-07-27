@@ -48,8 +48,9 @@ const GUIDE = {
     errs: '當掉前抓到的JS錯誤', did: '匿名裝置碼',
     app: '加掛版版本號(如 3.4.10)', code_ver: '實際部署內容的 sha(index.html＋全部外掛＋遊戲js/css)', build: '建置時間(如 0726-1951)',
     ver: 'afk-blackbox.js 自己的 ?v=(跟 code_ver 對不起來 = 那支被快取到舊版)',
+    proto: '玩家怎麼開的：https:/http: = 從網站玩；file: = 把整包下載下來直接開 index.html 玩',
   },
-  版本怎麼看: 'code_ver 才是「玩家實際跑的是哪一版」的依據(app 只是人看的 semver、同一版可能重建過)。當掉集中在某個 code_ver → 是那次改版引入的。',
+  版本怎麼看: 'code_ver 才是「玩家實際跑的是哪一版」的依據(app 只是人看的 semver、同一版可能重建過)。當掉集中在某個 code_ver → 是那次改版引入的。⚠ proto=file: 的那些讀不到 version.json(瀏覽器擋 file:// 的 fetch)，所以 app/code_ver/build 會是空的，只能用 ver(afk-blackbox.js 的內容 sha)去 git 反查是哪一版；而且他們跑的是下載當下凍結的版本，不會隨網站更新，判斷「這版修好了沒」時要把他們排除。',
   沒有收集: '角色名稱、角色身分碼、寵物歸屬、倉庫內容都不會送，查白畫面用不到。',
 };
 
@@ -97,13 +98,13 @@ export default {
     else if ((m = ua.match(/(Edg|OPR|SamsungBrowser|Firefox|Chrome)\/(\d+)/))) uaShort = m[1] + ' ' + m[2];
 
     await env.DB.prepare(
-      `INSERT INTO crash (ts, did, ver, app, code_ver, build, at, ua, ua_short, pwa, how, beats, mins,
+      `INSERT INTO crash (ts, did, ver, app, code_ver, build, proto, at, ua, ua_short, pwa, how, beats, mins,
                           mu, ml, dom, img, vfx, mob, log, tk, map, view, ff, run,
                           inv, ally, save_kb, dm, cores, w, h, dpr, errs)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       new Date().toISOString(), str(b.did, 32), str(b.ver, 24),
-      str(b.app, 24), str(b.code, 32), str(b.build, 24),
+      str(b.app, 24), str(b.code, 32), str(b.build, 24), str(b.proto, 12),
       str(b.at, 40), ua, uaShort,
       int(b.pwa), str(b.how, 16), int(b.beats), int(b.mins),
       int(b.mu), int(b.ml), int(b.dom), int(b.img), int(b.vfx), int(b.mob), int(b.log),

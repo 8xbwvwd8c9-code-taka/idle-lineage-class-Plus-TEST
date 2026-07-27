@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS crash (
   app      TEXT,     -- 加掛版 semver(version.json 的 app·如 3.4.10)
   code_ver TEXT,     -- version.json 的 code：index.html＋全部外掛＋遊戲 js/css 的 sha ＝實際部署內容
   build    TEXT,     -- version.json 的 build(如 0726-1951)
+  proto    TEXT,     -- https:/http:=從網站玩;file:=下載下來直接開 index.html(那邊讀不到 version.json→版本欄位會空)
   at       TEXT,     -- 當掉那次的啟動時間(玩家本地時間字串)
   ua       TEXT,
   ua_short TEXT,     -- 機型摘要(Android 機型名 / iPhone OS / 桌機瀏覽器)

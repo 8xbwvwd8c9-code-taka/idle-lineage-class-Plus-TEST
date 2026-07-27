@@ -343,17 +343,17 @@
           if (done) return; done = true;
           //   rs 為 null＝這台存不了紀錄。要跟「存得了但沒當過」講清楚,否則兩者都是空的、分不出來。
           try {
-            out.崩潰黑盒子 = rs ? bbSummary(rs)
+            out.當機紀錄 = rs ? bbSummary(rs)
               : '⚠️ 這台存不了紀錄(直接開檔案玩、無痕模式、或瀏覽器擋掉 IndexedDB 時會這樣)——不影響遊戲,但當掉時查不到現場';
-          } catch (e) { out.崩潰黑盒子 = '⚠️ 整理失敗: ' + String(e.message).slice(0, 60); }
+          } catch (e) { out.當機紀錄 = '⚠️ 整理失敗: ' + String(e.message).slice(0, 60); }
           res();
         });
         setTimeout(function () {   // 連 callback 都沒回也不可以卡住整份診斷
           if (done) return; done = true;
-          out.崩潰黑盒子 = '⚠️ 讀不到(黑盒子沒有回應)'; res();
+          out.當機紀錄 = '⚠️ 讀不到(黑盒子沒有回應)'; res();
         }, 4000);
       }));
-    } else out.崩潰黑盒子 = '未啟用(「崩潰黑盒子」外掛被關掉了)';
+    } else out.當機紀錄 = '未啟用(「當機自動回報」被關掉了→不記錄也不回報)';
 
     put('存檔健康', saveHealth);   // 擺在角色前面:它是「進度到底有沒有在存」,比其他欄位都急
     put('角色', charSummary);

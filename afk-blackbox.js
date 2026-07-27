@@ -1,5 +1,6 @@
 /* ============================================================================
- * afk-blackbox.js — 崩潰黑盒子（白畫面／分頁被系統殺掉的事後取證）
+ * afk-blackbox.js — 當機黑盒子（白畫面／分頁被系統殺掉的事後取證）
+ *   玩家看到的開關名稱是「當機自動回報」，只有一個：關掉＝不記錄也不回報。
  *
  * 為什麼需要這支：玩家回報「玩一分鐘畫面全白」時，頁面當下已經死了——快取診斷是
  * 「開得起來才看得到」的東西，白屏當下根本打不開；事後重開又只剩乾淨狀態，什麼都查不到。
@@ -25,13 +26,8 @@
 
   if (window.AFK_TOGGLES) {
     AFK_TOGGLES.register({
-      id: 'blackbox', name: '崩潰黑盒子', group: '系統與其他', def: true,
-      desc: '背景低頻記錄畫面與記憶體狀態；若遊戲當掉/畫面全白，下次可在「快取診斷」看到當掉前的最後狀態'
-    });
-    // 子選項:父項關掉＝沒有紀錄可送,回報自然失效 → 符合做父子的條件
-    AFK_TOGGLES.register({
-      id: 'crashreport', parent: 'blackbox', name: '當掉時自動回報', group: '系統與其他', def: true,
-      desc: '偵測到上次是「玩到一半突然當掉」時，把當掉前的記憶體/畫面數據回報給維護者。只送這些數字與裝置型號，不含角色名稱、身分碼或存檔內容'
+      id: 'blackbox', name: '當機自動回報', group: '系統與其他', def: true,
+      desc: '每 10 秒記一次記憶體與畫面狀態；遊戲當掉/畫面全白時，下次開啟會把當掉前的最後狀態回報給維護者，也可在「快取診斷」自己看。只送這些數字與裝置型號，不含角色名稱、身分碼或存檔內容。關掉＝不記錄也不回報'
     });
     if (!AFK_TOGGLES.enabled('blackbox')) return;
   }
@@ -200,15 +196,12 @@
       return m ? m[1] : '';
     } catch (e) { return ''; }
   })();
-  function reportOn() {
-    if (!REPORT_URL) return false;
-    // 直接開 index.html 檔案玩的不回報：那份是玩家當初下載、之後不會更新的凍結版本，
-    //   混進來會讓「哪一版在當」對不上而誤導判讀（CORS 對 file:// 的 null origin 也未必放行）。
-    //   本機紀錄照留 → 想幫忙的玩家仍可自己開診斷、下載檔案給我們。
-    if (location.protocol === 'file:') return false;
-    if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('crashreport')) return false;
-    return true;
-  }
+  // 直接開 index.html 檔案玩(file://)的也照送——實測 CORS 對 null origin 放行。
+  //   那邊 fetch('version.json') 會被瀏覽器擋 → app/code/build 是空的，改靠 proto 標記
+  //   ＋ver(本檔內容 sha·從 DOM 的 src 讀得到)辨識版本。
+  // 開關只有一個(blackbox)：關掉的話這整支在檔頭就 return 了，根本走不到這裡。
+  function reportOn() { return !!REPORT_URL; }
+
   function saveKB() {   // 存檔佔用(KB)。只在要送的時候算一次,不進心跳。
     try {
       var n = 0;
@@ -240,6 +233,7 @@
       errs: (r.errs || []).slice(0, 3),
       ver: CODE_VER,                 // 這支外掛自己的 ?v=(認得出黑盒子被快取到舊版的情況)
       app: v.app || '', code: v.code || '', build: v.build || '',   // 整包版本(version.json)
+      proto: location.protocol,      // file: = 直接開檔案玩(那邊讀不到 version.json，版本只能看 ver)
       dm: (navigator.deviceMemory || 0), cores: (navigator.hardwareConcurrency || 0),
       w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1
     };
@@ -298,5 +292,5 @@
     beatMs: HEARTBEAT_MS
   };
 
-  console.log('[AFK-blackbox] hooks OK — 崩潰黑盒子已啟用(IndexedDB，不佔存檔空間)。');
+  console.log('[AFK-blackbox] hooks OK — 當機自動回報已啟用(紀錄寫 IndexedDB，不佔存檔空間)。');
 })();
