@@ -30,6 +30,7 @@
   var CAP_HOURS        = 24;                      // 離線收益上限(小時)
   var CAP_MS           = CAP_HOURS * 3600 * 1000;
   var HEARTBEAT_MS     = 5 * 1000;              // 活著時多久蓋一次時間戳
+  var BIG_BAG_HINT     = 800;                   // 🎒 背包超過幾件才在結算畫面提醒(低於此的差異玩家感覺不到,顯示只是雜訊)
   var CKPT_MS          = 5 * 1000;              // 💾 結算檢查點間隔(真實毫秒):每滿就把已結算收益 saveGame＋錨點推進到已結算時點;結算被中斷最多丟這麼久的量
   // ⚠ iOS 上「結算到一半變白畫面」= Safari 把整個分頁回收掉。檢查點是最可疑的記憶體來源:
   //   每次都把整份存檔明文寫進 localStorage,並再 postMessage 一份給壓縮 Worker(結構化複製=再一份),
@@ -217,6 +218,18 @@
     overlayEl.appendChild(title);
     overlayEl.appendChild(barWrap);
     overlayEl.appendChild(overlayTxt);
+
+    // 🎒 背包很大時才提醒:結算時間與背包件數成正比(掉落疊放、自動賣出規則都要逐件跑)。
+    //   刻意「有大背包才顯示」——一般玩家看到只會變成沒意義的常駐雜訊。
+    try {
+      var _invN = (player && Array.isArray(player.inv)) ? player.inv.length : 0;
+      if (_invN >= BIG_BAG_HINT) {
+        var hint = document.createElement('div');
+        hint.setAttribute('style', 'font-size:12.5px;color:#fbbf24;max-width:min(80vw,460px);text-align:center;line-height:1.6;margin-top:2px;');
+        hint.textContent = '背包 ' + _invN.toLocaleString() + ' 件，件數越多結算越久；賣掉或存進倉庫可以加快。';
+        overlayEl.appendChild(hint);
+      }
+    } catch (e) {}
 
     // 「長按放棄剩餘收益」按鈕 + 上方「放棄中」讀條。
     //   ⚠ 讀條用 transform:scaleX(走合成器/GPU 執行緒),不用 width transition——補跑會卡住主執行緒,
@@ -1140,6 +1153,8 @@
     }
     if (state.ff !== prevFf0) { state.ff = prevFf0; state.inTick = prevInTick0; }   // 還原 ff(攀登存活分支上面已還原 → 此處不動作)
     wallHoldsRestore();   // ⏳ 還原追蹤／追殺的原到期時間(見補跑開頭;一定要在下方 saveGame 之前)
+    // 🗑️ 補跑期間自動賣出被節流(見 installOfflineHooks),收尾強制跑一次,免得最後一段的廢品沒賣到
+    try { if (typeof window.__afkAutoSellFlush === 'function') window.__afkAutoSellFlush(); } catch (e) {}
 
     // 重啟 live loop(startGameTimers 內含去重,且重設 _loopLast=null → 不會把結算花掉的真實秒數再補一次)
     try { startGameTimers(); } catch (e) {}
@@ -1352,6 +1367,90 @@
     if (typeof changeMap === 'function') {
       var _cm = changeMap;
       window.changeMap = function () { var r = _cm.apply(this, arguments); try { stamp(); } catch (e) {} return r; };
+    }
+    // ⚡ 補跑熱點:純函式記憶化 + 補跑期間跳過白做的整理。
+  //   全部只吃「同一個輸入 → 同一個答案」這條性質,所以地圖在補跑中換來換去(攀登逐層、遺忘之島途中→本島、
+  //   軍王之室被傳回村)也不影響——快取的 key 就是輸入本身,不是「假設地圖不變」。
+  function installFfPerfHooks() {
+    // 1) _saveUnwrap(raw):驗簽章要對整包 payload 算雜湊,而核心每殺一隻怪都重讀整包血盟狀態 → 同一份字串重複驗。
+    //    純函式(同字串必同結果),用「最近 8 份字串」的小快取即可;回傳物件每次複製一份,避免呼叫端改到共用物件。
+    if (typeof _saveUnwrap === 'function') {
+      var _uw = _saveUnwrap, _uwKeys = [], _uwVals = Object.create(null), UW_MAX = 8;
+      window._saveUnwrap = function (raw) {
+        if (typeof raw !== 'string' || raw.length < 64) return _uw.apply(this, arguments);
+        var hit = _uwVals[raw];
+        if (!hit) {
+          hit = _uw.call(this, raw);
+          _uwVals[raw] = hit; _uwKeys.push(raw);
+          while (_uwKeys.length > UW_MAX) delete _uwVals[_uwKeys.shift()];
+        }
+        return { payload: hit.payload, signed: hit.signed, ok: hit.ok };
+      };
+    }
+    // 2) _seedHash(str):純雜湊,被簽章/身分指紋反覆呼叫同一批字串
+    if (typeof _seedHash === 'function') {
+      var _sh = _seedHash, _shKeys = [], _shVals = Object.create(null), SH_MAX = 64;
+      window._seedHash = function (str) {
+        if (typeof str !== 'string' || str.length < 32) return _sh.apply(this, arguments);
+        if (!(str in _shVals)) {
+          _shVals[str] = _sh.call(this, str); _shKeys.push(str);
+          while (_shKeys.length > SH_MAX) delete _shVals[_shKeys.shift()];
+        }
+        return _shVals[str];
+      };
+    }
+    // 3) isSiegeArea(地圖 id):純查表(SIEGE_OUTER_INNER 是常數清單),換圖只是查新 key
+    if (typeof isSiegeArea === 'function') {
+      var _isa = isSiegeArea, _isaVals = Object.create(null);
+      window.isSiegeArea = function (v) {
+        var k = String(v);
+        if (!(k in _isaVals)) _isaVals[k] = _isa.call(this, v);
+        return _isaVals[k];
+      };
+    }
+    // 4) pvpEnsureState():每次呼叫都把性向鎖、復仇名單、社交私訊名單(最多 20 人 × 12 則)整理一遍。
+    //    補跑期間用便宜簽章判斷「有沒有變」,沒變就跳過;非補跑一律照跑(線上行為不動)。
+    if (typeof pvpEnsureState === 'function') {
+      var _pes = pvpEnsureState, _pesSig = null;
+      window.pvpEnsureState = function () {
+        if (!(typeof state !== 'undefined' && state && state.ff && !state.ffSmall)) { _pesSig = null; return _pes.apply(this, arguments); }
+        var sig;
+        try {
+          var sc = player.socialNpcContacts, rv = player.pvpRevengeList, tp = player.trollPlayers;
+          sig = (player.alignmentValue || 0) + '|' + (sc ? sc.length : -1) + '|' + (sc && sc[0] ? (sc[0].lastChatAt || 0) : 0)
+              + '|' + (rv ? rv.length : -1) + '|' + (tp ? tp.length : -1) + '|' + (player.pvpOn ? 1 : 0);
+        } catch (e) { sig = null; }
+        if (sig != null && sig === _pesSig) return;   // 這幾樣都沒動 → 整理過的結果仍然有效
+        var r = _pes.apply(this, arguments);
+        _pesSig = sig;
+        return r;
+      };
+    }
+    console.log('[AFK] ⚡ 補跑熱點快取已掛上(_saveUnwrap/_seedHash/isSiegeArea/pvpEnsureState)');
+  }
+  installFfPerfHooks();
+
+  // 🗑️ 自動賣出在補跑期間節流:核心每 10 遊戲秒就把「整個背包」逐件跑一次規則判定(applyAutoSellRules)。
+    //   12 小時補跑＝4,320 次全背包掃描,大背包(2000 件)在低階手機上這一項就佔掉結算時間的一半以上(6x 限速實測)。
+    //   補跑期間改成每 AUTOSELL_CKPT_TICKS(5 遊戲分鐘)一次:賣出總量與金幣不變(規則的等待秒數本來就只有 60 秒,
+    //   5 分鐘一輪照樣過門檻),只是賣出時點在「壓縮時間」裡稍晚——玩家看不到中間狀態。線上行為完全不動。
+    if (typeof autoSellJunk === 'function') {
+      var AUTOSELL_CKPT_TICKS = 3000;
+      var _asj = autoSellJunk, _asjLastTick = -1e9;
+      window.autoSellJunk = function (manual) {
+        if (catchingUp && !manual) {
+          var t = (typeof state !== 'undefined' && state) ? (state.ticks || 0) : 0;
+          if (t - _asjLastTick < AUTOSELL_CKPT_TICKS) return;   // 還沒到節流間隔 → 這次跳過(下一輪再賣,總量不變)
+          _asjLastTick = t;
+        }
+        return _asj.apply(this, arguments);
+      };
+      // 收尾用:重設節流後跑一次「正常」自動賣(仍會先套規則、仍吃規則的延遲秒數;不是玩家的一鍵賣)
+      window.__afkAutoSellFlush = function () {
+        _asjLastTick = -1e9;
+        if (!player || player.autoSellOn === false) return;
+        try { _asj.call(window); } catch (e) {}
+      };
     }
     if (typeof loadGame === 'function') {
       var _load = loadGame;

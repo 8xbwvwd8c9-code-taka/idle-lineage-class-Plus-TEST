@@ -237,7 +237,26 @@ function patchSellNowNoForce() {
 }
 
 
-const PATCHES = [patchMaybeSpawnMobs, patchTradEnHook, patch16Slots, patchPetAnimTicker, patchBossHuntEscape, patchUseItemKeepModal, patchSellNowNoForce];
+// ── 補丁 8：js/05 每殺一隻怪都掃整個背包找「死亡騎士之印記」→ 先判地區再掃 ──────
+//   原式:!_kbNoReward && player.inv.some(...印記...) && mapRegionOf(...) === 'rastabad'
+//   `.some()` 是 O(背包長度) 且**每次擊殺都跑**,而後面那個地區判斷極便宜、又幾乎總是 false(只有拉斯塔巴德成立)。
+//   純粹把 && 的順序對調(兩者都無副作用,短路結果完全相同):大背包玩家離線補跑省下可觀時間(6x 限速實測)。
+function patchInsigniaOrder() {
+  const FILE = 'js/05-kill-progression.js';
+  let s = readFileSync(FILE, 'utf8');
+  const FROM = "if (!_kbNoReward && player.inv.some(i => i.id === 'item_dk_insignia') && typeof mapRegionOf === 'function' && mapRegionOf(mapState.current) === 'rastabad')";
+  const TO   = "if (!_kbNoReward && typeof mapRegionOf === 'function' && mapRegionOf(mapState.current) === 'rastabad' && player.inv.some(i => i.id === 'item_dk_insignia'))";
+  if (s.indexOf(FROM) >= 0) {
+    s = s.replace(FROM, TO);
+    if (!CHECK) writeFileSync(FILE, s);
+    changed++;
+    console.log(`[patch] 聖地遺物判斷改先判地區（${FILE}）`);
+  } else if (s.indexOf(TO) < 0) {
+    throw new Error(`[${FILE}] 找不到聖地遺物(item_dk_insignia)判斷錨點——上游可能改寫了那段掉落。`);
+  } else { already++; }
+}
+
+const PATCHES = [patchMaybeSpawnMobs, patchTradEnHook, patch16Slots, patchPetAnimTicker, patchBossHuntEscape, patchUseItemKeepModal, patchSellNowNoForce, patchInsigniaOrder];
 
 try {
   for (const p of PATCHES) p();

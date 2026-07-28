@@ -267,6 +267,44 @@
       '\n          ' + orphan.join('\n          ');
   }
 
+  // ── 當下的記憶體／畫面量測(自己算,不依賴 afk-blackbox) ──────────────
+  //   黑盒子 2026-07-27 暫停載入後，這段若還掛在它身上，玩家手動交出來的診斷就剛好少了
+  //   最關鍵的欄位。這裡是純唯讀的一次性計算：不寫 IndexedDB、沒有心跳、不上傳，
+  //   只在玩家按下「快取診斷」那一刻跑一次。
+  function liveStats() {
+    var o = {};
+    try {
+      var m = performance.memory;
+      if (m) { o.mu = Math.round(m.usedJSHeapSize / 1048576); o.ml = Math.round(m.jsHeapSizeLimit / 1048576); }
+    } catch (e) {}
+    try { o.dom = document.getElementsByTagName('*').length; } catch (e) {}
+    try {
+      var px = 0, ims = document.images, n = ims.length;
+      for (var i = 0; i < n; i++) px += (ims[i].naturalWidth || 0) * (ims[i].naturalHeight || 0);
+      o.img = n; o.imgmb = Math.round(px * 4 / 1048576);   // iOS 沒有 performance.memory,這是那邊唯一的記憶體量化指標
+    } catch (e) {}
+    try {
+      var el = function (id) { var e2 = document.getElementById(id); return e2 ? e2.childElementCount : -1; };
+      o.vfx = el('vfx-layer'); o.mob = el('mob-list'); o.log = el('combat-log') + el('sys-log');
+    } catch (e) {}
+    try { if (typeof state !== 'undefined' && state) { o.tk = state.ticks; o.run = state.running ? 1 : 0; } } catch (e) {}
+    try { if (typeof mapState !== 'undefined' && mapState) o.map = String(mapState.current || ''); } catch (e) {}
+    try { if (typeof player !== 'undefined' && player) { o.inv = (player.inv || []).length; o.ally = (player.allies || []).length; } } catch (e) {}
+    // 白畫面的直接證據:主容器被壓成 0 或整個推出視窗
+    try {
+      var bad = [];
+      ['app-stage', 'game-screen'].forEach(function (id) {
+        var e3 = document.getElementById(id);
+        if (!e3 || e3.classList.contains('hidden')) return;
+        if (e3.clientWidth < 50 || e3.clientHeight < 50) { bad.push(id + '=' + e3.clientWidth + 'x' + e3.clientHeight); return; }
+        var r = e3.getBoundingClientRect();
+        if (r.bottom < 20 || r.right < 20 || r.top > innerHeight - 20 || r.left > innerWidth - 20) bad.push(id + '離屏');
+      });
+      o.view = bad.length ? bad.join(' ') : 'ok';
+    } catch (e) { o.view = '?'; }
+    return o;
+  }
+
   function collect() {
     var out = {};
     var _jobs = [];
@@ -292,6 +330,17 @@
     if (navigator.connection) put('網路', function () {
       return (navigator.connection.effectiveType || '?') +
         (navigator.connection.saveData ? ' / ⚠️ 省流量模式(圖可能抓不下來)' : '');
+    });
+    // 這段擺最前面:玩家是為了「當掉/白畫面」來開這個視窗的,證據要第一眼就看到
+    put('目前狀態', function () {
+      var n = liveStats();
+      var mem = (n.mu != null && n.ml) ? n.mu + '/' + n.ml + ' MB(' + Math.round(n.mu / n.ml * 100) + '%)'
+        : '此瀏覽器不提供(iPhone 都是這樣→改看下面的圖片量)';
+      return '記憶體 ' + mem + '(只算JS·不含圖片)' +
+        '\n          圖片 ' + (n.img != null ? n.img + ' 張·解碼約 ' + n.imgmb + ' MB' : '?') +
+        ' / DOM ' + n.dom + ' 節點 / 特效 ' + n.vfx + ' / 怪卡 ' + n.mob + ' / 日誌 ' + n.log +
+        '\n          畫面 ' + n.view + ' / 地圖 ' + (n.map || '?') + ' / tick ' + (n.tk != null ? n.tk : '?') +
+        (n.run ? ' / 戰鬥中' : '') + ' / 背包 ' + (n.inv != null ? n.inv + ' 件' : '?');
     });
     put('存檔健康', saveHealth);   // 擺在角色前面:它是「進度到底有沒有在存」,比其他欄位都急
     put('角色', charSummary);
@@ -408,6 +457,24 @@
           btn.textContent = '請長按選取複製';
         }
       };
+      var sbtn = document.getElementById('m-diag-save');
+      sbtn.onclick = function () {
+        try {
+          var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+          var name = 'afk-diag-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+            '-' + p(d.getHours()) + p(d.getMinutes()) + '.txt';   // 純 ASCII 檔名:中文檔名經通訊軟體轉傳常變亂碼
+          var blob = new Blob(['﻿' + txt], { type: 'text/plain;charset=utf-8' });   // BOM:Windows 記事本開才不會整份中文變亂碼
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = name; a.style.display = 'none';
+          document.body.appendChild(a); a.click();
+          setTimeout(function () { try { URL.revokeObjectURL(url); a.remove(); } catch (e) {} }, 2000);
+          sbtn.textContent = '✅ 已下載';
+          setTimeout(function () { sbtn.textContent = '💾 下載檔案'; }, 1500);
+        } catch (e) {
+          sbtn.textContent = '下載失敗,請用複製';
+        }
+      };
     }).catch(function (e) { body.textContent = '診斷失敗:' + e.message; });
   }
 
@@ -428,6 +495,7 @@
         '<pre id="m-diag-body"></pre>' +
         '<div id="m-diag-foot">' +
           '<button id="m-diag-copy">📋 複製全部</button>' +
+          '<button id="m-diag-save">💾 下載檔案</button>' +
           '<span id="m-diag-note">回報問題時,把這份貼給維護者</span>' +
         '</div>' +
       '</div>';
@@ -450,8 +518,10 @@
       '#m-diag-close{color:#9ca3af;background:none;border:0;font-size:18px;cursor:pointer;padding:2px 6px}' +
       '#m-diag-body{margin:0;padding:12px 14px;overflow:auto;color:#e5e7eb;font-size:12px;line-height:1.65;white-space:pre-wrap;word-break:break-all;flex:1}' +
       '#m-diag-foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #374151}' +
-      '#m-diag-copy{background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}' +
-      '#m-diag-note{color:#6b7280;font-size:11px}';
+      '#m-diag-copy,#m-diag-save{background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;flex:none}' +
+      '#m-diag-save{background:#047857}' +
+      '#m-diag-note{color:#6b7280;font-size:11px}' +
+      '@media(max-width:420px){#m-diag-foot{flex-wrap:wrap}#m-diag-note{width:100%;order:3}}';
     document.head.appendChild(s);
   }
 

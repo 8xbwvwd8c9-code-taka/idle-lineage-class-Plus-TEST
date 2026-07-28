@@ -150,6 +150,39 @@ const tabletProblems = await tpage.evaluate(() => {
   return bad;
 });
 
+// 🩸 同一道縫的第二個症狀:手機殼在(單欄+底部導覽)但「我方戰鬥狀態列」用上游那條窄 media query 判手機
+//   → 平板拿不到頂端血量列,而上游 #mobile-vitals 在它眼中是桌機也不顯示 → 兩條都沒有(2026-07-26 玩家回報)。
+//   判準:凡「手機殼套用了就該有」的手機專屬元素,平板尺寸下必須有「一條生效路徑」。
+//   ⚠ 不可用「放寬 @media」來補:那條 CSS 是上游手機單欄版面的一員,平板會變成桌機三欄裡的第四欄
+//     把戰鬥區/喝水鈕擠掉(2026-07-26 踩過)。正解=外掛自己算出平板缺口、掛自己的 body class 走第二套版面。
+//   ⚠ smoke 停在主選單(沒載入角色),戰鬥畫面沒開 → 不能驗「元素看不看得到」,改驗生效路徑:
+//     ①某條 @media 條件成立(手機),或 ②有一條 `body.afk-*` 規則,而那個 class 現在真的掛在 body 上(平板)。
+const tabletHudProblems = await tpage.evaluate(() => {
+  const bad = [];
+  if (!document.body.classList.contains('m-mobile')) return bad;   // 沒套手機殼就不適用
+  const check = [['afk-battlehud-style', '手機戰鬥狀態列'], ['afk-battlebuffs-style', '手機戰鬥狀態欄']];
+  for (const [styleId, label] of check) {
+    const st = document.getElementById(styleId);
+    if (!st) continue;   // 該外掛被關掉 → 不適用
+    let hit = false, seen = [];
+    try {
+      for (const rule of st.sheet.cssRules) {
+        if (rule.type === CSSRule.MEDIA_RULE) {
+          seen.push('@media ' + rule.conditionText);
+          if (matchMedia(rule.conditionText).matches) { hit = true; break; }
+        } else if (rule.type === CSSRule.STYLE_RULE) {
+          const m = /body\.(afk-[\w-]+)/.exec(rule.selectorText || '');
+          if (!m) continue;
+          seen.push('body.' + m[1]);
+          if (document.body.classList.contains(m[1])) { hit = true; break; }
+        }
+      }
+    } catch (e) { continue; }
+    if (seen.length && !hit) bad.push(label + '在平板沒有任何生效路徑(試過 ' + seen.join(' / ') + ') → 手機殼套上了卻拿不到這個元素');
+  }
+  return bad;
+});
+
 // 🗺️ 地圖名翻譯覆蓋檢查:掉落查詢的「出沒地圖」來源＝DB.maps 的 key,經 AFK_EXTRA.mapName 解析。
 //   mapName 查不到任一中文來源時會原樣回傳英文 id(name === id),這就是「漏翻」的精準訊號。
 //   作者新增「不在 MAP_CATEGORIES/MAP_REGIONS/DB.towns…」的地圖結構時會被這裡擋下 → 提醒補進 mapName。
@@ -184,6 +217,14 @@ if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
+  process.exit(1);
+}
+
+if (tabletHudProblems.length) {
+  console.error('冒煙測試失敗:平板(觸控·寬 820)拿不到手機專屬的戰鬥狀態列/狀態欄:');
+  for (const p of tabletHudProblems) console.error('  ' + p);
+  console.error('  判準:不要放寬上游那條 @media(會變成桌機三欄裡的第四欄,擠掉戰鬥區與喝水鈕),');
+  console.error('       改由外掛自己判平板缺口、掛自己的 body class 走第二套版面(見 afk-battlehud.js 的 placeStrip)。');
   process.exit(1);
 }
 
