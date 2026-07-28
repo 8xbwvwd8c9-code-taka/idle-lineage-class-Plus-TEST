@@ -324,6 +324,10 @@
         o.querySelector('#m-logout-overlay-txt').textContent = msg || '已自動存檔，正在回首頁…';
         document.body.appendChild(o);
     }
+    // 回首頁那條走 reload、遮罩隨頁面一起消失；換角沒有重整，做完要自己收掉。
+    function hideLogoutOverlay() {
+        var o = document.getElementById('m-logout-overlay'); if (o) o.remove();
+    }
 
     // --- 登出窗裡的「切換角色」清單 ---------------------------------------
     //   一格一個存檔位（格數走 SAVE_SLOT_MAX，不要自己寫死）；有角色＝名稱（未命名顯示職業）＋切換鈕，
@@ -353,37 +357,29 @@
         });
     }
 
-    // 換角＝「存檔→蓋離線錨點→重整→在首頁自動載入那一格」。
-    // ⚠ 刻意不原地 `currentSlot=n; loadGame()`：那條路上的計時器與監聽會一層層疊上去（量離線效能時踩過，
-    //   原地重複 loadGame 讓記憶體 17→97MB、tick 慢 9 倍）。重整後從首頁載入走的就是玩家平常點選角的同一條路。
-    var SWITCH_KEY = 'afk_switch_slot';
+    // 換角＝就地「存檔→蓋離線錨點→換 currentSlot→loadGame()」，跟首頁選角按「進入遊戲」
+    // （核心 loadEnterSelected）走的是同一條路，中間不重整。
+    //   核心對重入是安全的：startGameTimers() 先清掉舊計時器再註冊、loadGame 開頭會把上一角色的寵物進度
+    //   flush 進共用桶。實測連換 30 次：JS heap 24.8→24.8MB、活著的 interval 恆為 27、tick 速率不變；
+    //   每次新增的 listener 都掛在會被重建的 DOM（城鎮 NPC 圖／npclist 列）上，隨節點一起回收。
+    //   ⚠ 舊版走「sessionStorage 記一格 → location.reload → 重整後計時器接手載入」，重整途中任何一環
+    //   （鍵被別人消掉、那格當下讀不到摘要）都只會安靜地停在首頁，玩家看到的就是「按了只是回首頁」。
     function switchToSlot(n) {
-        if (!(n > 0)) return;
-        try { if (typeof window.saveGame === 'function') window.saveGame(); } catch (e) {}
-        try { if (window.__afk && window.__afk.stamp) window.__afk.stamp(); } catch (e) {}   // 存完蓋錨點：這隻角色的離線從現在起算
-        try { sessionStorage.setItem(SWITCH_KEY, String(n)); } catch (e) {}
-        showLogoutOverlay('已自動存檔，正在切換角色…');
-        requestAnimationFrame(function () { requestAnimationFrame(function () { try { location.reload(); } catch (e) {} }); });
-    }
-    // 重整後接手：首頁就緒就載入指定存檔位（那格已沒角色就停在首頁，不硬闖）
-    (function consumePendingSwitch() {
-        var n = 0;
-        try { n = parseInt(sessionStorage.getItem(SWITCH_KEY) || '', 10) || 0; sessionStorage.removeItem(SWITCH_KEY); } catch (e) { return; }
-        if (!n) return;
-        var tries = 0;
-        function go() {
-            if (typeof window.loadGame === 'function' && typeof window.slotSummary === 'function') {
-                var ok = false;
-                try { ok = !!window.slotSummary(n); } catch (e) { ok = false; }
-                if (!ok) return;
+        if (!(n > 0) || typeof window.loadGame !== 'function') return;
+        var ok = false;
+        try { ok = (typeof slotSummary === 'function') && !!slotSummary(n); } catch (e) { ok = false; }
+        if (!ok) { renderLogoutRoster(); return; }   // 那格已沒角色（別的分頁刪掉了）→ 重畫清單，不硬闖
+        var m = document.getElementById('m-logout-modal'); if (m) m.classList.remove('open');
+        showLogoutOverlay('已自動存檔，正在切換角色…');   // loadGame 是同步的、會卡住一下 → 先讓遮罩畫出來
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                try { if (typeof window.saveGame === 'function') window.saveGame(); } catch (e) {}
+                try { if (window.__afk && window.__afk.stamp) window.__afk.stamp(); } catch (e) {}   // 蓋錨點要在換 currentSlot 之前：離線從現在起算的是「要離開的這隻」
                 try { currentSlot = n; window.loadGame(); } catch (e) { try { console.warn('[AFK-mobile] 換角載入失敗', e); } catch (e2) {} }
-                return;
-            }
-            if (++tries < 60) setTimeout(go, 100);
-        }
-        function start() { setTimeout(go, 250); }   // 讓核心的 window.onload 初始化先跑完，再走玩家平常那條載入路徑
-        if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
-    })();
+                hideLogoutOverlay();
+            });
+        });
+    }
 
     function setView(id) {
         if (document.body.classList.contains('mlog-open')) closeLog();   // 切欄一併收日誌
