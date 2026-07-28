@@ -611,17 +611,21 @@
   }
   function closeHud() { var hud = document.getElementById('m-train-hud'); if (hud) hud.style.display = 'none'; }
 
-  // 手機(afk-mobile)非戰鬥視圖（背包/設定）時隱藏 HUD，避免擋住換裝；桌機多欄同畫面故不隱藏
+  // 手機(afk-mobile)在這兩種情況隱藏 HUD；桌機多欄同畫面故不隱藏：
+  //   ① 非戰鬥視圖（背包/設定）→ 別擋住換裝
+  //   ② 浮動日誌開著 → 日誌面板 z-index 9500 蓋過 HUD(9000)，留著也只是埋在底下的一塊，
+  //      而且它就貼在日誌上緣、看起來像破圖
   // ⚠ afk-mobile 的檢視 class 是 mview-left/center/right，「戰鬥」＝mview-center（沒有 mview-battle
   //   這個名字——寫錯的話這裡恆為 true、HUD 在手機上永遠不會出現，畫面上完全看不出是誰把它藏起來）
-  function isMobileNonBattle() {
+  function isMobileHidden() {
     var b = document.body;
-    return b.classList.contains('m-mobile') && !b.classList.contains('mview-center');
+    if (!b.classList.contains('m-mobile')) return false;
+    return !b.classList.contains('mview-center') || b.classList.contains('mlog-open');
   }
   function updateHudVisibility() {
     var hud = document.getElementById('m-train-hud');
     if (!hud) return;
-    hud.style.display = (inTrain() && !isMobileNonBattle()) ? '' : 'none';
+    hud.style.display = (inTrain() && !isMobileHidden()) ? '' : 'none';
   }
 
   // HUD 可拖曳（抓標題列；收合鈕不觸發）＋位置記憶
@@ -947,8 +951,16 @@
       '.m-train-btn:hover{background:#475569;}',
       '.m-train-btn-amber{background:#b45309;border-color:#d97706;}.m-train-btn-amber:hover{background:#d97706;}',
       '.m-train-btn-red{background:#991b1b;border-color:#dc2626;}.m-train-btn-red:hover{background:#dc2626;}',
-      '#m-train-modal{position:fixed;inset:0;top:var(--orig-bar-h,0px);z-index:9100;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:14px;}',
-      '.m-train-modal-box{width:100%;max-width:460px;max-height:calc((100vh - var(--orig-bar-h,0px)) * .88);overflow-y:auto;background:#0f172a;border:1px solid #475569;border-radius:12px;color:#e2e8f0;}',
+      // z-index 要壓過 afk-mobile 的浮動日誌(9500)與底部導覽(9600)：低於它們的話，手機把日誌開著時
+      //   這個視窗整個被日誌蓋住、每顆鈕都點不到（只看座標驗不出來，要用 elementFromPoint 才會現形）。
+      // 讓位同 afk-mobile 的 B 型彈窗：容器頂端讓開橫幅、底部讓開導覽，內卡再壓 max-height:100%——
+      //   只給容器 padding 不夠，內卡比剩餘空間高時 flex 置中會上下均分溢出，下緣照樣鑽到導覽底下。
+      '#m-train-modal{position:fixed;inset:0;top:var(--orig-bar-h,0px);z-index:9800;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:14px 14px calc(14px + var(--m-nav-h,0px));}',
+      // 卡片本身不捲、只讓「選怪的五列」捲：整張一起捲的話，矮螢幕上「進入木人場」會被捲到看不見的
+      //   地方，玩家不會知道要往下拉（元素在、但點下去打到的是遮罩，只量座標驗不出來）。
+      '.m-train-modal-box{display:flex;flex-direction:column;width:100%;max-width:460px;max-height:100%;overflow:hidden;background:#0f172a;border:1px solid #475569;border-radius:12px;color:#e2e8f0;}',
+      '.m-train-modal-box>*{flex:none;}',
+      '.m-train-modal-box>#m-train-rows{flex:1 1 auto;min-height:0;overflow-y:auto;}',
       '.m-train-modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;font-size:16px;font-weight:bold;color:#fbbf24;border-bottom:1px solid #334155;}',
       '.m-train-modal-head button{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;}',
       '.m-train-modal-note{padding:10px 14px;font-size:12px;color:#94a3b8;line-height:1.5;}',
@@ -959,7 +971,9 @@
       '.m-train-pselect{flex:1.4;min-width:0;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#e2e8f0;padding:6px 4px;font-size:13px;outline:none;}',
       '.m-train-pclear{flex:none;width:30px;height:30px;border-radius:6px;background:#3f1d1d;border:1px solid #7f1d1d;color:#fca5a5;font-size:13px;line-height:1;cursor:pointer;padding:0;touch-action:manipulation;}.m-train-pclear:hover{background:#7f1d1d;color:#fee2e2;}',
       '.m-train-modal-btns{display:flex;gap:8px;padding:12px 14px;}',
-      '@media (max-width:640px){#m-train-hud{top:auto;bottom:74px;right:6px;left:6px;width:auto;}.m-train-list{max-height:120px;}}'
+      // 底部讓開自製導覽列：一律讀 afk-mobile 實測的 --m-nav-h，不要寫死px——實機 iPhone 的導覽含
+      //   home 條安全區會比視窗模擬高一截，寫死的值在模擬器剛好過、到手機上就把最下面那排鈕壓掉。
+      '@media (max-width:640px){#m-train-hud{top:auto;bottom:calc(10px + var(--m-nav-h,0px));right:6px;left:6px;width:auto;}.m-train-list{max-height:120px;}}'
     ].join('\n');
     document.head.appendChild(st);
   }
