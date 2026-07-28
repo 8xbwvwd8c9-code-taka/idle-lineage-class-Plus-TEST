@@ -75,7 +75,7 @@
         { id: 'diag', name: '快取診斷', desc: '回報問題時用的取證工具（設定選單）', group: '查詢與資訊', parent: 'storage' },
         { id: 'autobuy', name: '自動購買魔法屏障', desc: '魔法屏障卷軸用完自動買', group: '自動化' },
         { id: 'training', name: '木人場', desc: '木人場：實際打一段時間量出你的每秒傷害（自動化分頁開啟）', group: '遊戲玩法' },
-        { id: 'bossring', name: '傳送控制戒指自動找 BOSS', desc: '帶著傳送控制戒指時，場上沒 BOSS 就自動用瞬移卷軸找一隻', group: '自動化' },
+        { id: 'bossring', name: '傳送控制戒指自動找 BOSS', desc: '傳送控制戒指放背包就生效（不必裝備）；場上沒 BOSS 就自動用瞬移卷軸找一隻', group: '自動化' },
         { id: 'pwa', name: '安裝成 App / 離線快取', desc: '把遊戲裝成手機／電腦上的 App，圖片存在本機不用每次重抓', group: '系統與其他' },
         { id: 'storage', name: '設定選單', desc: '首頁的 ⚙ 設定選單，可檢查存檔大小', group: '系統與其他' },
         { id: 'synccompress', name: '存檔即時壓縮', desc: '存檔當下就壓縮，避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間，預設關', group: '系統與其他', def: false },
