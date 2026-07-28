@@ -333,16 +333,16 @@
     //   一格一個存檔位（格數走 SAVE_SLOT_MAX，不要自己寫死）；有角色＝名稱（未命名顯示職業）＋切換鈕，
     //   空的＝灰色「（存檔 N）」不給鈕；目前這隻標「目前」。名稱過長由 CSS 省略號處理。
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-    function slotMax() { return (typeof SAVE_SLOT_MAX !== 'undefined') ? SAVE_SLOT_MAX : 8; }
-    // 要列幾格：SAVE_SLOT_MAX(16) 是核心補丁、關不掉，但玩家關掉「選角 16 格分頁」時選角畫面只翻得到
-    //   前 8 格 → 這裡跟著縮回 8，兩個入口才不會講不同話。
-    //   ⚠ 已經有角色的格子一律保留：否則第 9~16 格的角色會變成選角畫面翻不到、這裡也看不到＝進不去。
-    function visibleCount(sums) {
-        var max = sums.length;
-        if (!window.AFK_TOGGLES || AFK_TOGGLES.enabled('loadslots')) return max;
-        var vis = Math.min(8, max);
-        for (var i = max; i > vis; i--) { if (sums[i - 1]) { vis = i; break; } }
-        return vis;
+    // 上游選角畫面翻得到的格數：2 頁 × 每頁 4 格，兩個數字都寫死在核心（js/13 的 `page === 2` 與
+    //   `_loadPage * 4 + 1`），核心沒有對應常數可讀，只能在這裡照抄一份。
+    var UPSTREAM_SLOT_PAGES = 2, UPSTREAM_SLOTS_PER_PAGE = 4;
+    var UPSTREAM_SLOT_MAX = UPSTREAM_SLOT_PAGES * UPSTREAM_SLOTS_PER_PAGE;
+    // SAVE_SLOT_MAX(16) 是核心補丁、關不掉；但玩家關掉「選角 16 格分頁」時選角畫面只翻得到上游那 8 格，
+    //   這裡跟著縮回去，兩個入口才不會講不同話（要用第 9~16 格就把那支開回來）。
+    function slotMax() {
+        var max = (typeof SAVE_SLOT_MAX !== 'undefined') ? SAVE_SLOT_MAX : UPSTREAM_SLOT_MAX;
+        if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('loadslots')) return Math.min(UPSTREAM_SLOT_MAX, max);
+        return max;
     }
     function renderLogoutRoster() {
         var box = document.getElementById('m-logout-slots'), t = document.getElementById('m-logout-roster-t'), hr = document.getElementById('m-logout-hr');
@@ -352,11 +352,9 @@
             return;
         }
         var cur = (typeof currentSlot !== 'undefined') ? String(currentSlot) : '', html = '', n, sum, nm;
-        var sums = [];
-        for (n = 1; n <= slotMax(); n++) { try { sums.push(slotSummary(n) || null); } catch (e) { sums.push(null); } }
-        var shown = visibleCount(sums);
-        for (n = 1; n <= shown; n++) {
-            sum = sums[n - 1];
+        for (n = 1; n <= slotMax(); n++) {
+            sum = null;
+            try { sum = slotSummary(n); } catch (e) { sum = null; }
             if (!sum) { html += '<div class="m-logout-slot empty"><span class="m-logout-slot-n">（存檔 ' + n + '）</span></div>'; continue; }
             nm = esc(sum.name || sum.cls || ('存檔 ' + n));
             html += '<div class="m-logout-slot"><span class="m-logout-slot-n" title="' + nm + '">' + nm + '</span>' +
