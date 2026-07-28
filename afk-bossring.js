@@ -79,7 +79,7 @@
         }
         var lbl = document.createElement('label');
         lbl.className = 'cursor-pointer flex items-center gap-2';
-        lbl.innerHTML = '<input type="checkbox" id="set-teleport-boss" class="w-4 h-4"><span class="text-rose-300">傳戒找BOSS</span><span class="text-xs text-slate-500">需帶戒指·離線不套用</span>';
+        lbl.innerHTML = '<input type="checkbox" id="set-teleport-boss" class="w-4 h-4"><span class="text-rose-300">傳戒自動找BOSS</span><span class="text-xs text-slate-500">離線不套用</span>';
         var barrier = document.getElementById('set-auto-buy-magicbarrier');
         var abBox = barrier && barrier.closest('#afk-autobuy-box');
         if (abBox) {
