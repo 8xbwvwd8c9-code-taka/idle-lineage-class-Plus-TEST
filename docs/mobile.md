@@ -22,6 +22,14 @@ afk-mobile 的 `detectMobile()` 跟上游 CSS 的手機斷點**判定範圍不�
 
 判準:**要覆寫的上游宣告是包在 media query 裡的嗎?** 是 → 自己的規則也包同一條;只有純位移／封頂(padding、max-height)這種「哪種幾何都成立」的才可以裸寫。**此規則已有 smoke 把關**:`smoke-hooks.mjs` 第四輪用 820×1180 觸控 context 驗「`#game-screen` 不捲時右欄分頁必須各自捲得動」,裸寫 `body.m-mobile` 覆寫上游手機規則會當場紅(捲動這組的條件常數=afk-mobile 的 `MOBILE_GEOM_MQ`)。
 
+## 手機的檢視 class 只有 `mview-left` / `mview-center` / `mview-right`——沒有 `mview-battle`
+
+外掛要判斷「現在在不在戰鬥那一欄」時,**戰鬥＝`mview-center`**(名字的單一真實來源是 afk-mobile 的 `setView()`,它只會加這三個)。寫成不存在的名字**不會報錯**,只會讓條件恆真/恆假 → 元素在手機上永遠不出現(或永遠不隱藏),而且**畫面上完全看不出是誰把它藏起來**,很容易往「z-index/版面被蓋住」的方向查半天(afk-training 的木人場 DPS HUD 就這樣在手機上從來沒出現過;afk-dograce 當初也踩過,才在原地留了警告註解)。
+
+同組還有一個:切分頁的鈕在 `#m-nav` 裡,屬性是 **`data-view`**(值同上三選一),不是 `data-nav`——選擇器寫錯一樣是安靜失效(`querySelector` 回 null → 那行 click 沒發生,使用者得自己切分頁)。
+
+判準:**要打 `mview-` 或 `#m-nav` 的選擇器前,先去 afk-mobile 的 `setView()` / nav 建立處確認名字**,不要照記憶或照別處抄。smoke 驗不到這類「名字拼錯」——它只確認外掛有載入,不會知道你想找的 class 從來不存在。
+
 ## 新增「釘在畫面上」(fixed/sticky)的手機元素 → 自己量橫幅,並用「帶文字」的假橫幅驗遮蔽
 
 橫幅 z-index 是 int 上限、壓得過任何外掛,而各外掛認橫幅是**比對文字**(`/shines871|官方|非官方|轉載/`,見 findBanner)——**沒文字的假橫幅在偵測邏輯眼中不存在**,只測得到「z-index 硬蓋」,驗不到「量測→讓位」那條路徑(smoke 第三輪的假橫幅原本就漏了文字,已補)。
