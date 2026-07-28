@@ -226,9 +226,7 @@
             '#m-logout-card #m-logout-slots{flex:0 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start;overflow-y:auto;margin-bottom:16px;padding-bottom:2px;}',
             '#m-logout-hr{border:none;border-top:1px solid #334155;margin:0 0 16px;}',
             '.m-logout-slot{display:flex;align-items:center;gap:6px;min-width:0;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:6px 8px;}',
-            '.m-logout-slot.empty{background:transparent;border-style:dashed;}',
             '.m-logout-slot-n{flex:1;min-width:0;color:#e2e8f0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-            '.m-logout-slot.empty .m-logout-slot-n{color:#64748b;}',
             '.m-logout-slot-go{flex:none;background:#334155;border:1px solid #475569;color:#cbd5e1;border-radius:6px;padding:3px 9px;font-size:12px;font-family:inherit;cursor:pointer;touch-action:manipulation;}',
             '.m-logout-slot-go:active{background:#475569;}',
             '.m-logout-slot-cur{flex:none;color:#38bdf8;font-size:12px;font-weight:bold;}',
@@ -330,8 +328,11 @@
     }
 
     // --- 登出窗裡的「切換角色」清單 ---------------------------------------
-    //   一格一個存檔位（格數走 SAVE_SLOT_MAX，不要自己寫死）；有角色＝名稱（未命名顯示職業）＋切換鈕，
-    //   空的＝灰色「（存檔 N）」不給鈕；目前這隻標「目前」。名稱過長由 CSS 省略號處理。
+    //   只列「有角色」的存檔位：這個窗唯一能做的事是跳到別隻，空格子在這裡不能創角也不能匯入＝純佔位，
+    //   手機上還會把下面的確認鈕擠下去。掃描範圍一律走 SAVE_SLOT_MAX（跟「選角 16 格分頁」那支開關無關——
+    //   有角色就列得出來，才不會有「某隻角色哪裡都進不去」的狀況）。
+    //   名稱（未命名顯示職業）＋切換鈕；目前這隻標「目前」；名稱過長由 CSS 省略號處理。
+    //   除了自己以外沒有別隻時，整段（標題／清單／分隔線）都不顯示，登出窗回到單純的確認窗。
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     // 離線結算/補跑進行中＝不可換角：那兩支迴圈都是非同步的（做一段就讓出主執行緒），中途把 currentSlot／
     //   player 換掉，剩下的 tick 與錨點推進就會算到新角色頭上（實測會把上一隻的結算進度寫進新角色的
@@ -341,36 +342,37 @@
         try { if (typeof catchupActive === 'function' && catchupActive()) return true; } catch (e) {}
         return false;
     }
-    // 上游選角畫面翻得到的格數：2 頁 × 每頁 4 格，兩個數字都寫死在核心（js/13 的 `page === 2` 與
-    //   `_loadPage * 4 + 1`），核心沒有對應常數可讀，只能在這裡照抄一份。
-    var UPSTREAM_SLOT_PAGES = 2, UPSTREAM_SLOTS_PER_PAGE = 4;
-    var UPSTREAM_SLOT_MAX = UPSTREAM_SLOT_PAGES * UPSTREAM_SLOTS_PER_PAGE;
-    // SAVE_SLOT_MAX(16) 是核心補丁、關不掉；但玩家關掉「選角 16 格分頁」時選角畫面只翻得到上游那 8 格，
-    //   這裡跟著縮回去，兩個入口才不會講不同話（要用第 9~16 格就把那支開回來）。
-    function slotMax() {
-        var max = (typeof SAVE_SLOT_MAX !== 'undefined') ? SAVE_SLOT_MAX : UPSTREAM_SLOT_MAX;
-        if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('loadslots')) return Math.min(UPSTREAM_SLOT_MAX, max);
-        return max;
+    // 上游沒有「存檔位數量」這種常數（選角畫面把 2 頁 × 每頁 4 格寫死在 js/13），
+    //   SAVE_SLOT_MAX=16 是我方核心補丁加的；讀不到就退回上游的 8。
+    var UPSTREAM_SLOT_MAX = 8;
+    function slotMax() { return (typeof SAVE_SLOT_MAX !== 'undefined') ? SAVE_SLOT_MAX : UPSTREAM_SLOT_MAX; }
+    function showRoster(show, box, t, hr) {
+        box.style.display = show ? '' : 'none';
+        if (t) t.style.display = show ? '' : 'none';
+        if (hr) hr.style.display = show ? '' : 'none';
     }
     function renderLogoutRoster() {
         var box = document.getElementById('m-logout-slots'), t = document.getElementById('m-logout-roster-t'), hr = document.getElementById('m-logout-hr');
         if (!box) return;
         if (typeof slotSummary !== 'function') {   // 核心沒這支就整段不顯示（優雅降級，登出本身照常）
-            box.style.display = 'none'; if (t) t.style.display = 'none'; if (hr) hr.style.display = 'none';
+            showRoster(false, box, t, hr);
             return;
         }
-        var cur = (typeof currentSlot !== 'undefined') ? String(currentSlot) : '', html = '', n, sum, nm;
+        var cur = (typeof currentSlot !== 'undefined') ? String(currentSlot) : '', html = '', n, sum, nm, others = 0;
         var busy = settling();   // 結算中：不給切換鈕（按了也不會動＝當作壞掉），改在標題講原因
-        if (t) t.textContent = busy ? '切換角色（離線結算中，結束後才能切換）' : '切換角色';
         for (n = 1; n <= slotMax(); n++) {
             sum = null;
             try { sum = slotSummary(n); } catch (e) { sum = null; }
-            if (!sum) { html += '<div class="m-logout-slot empty"><span class="m-logout-slot-n">（存檔 ' + n + '）</span></div>'; continue; }
+            if (!sum) continue;   // 空格子不列
             nm = esc(sum.name || sum.cls || ('存檔 ' + n));
+            if (String(n) !== cur) others++;
             html += '<div class="m-logout-slot"><span class="m-logout-slot-n" title="' + nm + '">' + nm + '</span>' +
                 (String(n) === cur ? '<span class="m-logout-slot-cur">目前</span>'
                     : (busy ? '' : '<button type="button" class="m-logout-slot-go" data-slot="' + n + '">切換</button>')) + '</div>';
         }
+        showRoster(others > 0, box, t, hr);   // 只有自己一隻＝沒得切，整段收掉
+        if (!others) { box.innerHTML = ''; return; }
+        if (t) t.textContent = busy ? '切換角色（離線結算中，結束後才能切換）' : '切換角色';
         box.innerHTML = html;
         box.querySelectorAll('.m-logout-slot-go').forEach(function (b) {
             b.addEventListener('click', function () { switchToSlot(parseInt(b.getAttribute('data-slot'), 10)); });
