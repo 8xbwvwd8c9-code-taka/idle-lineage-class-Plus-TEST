@@ -5,12 +5,12 @@
  *  - 選 1~5 隻怪（每隻可不同，預設第 1 格妖魔 orc），用 select+input 篩選挑選。
  *  - 可選「世界模式」（一般／席琳的世界／瘋狂的席琳世界）：重用原作 applySherineBuff 對訓練怪
  *    套用席琳強度（AC/MR/命中/減傷＋怪傷×2/×3 旗標），數值永遠與遊戲一致、作者改倍率自動跟上。
- *  - 怪打不死、玩家/傭兵/寵物/召喚物也都打不死，跑「真實戰鬥」量輸出。
+ *  - 怪打不死、玩家/傭兵/寵物/召喚物/城堡護衛也都打不死，跑「真實戰鬥」量輸出。
  *  - 旁邊 HUD 兩個檢視：「👥 來源」＝玩家／每個傭兵／每隻寵物／每種召喚物 各自的 DPS 長條圖，
  *    「🎯 目標」＝打在每隻訓練怪身上的 DPS；上方永遠是總 DPS（平均與近 10 秒即時）。
  *  - 「重新計算」＝重算角色數值(calcStats)＋重置怪＋DPS 歸零。
  *
- * 隊員（玩家/傭兵/寵物/召喚物）打不死的做法：**不灌血量**，在會致死的那一步之前把 HP 補回牠自己的
+ * 隊員（玩家/傭兵/寵物/召喚物/城堡護衛）打不死的做法：**不灌血量**，在會致死的那一步之前把 HP 補回牠自己的
  * 真實上限（見 HP_GUARDS）。灌大的血量會讓「跟血量掛勾」的機制算出荒謬結果，滿血則是合法狀態。
  *
  * 原理（一招同時做到打不死＋全傷害涵蓋）：訓練怪血量設成天文數字，每個 tick 結束量牠
@@ -149,7 +149,7 @@
     if ((++hudTickAcc % 3) === 0) refreshHud();   // 節流：每 3 拍刷一次 HUD
   };
 
-  // ---- 🛡️ 隊員（傭兵／寵物／召喚物）在木人場打不死 ---------------------------
+  // ---- 🛡️ 隊員（傭兵／寵物／召喚物／城堡護衛）在木人場打不死 ---------------------------
   //   做法：**不把血量灌大**，而是在「會扣血、可能致死的那一步」進去之前，先把該隊員的 HP 補回
   //   牠自己的真實上限；事後再補一道保險（萬一單一擊就超過滿血）。
   //   為什麼不灌大：血量一旦是天文數字，任何「跟血量掛勾」的機制都會算出荒謬結果——訓練怪那邊
@@ -166,7 +166,8 @@
     ['enemyAttackPet', 1, 'hp', petMax], ['applyMobMagicToPet', 2, 'hp', petMax],
     ['enemyAttackSummon', 1, 'hp', ownMax], ['applyMobMagicToSummon', 2, 'hp', ownMax],
     ['enemyAttackAlly', 1, 'curHp', ownMax], ['applyMobMagicToAlly', 2, 'curHp', ownMax],
-    ['processAllyStatusTick', 0, 'curHp', ownMax], ['reflectWallOnDamage', 3, 'curHp', ownMax]
+    ['processAllyStatusTick', 0, 'curHp', ownMax], ['reflectWallOnDamage', 3, 'curHp', ownMax],
+    ['enemyAttackGuard', 1, 'hp', ownMax], ['applyMobMagicToGuard', 2, 'hp', ownMax]   // 🏰 城堡護衛自成一套入口，不在寵物／召喚那幾支裡
   ];
   HP_GUARDS.forEach(function (g) {
     var name = g[0], at = g[1], hpKey = g[2], maxOf = g[3];
@@ -188,6 +189,7 @@
       if (e._downed) {
         e._downed = false; e._reviveCd = 0; e._diedAt = 0; e._animAct = null; e[hpKey] = mx;
         if (typeof window.renderSummonPanel === 'function') window.renderSummonPanel(true);   // 倒地那一瞬間核心已把面板畫成死掉的樣子，扶起來後要再畫一次
+        if (typeof window.renderGuardPanel === 'function') window.renderGuardPanel(true);
         if (typeof window.renderSquadPanel === 'function') window.renderSquadPanel();
       }
       return r;
@@ -199,6 +201,15 @@
     window._petDown = function (p) {
       if (inTrain() && p) { p.hp = petMax(p); return; }
       return _origPetDown.apply(this, arguments);
+    };
+  }
+  // 護衛同理：_guardDown 是牠唯一的倒地出口（上面兩支打完會呼叫它），擋在這裡連「倒下了，30 秒後歸隊」
+  // 那行訊息都不會寫出去
+  if (typeof window._guardDown === 'function') {
+    var _origGuardDown = window._guardDown;
+    window._guardDown = function (s) {
+      if (inTrain() && s) { s.hp = s.mhp || 1; return; }
+      return _origGuardDown.apply(this, arguments);
     };
   }
 
@@ -227,6 +238,13 @@
       if (s._downed) { s._downed = false; s._diedAt = 0; s._animAct = null; }
       if ((s.mhp || 0) > 0 && s.hp < s.mhp) s.hp = s.mhp;
     });
+    // 城堡護衛：帶著倒地狀態走進木人場的也扶起來（_reviveAt 是核心的 30 秒歸隊排程，一併清掉）
+    var guards = (player && player.guardsV2) || [];
+    for (i = 0; i < guards.length; i++) {
+      var g = guards[i]; if (!g) continue;
+      if (g._downed) { g._downed = false; g._diedAt = 0; g._reviveAt = 0; g._animAct = null; }
+      if ((g.mhp || 0) > 0 && g.hp < g.mhp) g.hp = g.mhp;
+    }
   }
 
   // ---- 📊 來源拆帳（玩家／每個傭兵／每種寵物·召喚物） ------------------------
