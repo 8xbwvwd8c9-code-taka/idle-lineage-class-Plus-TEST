@@ -213,10 +213,25 @@
             //   拉到面板與導覽列之上（仍低於登出遮罩，不會壓到逃生門）。
             'body.m-mobile .wandering-shout-menu,body.m-mobile .wandering-taunt-menu,body.m-mobile .pvp-kill-whisper-menu{z-index:9700 !important;max-height:60vh;overflow-y:auto;}',
             // 登出確認視窗（自製，取代原生 confirm）
-            '#m-logout-modal{display:none;position:fixed;inset:0;top:var(--orig-bar-h,0px);z-index:99998;background:rgba(2,6,23,0.7);align-items:center;justify-content:center;padding:24px;}',
+            // 容器頂端讓開橫幅、底部讓開自製導覽列(公式同本檔其他彈窗)；內卡再壓 max-height:100%——
+            //   只改容器 padding 不夠：內卡比剩餘空間高時 flex 置中會「上下均分溢出」，頂端照樣鑽進橫幅底下。
+            //   內卡的 100% 是相對容器「內容框」(已扣掉上面兩者)，不必重寫一次 100dvh 的算式，橫幅高度變了也自動跟上。
+            '#m-logout-modal{display:none;position:fixed;inset:0;top:var(--orig-bar-h,0px);z-index:99998;background:rgba(2,6,23,0.7);align-items:center;justify-content:center;padding:24px 24px calc(24px + var(--m-nav-h,0px));}',
             '#m-logout-modal.open{display:flex;}',
-            '#m-logout-card{width:min(360px,92vw);background:#0f172a;border:1px solid #334155;border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.6);}',
+            '#m-logout-card{display:flex;flex-direction:column;max-height:100%;width:min(520px,94vw);background:#0f172a;border:1px solid #334155;border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.6);}',
+            '#m-logout-card>*{flex:none;}',   // 卡片一縮，只准角色清單縮（下面那條 flex:0 1 auto），訊息與按鈕維持原樣
             '#m-logout-msg{color:#e2e8f0;font-size:15px;line-height:1.7;text-align:center;margin-bottom:18px;}',
+            // 切換角色清單：兩欄，格數多(16 格)時自己捲，不要把整張卡片撐爆
+            '#m-logout-roster-t{color:#94a3b8;font-size:12px;margin-bottom:6px;}',
+            '#m-logout-card #m-logout-slots{flex:0 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start;overflow-y:auto;margin-bottom:16px;padding-bottom:2px;}',
+            '#m-logout-hr{border:none;border-top:1px solid #334155;margin:0 0 16px;}',
+            '.m-logout-slot{display:flex;align-items:center;gap:6px;min-width:0;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:6px 8px;}',
+            '.m-logout-slot.empty{background:transparent;border-style:dashed;}',
+            '.m-logout-slot-n{flex:1;min-width:0;color:#e2e8f0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+            '.m-logout-slot.empty .m-logout-slot-n{color:#64748b;}',
+            '.m-logout-slot-go{flex:none;background:#334155;border:1px solid #475569;color:#cbd5e1;border-radius:6px;padding:3px 9px;font-size:12px;font-family:inherit;cursor:pointer;touch-action:manipulation;}',
+            '.m-logout-slot-go:active{background:#475569;}',
+            '.m-logout-slot-cur{flex:none;color:#38bdf8;font-size:12px;font-weight:bold;}',
             '#m-logout-btns{display:flex;gap:10px;}',
             '#m-logout-btns button{flex:1;padding:11px;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit;border:1px solid #334155;touch-action:manipulation;}',
             '#m-logout-cancel{background:#1e293b;color:#cbd5e1;}',
@@ -275,6 +290,7 @@
     // --- 登出回首頁：自製確認窗（不用原生 confirm，iOS Safari 會抑制）→ 存檔 → 記離線錨點 → reload ---
     function doLogout() {
         var m = document.getElementById('m-logout-modal') || buildLogoutModal();
+        renderLogoutRoster();   // 每次打開都重讀：別的分頁改過名字/刪過角色時不要顯示舊的
         m.classList.add('open');
     }
     function buildLogoutModal() {
@@ -282,6 +298,9 @@
         m.id = 'm-logout-modal';
         m.innerHTML =
             '<div id="m-logout-card">' +
+            '<div id="m-logout-roster-t">切換角色</div>' +
+            '<div id="m-logout-slots"></div>' +
+            '<hr id="m-logout-hr">' +
             '<div id="m-logout-msg">回首頁前會<b>自動幫你存檔</b>，進度不會遺失。<br>登出後會開始離線掛機（上限 24 小時）。<br>確定回首頁？</div>' +
             '<div id="m-logout-btns"><button id="m-logout-cancel" type="button">取消</button><button id="m-logout-ok" type="button">確定回首頁</button></div>' +
             '</div>';
@@ -297,13 +316,74 @@
         });
         return m;
     }
-    function showLogoutOverlay() {
+    function showLogoutOverlay(msg) {
         if (document.getElementById('m-logout-overlay')) return;
         var o = document.createElement('div');
         o.id = 'm-logout-overlay';
-        o.innerHTML = '<div id="m-logout-overlay-spin"></div><div id="m-logout-overlay-txt">已自動存檔，正在回首頁…</div>';
+        o.innerHTML = '<div id="m-logout-overlay-spin"></div><div id="m-logout-overlay-txt"></div>';
+        o.querySelector('#m-logout-overlay-txt').textContent = msg || '已自動存檔，正在回首頁…';
         document.body.appendChild(o);
     }
+
+    // --- 登出窗裡的「切換角色」清單 ---------------------------------------
+    //   一格一個存檔位（格數走 SAVE_SLOT_MAX，不要自己寫死）；有角色＝名稱（未命名顯示職業）＋切換鈕，
+    //   空的＝灰色「（存檔 N）」不給鈕；目前這隻標「目前」。名稱過長由 CSS 省略號處理。
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function slotMax() { return (typeof SAVE_SLOT_MAX !== 'undefined') ? SAVE_SLOT_MAX : 8; }
+    function renderLogoutRoster() {
+        var box = document.getElementById('m-logout-slots'), t = document.getElementById('m-logout-roster-t'), hr = document.getElementById('m-logout-hr');
+        if (!box) return;
+        if (typeof slotSummary !== 'function') {   // 核心沒這支就整段不顯示（優雅降級，登出本身照常）
+            box.style.display = 'none'; if (t) t.style.display = 'none'; if (hr) hr.style.display = 'none';
+            return;
+        }
+        var cur = (typeof currentSlot !== 'undefined') ? String(currentSlot) : '', html = '', n, sum, nm;
+        for (n = 1; n <= slotMax(); n++) {
+            sum = null;
+            try { sum = slotSummary(n); } catch (e) { sum = null; }
+            if (!sum) { html += '<div class="m-logout-slot empty"><span class="m-logout-slot-n">（存檔 ' + n + '）</span></div>'; continue; }
+            nm = esc(sum.name || sum.cls || ('存檔 ' + n));
+            html += '<div class="m-logout-slot"><span class="m-logout-slot-n" title="' + nm + '">' + nm + '</span>' +
+                (String(n) === cur ? '<span class="m-logout-slot-cur">目前</span>'
+                    : '<button type="button" class="m-logout-slot-go" data-slot="' + n + '">切換</button>') + '</div>';
+        }
+        box.innerHTML = html;
+        box.querySelectorAll('.m-logout-slot-go').forEach(function (b) {
+            b.addEventListener('click', function () { switchToSlot(parseInt(b.getAttribute('data-slot'), 10)); });
+        });
+    }
+
+    // 換角＝「存檔→蓋離線錨點→重整→在首頁自動載入那一格」。
+    // ⚠ 刻意不原地 `currentSlot=n; loadGame()`：那條路上的計時器與監聽會一層層疊上去（量離線效能時踩過，
+    //   原地重複 loadGame 讓記憶體 17→97MB、tick 慢 9 倍）。重整後從首頁載入走的就是玩家平常點選角的同一條路。
+    var SWITCH_KEY = 'afk_switch_slot';
+    function switchToSlot(n) {
+        if (!(n > 0)) return;
+        try { if (typeof window.saveGame === 'function') window.saveGame(); } catch (e) {}
+        try { if (window.__afk && window.__afk.stamp) window.__afk.stamp(); } catch (e) {}   // 存完蓋錨點：這隻角色的離線從現在起算
+        try { sessionStorage.setItem(SWITCH_KEY, String(n)); } catch (e) {}
+        showLogoutOverlay('已自動存檔，正在切換角色…');
+        requestAnimationFrame(function () { requestAnimationFrame(function () { try { location.reload(); } catch (e) {} }); });
+    }
+    // 重整後接手：首頁就緒就載入指定存檔位（那格已沒角色就停在首頁，不硬闖）
+    (function consumePendingSwitch() {
+        var n = 0;
+        try { n = parseInt(sessionStorage.getItem(SWITCH_KEY) || '', 10) || 0; sessionStorage.removeItem(SWITCH_KEY); } catch (e) { return; }
+        if (!n) return;
+        var tries = 0;
+        function go() {
+            if (typeof window.loadGame === 'function' && typeof window.slotSummary === 'function') {
+                var ok = false;
+                try { ok = !!window.slotSummary(n); } catch (e) { ok = false; }
+                if (!ok) return;
+                try { currentSlot = n; window.loadGame(); } catch (e) { try { console.warn('[AFK-mobile] 換角載入失敗', e); } catch (e2) {} }
+                return;
+            }
+            if (++tries < 60) setTimeout(go, 100);
+        }
+        function start() { setTimeout(go, 250); }   // 讓核心的 window.onload 初始化先跑完，再走玩家平常那條載入路徑
+        if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+    })();
 
     function setView(id) {
         if (document.body.classList.contains('mlog-open')) closeLog();   // 切欄一併收日誌
