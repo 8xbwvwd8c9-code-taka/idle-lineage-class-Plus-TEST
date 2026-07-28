@@ -5,14 +5,22 @@
  *  - 選 1~5 隻怪（每隻可不同，預設第 1 格妖魔 orc），用 select+input 篩選挑選。
  *  - 可選「世界模式」（一般／席琳的世界／瘋狂的席琳世界）：重用原作 applySherineBuff 對訓練怪
  *    套用席琳強度（AC/MR/命中/減傷＋怪傷×2/×3 旗標），數值永遠與遊戲一致、作者改倍率自動跟上。
- *  - 怪打不死、玩家也打不死，跑「真實戰鬥」量輸出。
- *  - 旁邊 HUD 即時顯示「每隻 DPS」＋「總 DPS」（平均與近 10 秒即時）。
+ *  - 怪打不死、玩家/傭兵/寵物/召喚物也都打不死，跑「真實戰鬥」量輸出。
+ *  - 旁邊 HUD 兩個檢視：「👥 來源」＝玩家／每個傭兵／每種寵物·召喚物 各自的 DPS 長條圖，
+ *    「🎯 目標」＝打在每隻訓練怪身上的 DPS；上方永遠是總 DPS（平均與近 10 秒即時）。
  *  - 「重新計算」＝重算角色數值(calcStats)＋重置怪＋DPS 歸零。
+ *
+ * 隊員（玩家/傭兵/寵物/召喚物）打不死的做法：**不灌血量**，在會致死的那一步之前把 HP 補回牠自己的
+ * 真實上限（見 HP_GUARDS）。灌大的血量會讓「跟血量掛勾」的機制算出荒謬結果，滿血則是合法狀態。
  *
  * 原理（一招同時做到打不死＋全傷害涵蓋）：訓練怪血量設成天文數字，每個 tick 結束量牠
  * 掉了多少血＝這拍受到的總傷害，再補回去。因為所有傷害（普攻/法術/連射/出血中毒/傭兵/
  * 反擊…）最終都是扣怪的 curHp，只量血量變化就涵蓋全部來源，免去逐一 hook 數十個扣血點。
  * 即死類特效會直接 killMob → 故另外包 killMob 在木人場內攔截復活。
+ *
+ * 來源拆帳：核心 js/03 本來就把傷害分成 玩家／每個傭兵／寵物總桶／召喚總桶（本圖效率統計用），
+ * 每拍取這四類的增量即可；寵物與召喚要再拆成「每種」，則借核心仇恨制的 threatWrap（每個實體
+ * 的一次攻擊各自包一個快照視窗）逐實體量。兩邊對不起來的殘量進「其他」列，確保各列相加＝總傷害。
  *
  * 全部 monkey-patch 全域函式、不動 index.html 遊戲碼。原作者更新只需把 <script> 貼回。
  */
@@ -33,17 +41,34 @@
 
   var TRAIN_MAP = 'afk_dummy';       // 獨立 map id：不可用 'training'——那是原作既有的新手地圖「新兵修練場」(有怪池)，會撞號
   var TRAIN_BG = 'assets/area/1920x1080/新兵修練場.jpg';   // 木人場固定背景（主題相符；用上游現行 1920x1080 版，資產可純鏡像）
-  var TRAIN_HP = 1e9;                 // 天文血量：一拍傷害不可能打穿；本作無「依目標最大HP%」的玩家傷害，故安全
+  // 訓練怪的天文血量。這是量測本身的地基，不能拿掉：怪一旦會在拍中被打死，(a) 溢殺的傷害會被核心
+  // 的歸因夾成 0（那正是野外 DPS 不準的主因），(b) 我方把牠救回來時核心那一段視窗會反過來算成 0 傷害，
+  // 來源拆帳整段消失。⚠️ 代價要知道：怪身上「看最大 HP 百分比」的機制會失真——已知有
+  // 遺物即死 proc 的 hpBelow（低於 N% 才觸發）與 隱蔽的死亡草葉 instakillFull（滿血才觸發），
+  // 以及頭目每 5 秒回最大 HP 的 0.5~2.5%（後者已在 processMobStatusTick 包裝處理掉）。
+  // 隊伍那一側（玩家/傭兵/寵物/召喚物）刻意不用這招，改成「判定前補到真實上限」，見 HP_GUARDS。
+  var TRAIN_HP = 1e9;
   var DEFAULT_MOB = 'orc';           // 妖魔
   var WINDOW_TICKS = 100;            // 即時 DPS 視窗 = 100 tick = 10 秒
+  var HUD_W = 244;                   // HUD 寬度（要塞得下長條圖的 名稱／長條／數字 三欄）
   var SLOTS_KEY = 'afk_training_slots';
   var POS_KEY = 'afk_training_hudpos';   // HUD 拖曳後的位置記憶
   var MODE_KEY = 'afk_training_mode';    // 世界模式記憶（各存檔位各一組，同 slots）
+  var VIEW_KEY = 'afk_training_hudview'; // HUD 檢視分頁記憶（來源／目標）
+  // 來源分類的排序與顏色：顏色沿用原版「本圖效率統計」那張圖，兩邊看起來才是同一套東西
+  var SRC_ORD = { player: 0, ally: 1, pet: 2, summon: 3, other: 4 };
+  var SRC_COLOR = { player: '#38bdf8', ally: '#fbbf24', pet: '#4ade80', summon: '#c084fc', other: '#94a3b8' };
 
   var slots = [DEFAULT_MOB, null, null, null, null];   // 各格選的怪 id  （無 active 旗標：是否在木人場一律以 inTrain()＝map===TRAIN_MAP 判斷）
   var worldMode = 'normal';              // 'normal' | 'sherine' | 'mad'（席琳／瘋狂席琳強度）
   var backup = null;                 // 進場前的狀態（離場還原用）
   var dps = null;                    // { startTick, perUid:{uid:累計傷害}, window:[每tick總傷害] }
+  var src = null;                    // 來源拆帳 { cum:{key:{name,kind,dmg}}, window:[{key:每tick傷害}] }
+  var srcSnap = null;                // 開拍前核心 _dps 各桶讀數（收拍取增量）
+  var entTick = null;                // 這拍 threatWrap/summonTick 逐實體量到的傷害 {key:{name,kind,dmg}}
+  var petUids = null;                // 這拍出戰寵物的 uid 集合（用來分辨實體是寵物還是召喚物）
+  var midDrain = null;               // 這拍在「頭目回血前」就先收走的傷害 {uid:量}（見 processMobStatusTick 包裝）
+  var hudView = 'src';               // 'src'（來源）｜'mob'（目標）
   var hudTickAcc = 0;                // HUD 更新節流計數
   var MOB_OPTS = null;               // [{id,n,lv}] 排序後的怪清單
 
@@ -84,9 +109,9 @@
       m = mobs[i];
       if (m && m._train) { m.curHp = TRAIN_HP; m._dead = false; before[m.uid] = TRAIN_HP; }
     }
-    // 🤝 傭兵也打不死（木人場只量輸出、不該讓隊員倒地）：開拍前把 HP 墊到天文數字→這拍怎麼被怪打都不歸零→不觸發「倒下」；仍會被打到，反擊/居合照常。收拍後再補回實際上限供顯示。
     var allies = (player && player.allies) || [];
-    for (i = 0; i < allies.length; i++) { if (allies[i]) allies[i].curHp = TRAIN_HP; }
+    srcTickBegin();
+    midDrain = {};
     _origTick.apply(this, arguments);
     // 收拍後：量每隻掉血＝這拍受到的傷害，累計後補回
     var tickTotal = 0;
@@ -95,7 +120,7 @@
       m = mobs[i];
       if (m && m._train) {
         var base = (before[m.uid] != null) ? before[m.uid] : TRAIN_HP;
-        var drain = base - m.curHp;
+        var drain = (base - m.curHp) + (midDrain[m.uid] || 0);   // 加回怪物階段開始前就先收走的那段（見 processMobStatusTick 包裝）
         if (drain > 0) { dps.perUid[m.uid] = (dps.perUid[m.uid] || 0) + drain; tickTotal += drain; }
         m.curHp = TRAIN_HP; m._dead = false;
         // 傷害飄字(09-vfx-render 的 _vfxQueueDmg)是「tick 結束後 flushTickRender 才取樣 curHp、用跨幀差反推傷害」。
@@ -111,8 +136,188 @@
     player.dead = false;
     // 🤝 傭兵收拍補滿（同玩家）：curHp/MP 回實際上限供顯示；清掉萬一殘留的倒地旗標與復活冷卻
     for (i = 0; i < allies.length; i++) { var _a = allies[i]; if (!_a) continue; _a.curHp = _a.mhp; if (_a.mp < _a.mmp) _a.mp = _a.mmp; if (_a._downed) { _a._downed = false; _a._reviveCd = 0; } }
+    topUpMinions();
+    srcTickCommit();
     if ((++hudTickAcc % 3) === 0) refreshHud();   // 節流：每 3 拍刷一次 HUD
   };
+
+  // ---- 🛡️ 隊員（傭兵／寵物／召喚物）在木人場打不死 ---------------------------
+  //   做法：**不把血量灌大**，而是在「會扣血、可能致死的那一步」進去之前，先把該隊員的 HP 補回
+  //   牠自己的真實上限；事後再補一道保險（萬一單一擊就超過滿血）。
+  //   為什麼不灌大：血量一旦是天文數字，任何「跟血量掛勾」的機制都會算出荒謬結果——訓練怪那邊
+  //   就實際踩過（頭目回血＝最大HP的 0.5~2.5%，血量灌到十億時一次回幾百萬直接補滿，把那一拍
+  //   打進去的傷害整段抹掉、DPS 憑空少快兩成）。「滿血」是遊戲裡本來就存在的合法狀態，灌大的不是；
+  //   之後上游再長出多少百分比血量、低血觸發的技能，都不會因為木人場而算錯。
+  //   ⚠️ 補的是「自己的上限」還有另一個好處：寵物 HP 會被寫進共用桶(localStorage)、召喚物 HP 在
+  //      玩家存檔裡，補到上限不管什麼時候被存到都無害。
+  function petMax(p) { return (typeof window.petMhpEff === 'function') ? window.petMhpEff(p) : (p.mhp || 1); }
+  function ownMax(e) { return e.mhp || 0; }
+  // [核心函式名, 隊員在第幾個參數, 血量欄位, 上限算法]——怪物打到隊員的所有入口（含 DoT 與反射壁）
+  var HP_GUARDS = [
+    ['enemyAttackPet', 1, 'hp', petMax], ['applyMobMagicToPet', 2, 'hp', petMax],
+    ['enemyAttackSummon', 1, 'hp', ownMax], ['applyMobMagicToSummon', 2, 'hp', ownMax],
+    ['enemyAttackAlly', 1, 'curHp', ownMax], ['applyMobMagicToAlly', 2, 'curHp', ownMax],
+    ['processAllyStatusTick', 0, 'curHp', ownMax], ['reflectWallOnDamage', 3, 'curHp', ownMax]
+  ];
+  HP_GUARDS.forEach(function (g) {
+    var name = g[0], at = g[1], hpKey = g[2], maxOf = g[3];
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function () {
+      var e = arguments[at], mx;
+      if (!inTrain() || !e || typeof e !== 'object') return orig.apply(this, arguments);   // reflectWallOnDamage 打玩家時第 4 個參數是 null
+      mx = maxOf(e);
+      if (!(mx > 0)) return orig.apply(this, arguments);
+      e[hpKey] = mx;
+      // 補到滿血還是有可能被「單一擊就超過滿血」打倒（瘋狂席琳的高等怪對召喚物就會）。核心會就地
+      // 標成倒地並寫一行戰鬥訊息——我們下一行就把牠扶起來，那行訊息是假的，會讓人以為還在一直死。
+      // 死亡訊息是「標成倒地之後才寫的那一行」（其餘傷害訊息都在標記之前）→ 用這個時序把它濾掉，
+      // 不必去比對訊息內容（上游改字也不會失效）。
+      var r, prevLog = window.logCombat;
+      if (typeof prevLog === 'function') window.logCombat = function () { if (e._downed) return; return prevLog.apply(this, arguments); };
+      try { r = orig.apply(this, arguments); } finally { window.logCombat = prevLog; }
+      if (e._downed) {
+        e._downed = false; e._reviveCd = 0; e._diedAt = 0; e._animAct = null; e[hpKey] = mx;
+        if (typeof window.renderSummonPanel === 'function') window.renderSummonPanel(true);   // 倒地那一瞬間核心已把面板畫成死掉的樣子，扶起來後要再畫一次
+        if (typeof window.renderSquadPanel === 'function') window.renderSquadPanel();
+      }
+      return r;
+    };
+  });
+  // 寵物的持續傷害(_petStatusTick)是直接扣血、不經上面那些入口 → 倒地判定的唯一出口 _petDown 再補一道
+  if (typeof window._petDown === 'function') {
+    var _origPetDown = window._petDown;
+    window._petDown = function (p) {
+      if (inTrain() && p) { p.hp = petMax(p); return; }
+      return _origPetDown.apply(this, arguments);
+    };
+  }
+
+  function petsOut() { return (typeof window.petsOutList === 'function') ? (window.petsOutList() || []) : []; }
+  function eachSummon(fn) {
+    var lists = [], i, j;
+    if (typeof window.summonV2List === 'function') lists.push(window.summonV2List());          // 玩家的召喚術/造屍術/屬性精靈
+    if (typeof window.necroSkeletonList === 'function') lists.push(window.necroSkeletonList()); // 死靈之書的骷髏
+    var allies = (player && player.allies) || [];                                              // 傭兵各自的召喚物（不走 mercSummonList：它會濾掉倒地的，那正是要救起來的那些）
+    for (i = 0; i < allies.length; i++) { if (allies[i] && allies[i].summon) lists.push([allies[i].summon]); }
+    // 玩家迷魅(player.summon)不在此：核心設計上牠不進受害者池、本來就不會死
+    for (i = 0; i < lists.length; i++) { var L = lists[i] || []; for (j = 0; j < L.length; j++) { if (L[j]) fn(L[j]); } }
+  }
+  // 收拍把寵物／召喚物補回上限：一來帶著倒地狀態走進木人場的也會被扶起來，二來血不會停在低點
+  // （低血會去喝隊長的治癒藥水、缺貨還會自動買藥花金幣——在測 DPS 的地方不該發生）。
+  function topUpMinions() {
+    var outs = petsOut(), i, p, mx;
+    for (i = 0; i < outs.length; i++) {
+      p = outs[i]; if (!p) continue;
+      if (p._downed) { p._downed = false; p._reviveCd = 0; p._animAct = null; p._statuses = window.newMobStatus(); }
+      mx = petMax(p);
+      if (p.hp < mx) p.hp = mx;
+      // MP 也補滿：比照傭兵。寵物 MP 池小、自然恢復每 5 秒才一次，不補的話量到的是「MP 見底後
+      // 只剩普攻」的輸出，不是這隻寵物真正的 DPS。
+      var mmp = (p.mmp || 0) + (((typeof window.petDerive === 'function' && window.petDerive(p)) || {}).mmpBonus || 0);
+      if (p.mp < mmp) p.mp = mmp;
+    }
+    eachSummon(function (s) {
+      if (s._downed) { s._downed = false; s._diedAt = 0; s._animAct = null; }
+      if ((s.mhp || 0) > 0 && s.hp < s.mhp) s.hp = s.mhp;
+    });
+  }
+
+  // ---- 📊 來源拆帳（玩家／每個傭兵／每種寵物·召喚物） ------------------------
+  //   玩家與傭兵：核心 js/03 的 _dps 桶本來就逐傭兵分開記（原版「本圖效率統計」那張圖的資料源），
+  //   每拍取增量即可，不必自己重做一套歸因。_dps 是 let 宣告→不在 window 上，用裸名讀。
+  //   寵物與召喚：核心只有 pet／summon 兩個總桶 → 借 threatWrap／summonTick（每個實體的一次攻擊
+  //   各自包一個快照視窗）逐實體量，再依名字併成「每種」一列。
+  //   兩邊的差額（走不到上面兩條的來源，如寵物的中毒出血 DoT、幻術立方）進「其他」列——
+  //   寧可有一列說不清楚，也不要讓各列相加對不上總 DPS。
+  function coreDps() { return (typeof _dps !== 'undefined' && _dps) ? _dps : null; }
+  function grow(now, before) { var d = (now || 0) - (before || 0); return d > 0 ? d : 0; }   // 中途被玩家按「重置」→ 桶歸零，增量以 0 計
+  function resetSrc() { src = { cum: {}, window: [] }; srcSnap = null; entTick = null; }
+
+  function srcTickBegin() {
+    entTick = {}; petUids = {};
+    var outs = petsOut(), i;
+    for (i = 0; i < outs.length; i++) { if (outs[i] && outs[i].uid != null) petUids[outs[i].uid] = 1; }
+    var c = coreDps();
+    if (!c) { srcSnap = null; return; }
+    var a = {}; for (var k in c.allies) a[k] = (c.allies[k] && c.allies[k].dmg) || 0;
+    srcSnap = { player: c.player || 0, pet: c.pet || 0, summon: c.summon || 0, allies: a };
+  }
+
+  function creditEnt(ent, amt) {
+    if (!entTick || !ent || !(amt > 0)) return;
+    var isPet = ent.uid != null && petUids && petUids[ent.uid];
+    var form = ent.form || ent.n || '召喚物';
+    var key = (isPet ? 'pet:' : 'sum:') + form;
+    var row = entTick[key] || (entTick[key] = { name: (isPet ? '夥伴·' : '召喚·') + form, kind: isPet ? 'pet' : 'summon', dmg: 0 });
+    row.dmg += amt;
+  }
+
+  function srcTickCommit() {
+    if (!src) return;
+    var row = {};
+    function put(key, name, kind, amt) {
+      if (!(amt > 0)) return;
+      row[key] = (row[key] || 0) + amt;
+      var r = src.cum[key] || (src.cum[key] = { name: name, kind: kind, dmg: 0 });
+      r.name = name;   // 傭兵改名／換人時名字跟著更新
+      r.dmg += amt;
+    }
+    var c = coreDps(), minion = 0, k;
+    if (c && srcSnap) {
+      put('player', '玩家', 'player', grow(c.player, srcSnap.player));
+      for (k in c.allies) {
+        var rec = c.allies[k]; if (!rec) continue;
+        put('ally:' + k, '傭兵·' + (rec.name || '傭兵'), 'ally', grow(rec.dmg, srcSnap.allies[k]));
+      }
+      minion = grow(c.pet, srcSnap.pet) + grow(c.summon, srcSnap.summon);
+    }
+    var entSum = 0;
+    for (k in entTick) { entSum += entTick[k].dmg; put(k, entTick[k].name, entTick[k].kind, entTick[k].dmg); }
+    put('other', '其他', 'other', minion - entSum);
+    src.window.push(row);
+    if (src.window.length > WINDOW_TICKS) src.window.shift();
+  }
+
+  // 逐實體量：包住核心「各實體攻擊各包一個仇恨快照視窗」的 threatWrap（寵物/召喚術/造屍術/精靈/骷髏/城堡護衛都走它）
+  if (typeof window.threatWrap === 'function') {
+    var _origThreatWrap = window.threatWrap;
+    window.threatWrap = function (ent, fn) {
+      if (!inTrain() || !entTick || typeof window._dpsSnap !== 'function') return _origThreatWrap.apply(this, arguments);
+      var snap = window._dpsSnap();
+      var r = _origThreatWrap.apply(this, arguments);
+      creditEnt(ent, window._dpsDealt(snap));
+      return r;
+    };
+  }
+  // 舊制單體召喚（玩家迷魅／傭兵的召喚物）走 summonTick，沒有 threatWrap → 自己包一個視窗
+  if (typeof window.summonTick === 'function') {
+    var _origSummonTick = window.summonTick;
+    window.summonTick = function (sm) {
+      if (!inTrain() || !entTick || typeof window._dpsSnap !== 'function') return _origSummonTick.apply(this, arguments);
+      var snap = window._dpsSnap();
+      var r = _origSummonTick.apply(this, arguments);
+      creditEnt(sm, window._dpsDealt(snap));
+      return r;
+    };
+  }
+  // ---- 🩹 別讓頭目的自我回血吃掉這拍的傷害：包住 processMobStatusTick ---------
+  //   核心「頭目每 5 秒恢復最大 HP 的 0.5~2.5%」對訓練怪＝一次回幾百萬（血量是天文數字）→ 直接補滿，
+  //   那一拍在此之前打進去的傷害就被抹平、收拍量不到（實測會整整少掉快兩成，且完全看不出來）。
+  //   那段回血緊接在 processMobStatusTick 之後、且條件是「curHp < hp」→ 在這裡先把已掉的血收走並補滿，
+  //   回血條件就不成立，一滴傷害都不會漏；收拍的量測再接手剩下的部分。
+  //   ⚠️ 只對木人場假怪、且只在 midDrain 存在（＝木人場的那一拍）時動作，一般地圖完全不經過。
+  if (typeof window.processMobStatusTick === 'function') {
+    var _origProcessMobStatusTick = window.processMobStatusTick;
+    window.processMobStatusTick = function (m) {
+      var r = _origProcessMobStatusTick.apply(this, arguments);
+      if (midDrain && m && m._train) {
+        var d = TRAIN_HP - m.curHp;
+        if (d > 0) { midDrain[m.uid] = (midDrain[m.uid] || 0) + d; m.curHp = TRAIN_HP; }
+      }
+      return r;
+    };
+  }
 
   // ---- 怪打不死：包住 killMob（順帶擋即死）；僅木人場假怪生效 ----------------
   var _origKillMob = window.killMob;
@@ -308,7 +513,7 @@
     refreshHud();
   }
 
-  function resetDps() { dps = { startTick: (typeof state !== 'undefined' ? state.ticks : 0), perUid: {}, window: [] }; }
+  function resetDps() { dps = { startTick: (typeof state !== 'undefined' ? state.ticks : 0), perUid: {}, window: [] }; resetSrc(); }
 
   function showBattleView() {
     var tv = document.getElementById('town-view');
@@ -323,7 +528,7 @@
     if (typeof window.applyAreaBackground === 'function') window.applyAreaBackground();   // 立即套木人場背景
     if (typeof window.renderMobs === 'function') window.renderMobs();
     if (typeof window.updateUI === 'function') window.updateUI();
-    var mbtn = document.querySelector('#m-nav [data-nav="battle"]'); if (mbtn) mbtn.click();   // 📱 手機:從設定進木人場時順便切到「戰鬥」分頁(桌機無此鈕→略過),不用再手動切、較順暢
+    var mbtn = document.querySelector('#m-nav [data-view="center"]'); if (mbtn) mbtn.click();   // 📱 手機:從設定進木人場時順便切到「戰鬥」分頁(桌機無此鈕→略過),不用再手動切、較順暢。鈕的屬性是 data-view、戰鬥欄的值是 center(見 afk-mobile setView)
   }
 
   // ---- DPS HUD（浮動面板） ------------------------------------------------
@@ -337,6 +542,10 @@
         '<button id="m-train-hud-min" type="button" title="收合/展開">－</button></div>' +
         '<div id="m-train-hud-body">' +
         '<div id="m-train-total" class="m-train-total"></div>' +
+        '<div class="m-train-tabs">' +
+        '<button id="m-train-tab-src" type="button" class="m-train-tab" data-view="src">👥 來源</button>' +
+        '<button id="m-train-tab-mob" type="button" class="m-train-tab" data-view="mob">🎯 目標</button>' +
+        '</div>' +
         '<div id="m-train-list" class="m-train-list"></div>' +
         '<div class="m-train-hud-btns">' +
         '<button id="m-train-pick" type="button" class="m-train-btn">⚙ 選怪</button>' +
@@ -344,6 +553,9 @@
         '<button id="m-train-exit" type="button" class="m-train-btn m-train-btn-red">✖ 離開</button>' +
         '</div></div>';
       document.body.appendChild(hud);
+      hud.querySelectorAll('.m-train-tab').forEach(function (b) {
+        b.addEventListener('click', function () { hudView = b.getAttribute('data-view'); saveHudView(); refreshHud(); });
+      });
       document.getElementById('m-train-pick').addEventListener('click', openPicker);
       document.getElementById('m-train-recalc').addEventListener('click', recalc);
       document.getElementById('m-train-exit').addEventListener('click', exitTraining);
@@ -367,9 +579,11 @@
   function closeHud() { var hud = document.getElementById('m-train-hud'); if (hud) hud.style.display = 'none'; }
 
   // 手機(afk-mobile)非戰鬥視圖（背包/設定）時隱藏 HUD，避免擋住換裝；桌機多欄同畫面故不隱藏
+  // ⚠ afk-mobile 的檢視 class 是 mview-left/center/right，「戰鬥」＝mview-center（沒有 mview-battle
+  //   這個名字——寫錯的話這裡恆為 true、HUD 在手機上永遠不會出現，畫面上完全看不出是誰把它藏起來）
   function isMobileNonBattle() {
     var b = document.body;
-    return b.classList.contains('m-mobile') && !b.classList.contains('mview-battle');
+    return b.classList.contains('m-mobile') && !b.classList.contains('mview-center');
   }
   function updateHudVisibility() {
     var hud = document.getElementById('m-train-hud');
@@ -405,13 +619,15 @@
     head.addEventListener('pointercancel', end);
   }
   function saveHudPos(hud) {
-    try { localStorage.setItem(POS_KEY, JSON.stringify({ left: parseInt(hud.style.left, 10), top: parseInt(hud.style.top, 10), w: parseInt(hud.style.width, 10) })); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ left: parseInt(hud.style.left, 10), top: parseInt(hud.style.top, 10) })); } catch (e) { /* ignore */ }
   }
+  function saveHudView() { try { localStorage.setItem(VIEW_KEY, hudView); } catch (e) { /* ignore */ } }
+  function loadHudView() { try { var v = localStorage.getItem(VIEW_KEY); if (v === 'src' || v === 'mob') hudView = v; } catch (e) { /* ignore */ } }
   function restoreHudPos(hud) {
     try {
       var raw = localStorage.getItem(POS_KEY); if (!raw) return;
       var p = JSON.parse(raw); if (!p || typeof p.left !== 'number') return;
-      var w = p.w || hud.offsetWidth || 212;
+      var w = HUD_W;   // 寬度一律吃 CSS 常數（長條圖要固定欄寬才對得齊），只記住位置
       hud.style.width = w + 'px';
       hud.style.left = Math.max(0, Math.min(window.innerWidth - w, p.left)) + 'px';
       hud.style.top = Math.max(0, Math.min(window.innerHeight - 60, p.top)) + 'px';
@@ -446,19 +662,50 @@
       '<div class="m-train-total-inst">即時 <b>' + fmt(instTotal) + '</b> <span>/秒</span></div>' +
       '<div class="m-train-total-avg">平均 ' + fmt(avgTotal) + ' /秒　·　' + elapsedSec.toFixed(0) + ' 秒</div>';
 
-    // 每隻 DPS（依選怪格 #1~#5 順序列 = 畫面左→右順序，與 spawnTrainingMobs 的擺位一致、不跳）
-    var rows = '';
-    var list = [];
-    for (var i = 0; i < mapState.mobs.length; i++) { if (mapState.mobs[i] && mapState.mobs[i]._train) list.push(mapState.mobs[i]); }
+    var tabs = document.querySelectorAll('.m-train-tab');
+    for (var t = 0; t < tabs.length; t++) tabs[t].classList.toggle('on', tabs[t].getAttribute('data-view') === hudView);
+    listEl.innerHTML = (hudView === 'mob') ? mobRowsHtml(elapsedSec) : srcRowsHtml(elapsedSec);
+  }
+
+  // 🎯 目標：每隻訓練怪身上的 DPS（依選怪格 #1~#5 順序列 = 畫面左→右順序，與 spawnTrainingMobs 的擺位一致、不跳）
+  function mobRowsHtml(elapsedSec) {
+    var rows = '', list = [], i;
+    for (i = 0; i < mapState.mobs.length; i++) { if (mapState.mobs[i] && mapState.mobs[i]._train) list.push(mapState.mobs[i]); }
     list.sort(function (a, b) { return (a._slotLabel || 0) - (b._slotLabel || 0); });
-    for (var j = 0; j < list.length; j++) {
-      var m = list[j];
-      var d = dps.perUid[m.uid] || 0;
-      var avg = elapsedSec > 0 ? d / elapsedSec : 0;
+    for (i = 0; i < list.length; i++) {
+      var m = list[i];
+      var avg = elapsedSec > 0 ? (dps.perUid[m.uid] || 0) / elapsedSec : 0;
       rows += '<div class="m-train-row"><span class="m-train-row-name">' + esc(m.n) + ' <span class="m-train-lv">Lv.' + (m.lv || 0) + '</span></span>' +
         '<span class="m-train-row-dps">' + fmt(avg) + '</span></div>';
     }
-    listEl.innerHTML = rows || '<div class="m-train-empty">沒有怪</div>';
+    return rows || '<div class="m-train-empty">沒有怪</div>';
+  }
+
+  // 👥 來源：長條圖＝近 10 秒即時 DPS（跟上方大數字同一個口徑，各列相加≒總量）；滑過/長按看平均
+  function srcRowsHtml(elapsedSec) {
+    if (!src) return '<div class="m-train-empty">尚無輸出</div>';
+    var win = {}, i, k;
+    for (i = 0; i < src.window.length; i++) { var w = src.window[i]; for (k in w) win[k] = (win[k] || 0) + w[k]; }
+    var winSec = src.window.length * tickMs() / 1000;
+    var rows = [];
+    for (k in src.cum) {
+      var r = src.cum[k];
+      rows.push({ name: r.name, kind: r.kind, inst: winSec > 0 ? (win[k] || 0) / winSec : 0, avg: elapsedSec > 0 ? r.dmg / elapsedSec : 0 });
+    }
+    if (!rows.length) return '<div class="m-train-empty">尚無輸出</div>';
+    rows.sort(function (a, b) { return (SRC_ORD[a.kind] - SRC_ORD[b.kind]) || (b.avg - a.avg); });
+    var max = 1;
+    for (i = 0; i < rows.length; i++) max = Math.max(max, rows[i].inst);
+    var html = '';
+    for (i = 0; i < rows.length; i++) {
+      var row = rows[i], c = SRC_COLOR[row.kind] || SRC_COLOR.other;
+      var pct = Math.max(2, Math.round(row.inst / max * 100));
+      html += '<div class="m-train-bar" title="' + esc(row.name) + '：即時 ' + fmt(row.inst) + ' /秒・平均 ' + fmt(row.avg) + ' /秒">' +
+        '<span class="m-train-bar-n">' + esc(row.name) + '</span>' +
+        '<span class="m-train-bar-t"><i class="m-train-bar-f" style="width:' + pct + '%;background:' + c + ';"></i></span>' +
+        '<span class="m-train-bar-v" style="color:' + c + ';">' + fmt(row.inst) + '</span></div>';
+    }
+    return html;
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -623,7 +870,7 @@
     var st = document.createElement('style');
     st.id = 'm-train-css';
     st.textContent = [
-      '#m-train-hud{position:fixed;bottom:12px;left:10px;z-index:9000;width:212px;background:rgba(15,23,42,.96);border:1px solid #475569;border-radius:10px;color:#e2e8f0;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.5);}',
+      '#m-train-hud{position:fixed;bottom:12px;left:10px;z-index:9000;width:' + HUD_W + 'px;background:rgba(15,23,42,.96);border:1px solid #475569;border-radius:10px;color:#e2e8f0;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.5);}',
       '.m-train-hud-head{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;font-weight:bold;color:#fbbf24;border-bottom:1px solid #334155;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}',   /* 📱 touch-action:none → 拖曳把手不被瀏覽器當捲動手勢搶走(否則手機拖曳會中途 pointercancel、卡頓);user-select:none → 拖曳不選到標題字 */
       '.m-train-hud-head button{background:none;border:none;color:#94a3b8;font-size:16px;line-height:1;cursor:pointer;padding:0 4px;}',
       '#m-train-hud-body{padding:8px 10px;}',
@@ -635,7 +882,15 @@
       '.m-train-mode-row{display:flex;align-items:center;gap:8px;padding:0 14px 10px;font-size:13px;color:#cbd5e1;}',
       '.m-train-mode-row span{flex:none;}',
       '.m-train-mode-row select{flex:1;min-width:0;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#e2e8f0;padding:6px 4px;font-size:13px;outline:none;}',
-      '.m-train-list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;max-height:170px;overflow-y:auto;}',
+      '.m-train-tabs{display:flex;gap:4px;margin-bottom:6px;}',
+      '.m-train-tab{flex:1;cursor:pointer;border-radius:6px;padding:4px 2px;font-size:11px;background:#1e293b;border:1px solid #334155;color:#94a3b8;white-space:nowrap;}',
+      '.m-train-tab.on{background:#334155;border-color:#64748b;color:#e2e8f0;font-weight:bold;}',
+      '.m-train-list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;max-height:186px;overflow-y:auto;}',
+      '.m-train-bar{display:flex;align-items:center;gap:5px;}',
+      '.m-train-bar-n{flex:none;width:72px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.m-train-bar-t{flex:1;min-width:0;height:10px;background:#0b1220;border-radius:5px;overflow:hidden;}',
+      '.m-train-bar-f{display:block;height:100%;transition:width .3s;}',
+      '.m-train-bar-v{flex:none;width:54px;text-align:right;font-size:11px;font-weight:bold;}',
       '.m-train-row{display:flex;justify-content:space-between;align-items:center;gap:6px;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 7px;}',
       '.m-train-row-name{color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.m-train-lv{color:#64748b;font-size:11px;}',
@@ -666,6 +921,7 @@
   // ---- 初始化 ------------------------------------------------------------
   function init() {
     if (!ready()) { console.warn('[AFK-training] 缺必要全域，停用'); return; }
+    loadHudView();
     buildMobOpts();
     injectCss();
     // 核心 hook（tick/killMob/killPlayer 的包裝）在載入時即已安裝 → 此處即可視為就緒
