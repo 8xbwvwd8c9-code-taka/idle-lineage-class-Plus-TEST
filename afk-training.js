@@ -6,7 +6,7 @@
  *  - 可選「世界模式」（一般／席琳的世界／瘋狂的席琳世界）：重用原作 applySherineBuff 對訓練怪
  *    套用席琳強度（AC/MR/命中/減傷＋怪傷×2/×3 旗標），數值永遠與遊戲一致、作者改倍率自動跟上。
  *  - 怪打不死、玩家/傭兵/寵物/召喚物也都打不死，跑「真實戰鬥」量輸出。
- *  - 旁邊 HUD 兩個檢視：「👥 來源」＝玩家／每個傭兵／每種寵物·召喚物 各自的 DPS 長條圖，
+ *  - 旁邊 HUD 兩個檢視：「👥 來源」＝玩家／每個傭兵／每隻寵物／每種召喚物 各自的 DPS 長條圖，
  *    「🎯 目標」＝打在每隻訓練怪身上的 DPS；上方永遠是總 DPS（平均與近 10 秒即時）。
  *  - 「重新計算」＝重算角色數值(calcStats)＋重置怪＋DPS 歸零。
  *
@@ -50,10 +50,11 @@
   var TRAIN_HP = 1e9;
   var DEFAULT_MOB = 'orc';           // 妖魔
   var WINDOW_TICKS = 100;            // 即時 DPS 視窗 = 100 tick = 10 秒
-  var HUD_W = 244;                   // HUD 寬度（要塞得下長條圖的 名稱／長條／數字 三欄）
+  var HUD_W = 268;                   // HUD 寬度（要塞得下長條圖的 名稱／長條／數字 三欄;名稱欄要放得下「夥伴·小黑 Lv.30」這種長度）
   var SLOTS_KEY = 'afk_training_slots';
   var POS_KEY = 'afk_training_hudpos';   // HUD 拖曳後的位置記憶
   var MODE_KEY = 'afk_training_mode';    // 世界模式記憶（各存檔位各一組，同 slots）
+  var NOMP_KEY = 'afk_training_nomp';    // 「MP 不消耗」記憶（同上）
   var VIEW_KEY = 'afk_training_hudview'; // HUD 檢視分頁記憶（來源／目標）
   // 來源分類的排序與顏色：顏色沿用原版「本圖效率統計」那張圖，兩邊看起來才是同一套東西
   var SRC_ORD = { player: 0, ally: 1, pet: 2, summon: 3, other: 4 };
@@ -61,6 +62,12 @@
 
   var slots = [DEFAULT_MOB, null, null, null, null];   // 各格選的怪 id  （無 active 旗標：是否在木人場一律以 inTrain()＝map===TRAIN_MAP 判斷）
   var worldMode = 'normal';              // 'normal' | 'sherine' | 'mad'（席琳／瘋狂席琳強度）
+  // MP 不消耗（玩家／傭兵／寵物一起，三者一致）。預設關＝測到的是真實消耗下的輸出；
+  // 勾起來才是「無限藍」的爆發上限，適合純比裝備／比寵物。
+  // ⚠ 核心沒有「擊殺回魔」這回事（查過 killMob：跟擊殺有關的回復只有遺物頭盔的 killHealHp，回 HP 不回 MP）。
+  //   野外撐得住是因為「怪死掉到下一隻出現之間沒目標＝不放招，自然回魔照跑」＋升級補滿；
+  //   木人場一直有目標所以淨消耗快得多。故補 MP 只能是明確的選項，不能假裝在模擬野外。
+  var noMp = false;
   var backup = null;                 // 進場前的狀態（離場還原用）
   var dps = null;                    // { startTick, perUid:{uid:累計傷害}, window:[每tick總傷害] }
   var src = null;                    // 來源拆帳 { cum:{key:{name,kind,dmg}}, window:[{key:每tick傷害}] }
@@ -134,8 +141,9 @@
     // 玩家打不死：收拍補滿（被打才會觸發反擊/居合，故不在開拍前補）
     if (player.hp < player.mhp) player.hp = player.mhp;
     player.dead = false;
+    if (noMp && player.mp < player.mmp) player.mp = player.mmp;   // 「MP 不消耗」勾了才補（玩家/傭兵/寵物同一個開關，見 noMp）
     // 🤝 傭兵收拍補滿（同玩家）：curHp/MP 回實際上限供顯示；清掉萬一殘留的倒地旗標與復活冷卻
-    for (i = 0; i < allies.length; i++) { var _a = allies[i]; if (!_a) continue; _a.curHp = _a.mhp; if (_a.mp < _a.mmp) _a.mp = _a.mmp; if (_a._downed) { _a._downed = false; _a._reviveCd = 0; } }
+    for (i = 0; i < allies.length; i++) { var _a = allies[i]; if (!_a) continue; _a.curHp = _a.mhp; if (noMp && _a.mp < _a.mmp) _a.mp = _a.mmp; if (_a._downed) { _a._downed = false; _a._reviveCd = 0; } }
     topUpMinions();
     srcTickCommit();
     if ((++hudTickAcc % 3) === 0) refreshHud();   // 節流：每 3 拍刷一次 HUD
@@ -151,6 +159,7 @@
   //   ⚠️ 補的是「自己的上限」還有另一個好處：寵物 HP 會被寫進共用桶(localStorage)、召喚物 HP 在
   //      玩家存檔裡，補到上限不管什麼時候被存到都無害。
   function petMax(p) { return (typeof window.petMhpEff === 'function') ? window.petMhpEff(p) : (p.mhp || 1); }
+  function petMmp(p) { return (p.mmp || 0) + (((typeof window.petDerive === 'function' && window.petDerive(p)) || {}).mmpBonus || 0); }   // 含防具「精神」加成的有效 MP 上限（同 petsTick）
   function ownMax(e) { return e.mhp || 0; }
   // [核心函式名, 隊員在第幾個參數, 血量欄位, 上限算法]——怪物打到隊員的所有入口（含 DoT 與反射壁）
   var HP_GUARDS = [
@@ -212,10 +221,7 @@
       if (p._downed) { p._downed = false; p._reviveCd = 0; p._animAct = null; p._statuses = window.newMobStatus(); }
       mx = petMax(p);
       if (p.hp < mx) p.hp = mx;
-      // MP 也補滿：比照傭兵。寵物 MP 池小、自然恢復每 5 秒才一次，不補的話量到的是「MP 見底後
-      // 只剩普攻」的輸出，不是這隻寵物真正的 DPS。
-      var mmp = (p.mmp || 0) + (((typeof window.petDerive === 'function' && window.petDerive(p)) || {}).mmpBonus || 0);
-      if (p.mp < mmp) p.mp = mmp;
+      if (noMp && p.mp < petMmp(p)) p.mp = petMmp(p);   // 「MP 不消耗」勾了才補（同玩家/傭兵）
     }
     eachSummon(function (s) {
       if (s._downed) { s._downed = false; s._diedAt = 0; s._animAct = null; }
@@ -244,26 +250,40 @@
     srcSnap = { player: c.player || 0, pet: c.pet || 0, summon: c.summon || 0, allies: a };
   }
 
+  // 寵物**逐隻**分開（最多 4 隻、各自等級與裝備不同 → 木人場就是拿來看「哪隻打比較痛」的），
+  // 召喚物則依名字併成**每種**（同種可能六七隻，一隻一列會把清單灌爆又無從分辨）。
+  function petRowName(p) { return '夥伴·' + (p.name || p.form || '寵物') + ' Lv.' + (p.lv || 1); }
   function creditEnt(ent, amt) {
     if (!entTick || !ent || !(amt > 0)) return;
-    var isPet = ent.uid != null && petUids && petUids[ent.uid];
-    var form = ent.form || ent.n || '召喚物';
-    var key = (isPet ? 'pet:' : 'sum:') + form;
-    var row = entTick[key] || (entTick[key] = { name: (isPet ? '夥伴·' : '召喚·') + form, kind: isPet ? 'pet' : 'summon', dmg: 0 });
+    var key, row;
+    if (ent.uid != null && petUids && petUids[ent.uid]) {
+      key = 'pet:' + ent.uid;
+      row = entTick[key] || (entTick[key] = { name: petRowName(ent), kind: 'pet', dmg: 0 });
+    } else {
+      var form = ent.form || ent.n || '召喚物';
+      key = 'sum:' + form;
+      row = entTick[key] || (entTick[key] = { name: '召喚·' + form, kind: 'summon', dmg: 0 });
+    }
     row.dmg += amt;
   }
 
   function srcTickCommit() {
     if (!src) return;
     var row = {};
+    function seat(key, name, kind) {   // 佔一列（還沒有輸出也先列出來）
+      var r = src.cum[key] || (src.cum[key] = { name: name, kind: kind, dmg: 0 });
+      r.name = name;   // 傭兵改名／換人、寵物升級時名字跟著更新
+      return r;
+    }
     function put(key, name, kind, amt) {
       if (!(amt > 0)) return;
       row[key] = (row[key] || 0) + amt;
-      var r = src.cum[key] || (src.cum[key] = { name: name, kind: kind, dmg: 0 });
-      r.name = name;   // 傭兵改名／換人時名字跟著更新
-      r.dmg += amt;
+      seat(key, name, kind).dmg += amt;
     }
-    var c = coreDps(), minion = 0, k;
+    var c = coreDps(), minion = 0, k, i;
+    // 出戰的寵物一律先佔一列：沒打出傷害的那隻也要看得到（0 也是資訊），不能整列消失
+    var outs = petsOut();
+    for (i = 0; i < outs.length; i++) { if (outs[i] && outs[i].uid != null) seat('pet:' + outs[i].uid, petRowName(outs[i]), 'pet'); }
     if (c && srcSnap) {
       put('player', '玩家', 'player', grow(c.player, srcSnap.player));
       for (k in c.allies) {
@@ -465,7 +485,7 @@
   function enterTraining() {
     if (!player || !player.cls) { alert('請先載入角色，再進木人場。'); return; }
     // 防重入：人已在木人場地圖上 → 只重擺怪+DPS歸零，絕不重抓 backup（避免把木人場狀態記成「進場前」）
-    if (inTrain()) { spawnTrainingMobs(); resetDps(); closePicker(); openHud(); refreshHud(); return; }
+    if (inTrain()) { refillTeam(); spawnTrainingMobs(); resetDps(); closePicker(); openHud(); refreshHud(); return; }
     // 進場前：把整個 mapState 全鍵快照存起來（離場還原用，確保離開時換回真實狀態）
     var msSnap = {}; for (var bk in mapState) msSnap[bk] = mapState[bk];
     backup = { ms: msSnap };
@@ -478,6 +498,7 @@
     mapState.targetIdx = 0;
     spawnTrainingMobs();
     if (typeof window.calcStats === 'function') window.calcStats();
+    refillTeam();   // 進場＝新的一輪，滿血滿魔起跑（省掉「回城補滿再進來」那趟）
     resetDps();
     showBattleView();
     if (typeof window.logSys === 'function') window.logSys('<span class="text-amber-300 font-bold">--- 🥊 木人場（怪打不死，量 DPS）---</span>');
@@ -508,9 +529,21 @@
   function recalc() {
     if (!inTrain()) return;
     if (typeof window.calcStats === 'function') window.calcStats();
+    refillTeam();
     spawnTrainingMobs();
     resetDps();
     refreshHud();
+  }
+
+  // 開新一輪測試前把全隊 HP/MP 補滿＝等同「回城補滿再進來」，但不用真的跑一趟。
+  // 這不會扭曲數字：測的仍是「滿藍起跑、之後真實消耗」那條曲線，只是省掉來回。
+  function refillTeam() {
+    var i;
+    if (player) { player.hp = player.mhp; if (player.mp < player.mmp) player.mp = player.mmp; }
+    var allies = (player && player.allies) || [];
+    for (i = 0; i < allies.length; i++) { var a = allies[i]; if (!a) continue; a.curHp = a.mhp; if (a.mp < a.mmp) a.mp = a.mmp; }
+    var outs = petsOut();
+    for (i = 0; i < outs.length; i++) { var p = outs[i]; if (!p) continue; p.hp = petMax(p); if (p.mp < petMmp(p)) p.mp = petMmp(p); }
   }
 
   function resetDps() { dps = { startTick: (typeof state !== 'undefined' ? state.ticks : 0), perUid: {}, window: [] }; resetSrc(); }
@@ -549,7 +582,7 @@
         '<div id="m-train-list" class="m-train-list"></div>' +
         '<div class="m-train-hud-btns">' +
         '<button id="m-train-pick" type="button" class="m-train-btn">⚙ 選怪</button>' +
-        '<button id="m-train-recalc" type="button" class="m-train-btn m-train-btn-amber">🔄 重新計算</button>' +
+        '<button id="m-train-recalc" type="button" class="m-train-btn m-train-btn-amber" title="重算角色數值、全隊補滿 HP/MP、DPS 歸零＝乾淨地重測一輪（不用回城）">🔄 重新計算</button>' +
         '<button id="m-train-exit" type="button" class="m-train-btn m-train-btn-red">✖ 離開</button>' +
         '</div></div>';
       document.body.appendChild(hud);
@@ -658,6 +691,7 @@
 
     var modeTag = (worldMode === 'mad') ? '<div class="m-train-mode-tag m-train-mode-mad">🔥 瘋狂的席琳世界</div>'
       : (worldMode === 'sherine') ? '<div class="m-train-mode-tag">🔮 席琳的世界</div>' : '';
+    if (noMp) modeTag += '<div class="m-train-mode-tag m-train-mode-nomp">💧 MP 不消耗</div>';   // 數字是「無限藍」下的，要標出來免得跟真實消耗的紀錄搞混
     totalEl.innerHTML = modeTag +
       '<div class="m-train-total-inst">即時 <b>' + fmt(instTotal) + '</b> <span>/秒</span></div>' +
       '<div class="m-train-total-avg">平均 ' + fmt(avgTotal) + ' /秒　·　' + elapsedSec.toFixed(0) + ' 秒</div>';
@@ -745,6 +779,8 @@
         '<option value="sherine">🔮 席琳的世界</option>' +
         '<option value="mad">🔥 瘋狂的席琳世界</option>' +
         '</select></div>' +
+        '<label class="m-train-opt-row" title="勾起來：玩家／傭兵／寵物的 MP 都不會見底，量的是無限藍的爆發上限。不勾＝真實消耗（想重來一輪按「重新計算」就會補滿）。">' +
+        '<input type="checkbox" id="m-train-nomp"><span>MP 不消耗</span></label>' +
         '<div id="m-train-rows"></div>' +
         '<div class="m-train-modal-btns">' +
         '<button id="m-train-go" type="button" class="m-train-btn m-train-btn-amber">進入木人場</button>' +
@@ -759,6 +795,8 @@
         if (!slots.some(Boolean)) { alert('至少選 1 隻怪。'); return; }
         var msel = document.getElementById('m-train-mode');
         if (msel) worldMode = (msel.value === 'sherine' || msel.value === 'mad') ? msel.value : 'normal';
+        var nchk = document.getElementById('m-train-nomp');
+        if (nchk) noMp = !!nchk.checked;
         saveSlots();
         enterTraining();
       });
@@ -766,6 +804,8 @@
     renderPickerRows();
     var msel0 = document.getElementById('m-train-mode');
     if (msel0) msel0.value = worldMode;
+    var nchk0 = document.getElementById('m-train-nomp');
+    if (nchk0) nchk0.checked = noMp;
     document.getElementById('m-train-go').textContent = inTrain() ? '套用變更' : '進入木人場';
     modal.style.display = 'flex';
   }
@@ -823,6 +863,7 @@
   // 各角色（各存檔位）各記一組：key 帶 currentSlot。currentSlot 是 index.html 的 let 全域 → 用裸名
   function slotsKey() { return SLOTS_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
   function modeKey() { return MODE_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
+  function nompKey() { return NOMP_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
   function loadSlots() {
     slots = [DEFAULT_MOB, null, null, null, null];
     try {
@@ -832,8 +873,10 @@
     if (!slots.some(Boolean)) slots = [DEFAULT_MOB, null, null, null, null];
     worldMode = 'normal';
     try { var m = localStorage.getItem(modeKey()); if (m === 'sherine' || m === 'mad') worldMode = m; } catch (e) { /* ignore */ }
+    noMp = false;
+    try { noMp = localStorage.getItem(nompKey()) === '1'; } catch (e) { /* ignore */ }
   }
-  function saveSlots() { try { localStorage.setItem(slotsKey(), JSON.stringify(slots)); localStorage.setItem(modeKey(), worldMode); } catch (e) { /* ignore */ } }
+  function saveSlots() { try { localStorage.setItem(slotsKey(), JSON.stringify(slots)); localStorage.setItem(modeKey(), worldMode); localStorage.setItem(nompKey(), noMp ? '1' : '0'); } catch (e) { /* ignore */ } }
 
   // ---- 入口：自動化面板「🔌 外掛」列加一顆鈕（沿用 afk-dex 的共用列 id；木人場自成一列、不擠進查詢鈕排） ----
   function injectAutoNav() {
@@ -879,15 +922,18 @@
       '.m-train-total-avg{font-size:11px;color:#94a3b8;margin-top:2px;}',
       '.m-train-mode-tag{font-size:12px;font-weight:bold;color:#a78bfa;margin-bottom:2px;}',
       '.m-train-mode-mad{color:#f87171;}',
+      '.m-train-mode-nomp{color:#7dd3fc;}',
       '.m-train-mode-row{display:flex;align-items:center;gap:8px;padding:0 14px 10px;font-size:13px;color:#cbd5e1;}',
       '.m-train-mode-row span{flex:none;}',
       '.m-train-mode-row select{flex:1;min-width:0;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#e2e8f0;padding:6px 4px;font-size:13px;outline:none;}',
+      '.m-train-opt-row{display:flex;align-items:center;gap:8px;padding:0 14px 10px;font-size:13px;color:#cbd5e1;cursor:pointer;user-select:none;}',
+      '.m-train-opt-row input{width:16px;height:16px;accent-color:#d97706;flex:none;}',
       '.m-train-tabs{display:flex;gap:4px;margin-bottom:6px;}',
       '.m-train-tab{flex:1;cursor:pointer;border-radius:6px;padding:4px 2px;font-size:11px;background:#1e293b;border:1px solid #334155;color:#94a3b8;white-space:nowrap;}',
       '.m-train-tab.on{background:#334155;border-color:#64748b;color:#e2e8f0;font-weight:bold;}',
       '.m-train-list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;max-height:186px;overflow-y:auto;}',
       '.m-train-bar{display:flex;align-items:center;gap:5px;}',
-      '.m-train-bar-n{flex:none;width:72px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.m-train-bar-n{flex:none;width:96px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.m-train-bar-t{flex:1;min-width:0;height:10px;background:#0b1220;border-radius:5px;overflow:hidden;}',
       '.m-train-bar-f{display:block;height:100%;transition:width .3s;}',
       '.m-train-bar-v{flex:none;width:54px;text-align:right;font-size:11px;font-weight:bold;}',
