@@ -333,6 +333,14 @@
     //   一格一個存檔位（格數走 SAVE_SLOT_MAX，不要自己寫死）；有角色＝名稱（未命名顯示職業）＋切換鈕，
     //   空的＝灰色「（存檔 N）」不給鈕；目前這隻標「目前」。名稱過長由 CSS 省略號處理。
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    // 離線結算/補跑進行中＝不可換角：那兩支迴圈都是非同步的（做一段就讓出主執行緒），中途把 currentSlot／
+    //   player 換掉，剩下的 tick 與錨點推進就會算到新角色頭上（實測會把上一隻的結算進度寫進新角色的
+    //   afk_ts_<slot>）。結算幾秒就結束，等它跑完再換即可；玩家也可用結算畫面的「長按放棄」提早結束。
+    function settling() {
+        try { if (window.__afk && typeof __afk.busy === 'function' && __afk.busy()) return true; } catch (e) {}
+        try { if (typeof catchupActive === 'function' && catchupActive()) return true; } catch (e) {}
+        return false;
+    }
     // 上游選角畫面翻得到的格數：2 頁 × 每頁 4 格，兩個數字都寫死在核心（js/13 的 `page === 2` 與
     //   `_loadPage * 4 + 1`），核心沒有對應常數可讀，只能在這裡照抄一份。
     var UPSTREAM_SLOT_PAGES = 2, UPSTREAM_SLOTS_PER_PAGE = 4;
@@ -352,6 +360,8 @@
             return;
         }
         var cur = (typeof currentSlot !== 'undefined') ? String(currentSlot) : '', html = '', n, sum, nm;
+        var busy = settling();   // 結算中：不給切換鈕（按了也不會動＝當作壞掉），改在標題講原因
+        if (t) t.textContent = busy ? '切換角色（離線結算中，結束後才能切換）' : '切換角色';
         for (n = 1; n <= slotMax(); n++) {
             sum = null;
             try { sum = slotSummary(n); } catch (e) { sum = null; }
@@ -359,7 +369,7 @@
             nm = esc(sum.name || sum.cls || ('存檔 ' + n));
             html += '<div class="m-logout-slot"><span class="m-logout-slot-n" title="' + nm + '">' + nm + '</span>' +
                 (String(n) === cur ? '<span class="m-logout-slot-cur">目前</span>'
-                    : '<button type="button" class="m-logout-slot-go" data-slot="' + n + '">切換</button>') + '</div>';
+                    : (busy ? '' : '<button type="button" class="m-logout-slot-go" data-slot="' + n + '">切換</button>')) + '</div>';
         }
         box.innerHTML = html;
         box.querySelectorAll('.m-logout-slot-go').forEach(function (b) {
@@ -370,8 +380,8 @@
     // 換角＝就地「存檔→蓋離線錨點→換 currentSlot→loadGame()」，跟首頁選角按「進入遊戲」
     // （核心 loadEnterSelected）走的是同一條路，中間不重整。
     //   核心對重入是安全的：startGameTimers() 先清掉舊計時器再註冊、loadGame 開頭會把上一角色的寵物進度
-    //   flush 進共用桶。實測連換 30 次：JS heap 24.8→24.8MB、活著的 interval 恆為 27、tick 速率不變；
-    //   每次新增的 listener 都掛在會被重建的 DOM（城鎮 NPC 圖／npclist 列）上，隨節點一起回收。
+    //   flush 進共用桶。實測連換 24 次（每次都跑一輪離線結算）：JS heap 從 10MB 爬到約 21.5MB 後打平、
+    //   不再成長，活著的 interval 恆為 27，tick 速率全程 29~31/3s（＝不是漏，是兩隻角色與各種快取的穩態）。
     //   ⚠ 舊版走「sessionStorage 記一格 → location.reload → 重整後計時器接手載入」，重整途中任何一環
     //   （鍵被別人消掉、那格當下讀不到摘要）都只會安靜地停在首頁，玩家看到的就是「按了只是回首頁」。
     function switchToSlot(n) {
@@ -379,12 +389,21 @@
         var ok = false;
         try { ok = (typeof slotSummary === 'function') && !!slotSummary(n); } catch (e) { ok = false; }
         if (!ok) { renderLogoutRoster(); return; }   // 那格已沒角色（別的分頁刪掉了）→ 重畫清單，不硬闖
+        // 🚨 沒載入角色時絕不往下走：下面每一步都會寫存檔，在「未載入/currentSlot 不是預期那格」跑等於蓋掉別人的檔
+        if (typeof player === 'undefined' || !player || !player.cls) return;
+        if (settling()) { renderLogoutRoster(); return; }   // 離線結算中不給換（原因見 settling()）
         var m = document.getElementById('m-logout-modal'); if (m) m.classList.remove('open');
-        showLogoutOverlay('已自動存檔，正在切換角色…');   // loadGame 是同步的、會卡住一下 → 先讓遮罩畫出來
+        showLogoutOverlay('已自動存檔，正在切換角色…');   // 下面是同步的、會卡住一下 → 先讓遮罩畫出來
         requestAnimationFrame(function () {
             requestAnimationFrame(function () {
-                try { if (typeof window.saveGame === 'function') window.saveGame(); } catch (e) {}
-                try { if (window.__afk && window.__afk.stamp) window.__afk.stamp(); } catch (e) {}   // 蓋錨點要在換 currentSlot 之前：離線從現在起算的是「要離開的這隻」
+                // ⚠ 蓋離線錨點必須排在最前面：stamp 看到 game-screen 被藏起來就會放棄（returnToCharacterSelect 會藏），
+                //   而 currentSlot 此時還是舊的＝錨點正好記在「要離開的這隻」身上。
+                try { if (window.__afk && window.__afk.stamp) window.__afk.stamp(); } catch (e) {}
+                // 走核心自己的「離開角色」流程：最終存檔（帶 player.cls 守衛）＋停計時器＋取消進行中的離線補跑
+                //   ＋清 VFX ＋釋放多分頁角色佔用。自己土法只呼叫 saveGame 的話，上面這些殘留會跟著帶進下一隻。
+                var left = false;
+                try { left = (typeof returnToCharacterSelect === 'function') && returnToCharacterSelect(); } catch (e) {}
+                if (!left) { try { if (typeof window.saveGame === 'function') window.saveGame(); } catch (e) {} }   // 後備：上游拿掉那支時至少要存到檔
                 try { currentSlot = n; window.loadGame(); } catch (e) { try { console.warn('[AFK-mobile] 換角載入失敗', e); } catch (e2) {} }
                 hideLogoutOverlay();
             });
