@@ -819,7 +819,7 @@
             html += '<button type="button" class="dograce-chip' + (_chipIdx === k ? ' is-on' : '') + '" data-chip="' + k + '">' + c.label + '</button>';
         });
         html += (cur === CUR_DIA ? '顆' : '') + '</div>';
-        html += '<div class="dograce-prev">上一場冠軍：<b style="color:' + DOGS[prev.winner].color + '">' + DOGS[prev.winner].name + '</b>　·　押誰第一，中了自動入袋</div>';
+        html += '<div class="dograce-prev">上一場冠軍：' + dogTag(prev.winner) + '</div>';
         html += '<div class="dograce-doglist">';
         for (var i = 0; i < N_DOGS; i++) {
             var d = race.dogs[i], rf = recentForm(i, ph.raceId, 8), mine = side.byDog[i] || 0;
@@ -827,7 +827,7 @@
             html += '<div class="dograce-dogcard">' +
                 '<span class="dograce-num" style="background:' + d.color + '">' + (i + 1) + '</span>' +
                 '<span class="dograce-name">' + d.name + '<small>' + d.stateEmoji + d.state + '　近' + rf.total + '場' + rf.w + '勝' +
-                (dry >= DROUGHT_MIN_SHOW ? '　<span class="dograce-dry">⚡ 連' + dry + '場沒贏</span>' : '') +
+                (dry >= DROUGHT_MIN_SHOW ? '　<span class="dograce-dry">⚡ 連' + dry + (dry >= DROUGHT_LOOKBACK ? '場以上' : '場') + '沒贏</span>' : '') +
                 (mine ? '　<span class="dograce-mine">已押 ' + fmtShort(cur, mine) + '</span>' : '') + '</small></span>' +
                 '<span class="dograce-odds">×' + d.odds.toFixed(1) + '<small>贏 ' + fmtShort(cur, payoutOf(cur, chip, d.odds)) + '</small></span>' +
                 '<button type="button" class="dograce-betbtn" data-bet="' + i + '">押 ' + fmtShort(cur, chip) + '</button>' +
