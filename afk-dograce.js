@@ -81,8 +81,12 @@
         { key: 'wire', w: 22, wexp: [0.60, 0.80], sexp: [1.35, 1.65], gap: [0.012, 0.038] },       // 冠軍一路領先、後面苦追
         { key: 'duel', w: 18, wexp: [0.95, 1.10], sexp: null, gap: [0.002, 0.006] }                // 兩隻全程咬住（二名曲線比照冠軍，不用 sexp）
     ];
-    var SLOMO_U = 0.90, SLOMO_T = 0.75;   // 賽程跑到 90% 時已用掉 75% 的時間 → 最後 10% 慢鏡頭播
-    var MID_WOBBLE = 2.5;                   // 三名以後的中段擺盪倍率（太大會變瞬移、太小就變成排隊跑完）
+    var MID_WOBBLE = 2.5;   // 三名以後的擺盪倍率（太大會變瞬移、太小就變成排隊跑完）
+    var WOB_SKEW = 0.7;     // 擺盪包絡線的偏斜：<1 讓擺盪提早發生（開賽沒多久就在你追我趕，不是跑到中段才動）
+    // 加速曲線混進一份等速成分。純 u^exp 在 exp<1 時是一路減速,終點前會慢到剩四成速度＝
+    // 畫面上像停下來等後面追上(很怪)。混了等速之後速度只在 0.8~1.4 倍之間變化,
+    // 「前段衝／後段爆」的相對關係還在,但不會有狗在原地空轉。
+    var LINEAR_MIX = 0.45;
     var DROUGHT_LOOKBACK = 20;            // 「連續幾場沒贏」最多回看幾場
     var DROUGHT_MIN_SHOW = 8;             // 連敗到這個數才值得標出來
     var UPSET_ODDS = 15;                  // 冠軍賠率高過這個就算大爆冷
@@ -171,7 +175,7 @@
             var exp;
             if (i === winner) exp = winnerExp;
             else if (i === second) exp = (sc.key === 'duel') ? winnerExp + (rng() - 0.5) * 0.1 : sc.sexp[0] + rng() * (sc.sexp[1] - sc.sexp[0]);
-            else exp = 0.75 + rng() * 0.5;
+            else exp = 0.9 + rng() * 0.25;   // 中段這群的曲線要接近,才會一路擠在一起換位(差太多就各跑各的)
             // 前二名的曲線要乾淨(劇本才看得出來);其餘放大擺盪,讓中段真的互相超車。
             // ⚠ 放大振幅一定要同時壓低頻率:擺盪的變化率會蓋過前進速度,狗就會在畫面上往後滑(實測過)。
             var boosted = (i !== winner && i !== charger);
@@ -197,19 +201,13 @@
     function progressAt(race, dogIdx, u) {
         u = clamp01(u);
         var a = race.anim[dogIdx];
-        var shape = Math.pow(u, a.exp) * a.finish;
-        var wob = a.wAmp * Math.sin(Math.PI * 2 * (a.wFreq * u + a.wPhase)) * u * (1 - u);
+        var shape = (LINEAR_MIX * u + (1 - LINEAR_MIX) * Math.pow(u, a.exp)) * a.finish;
+        var wob = a.wAmp * Math.sin(Math.PI * 2 * (a.wFreq * u + a.wPhase)) * Math.pow(u, WOB_SKEW) * (1 - u);
         var p = shape + wob;
         if (p < 0) p = 0;
         var cap = (dogIdx === race.winner) ? 1.0 : a.finish;   // 各自封在自己的終點值,鼻尖差距才做得出來
         if (p > cap) p = cap;
         return p;
-    }
-    // 時間 t(0..1) → 賽程 u：終點前那一小段用掉更多時間＝最後直道慢鏡頭（只改播放節奏，不動勝負）
-    function raceUAt(t) {
-        t = clamp01(t);
-        return t <= SLOMO_T ? (t / SLOMO_T) * SLOMO_U
-            : SLOMO_U + (t - SLOMO_T) / (1 - SLOMO_T) * (1 - SLOMO_U);
     }
     function rankAt(race, dogIdx, u) {
         var p = progressAt(race, dogIdx, u), r = 0;
@@ -732,11 +730,12 @@
         if (ph.phase === 'parade') { ov.innerHTML = '<div class="dograce-ov-mid">🚦 入閘中…</div>'; return; }
         if (ph.phase === 'race') {
             var ord = orderAt(race, u), lead = ord[0].i, close = ord[0].p - ord[1].p;
+            // 「殺上來了」看的是「有沒有在往前爬」,不是「已經追到第二名」——後者只在最後一兩秒成立,報了等於沒報
+            var cRank = (u > 0.5 && race.chargerMidRank >= 2) ? rankAt(race, race.charger, u) : 99;
             var call = '';
             if (u < 0.07) call = '🚀 出閘！';
-            else if (u > 0.86 && close < 0.012) call = '👀 幾乎並駕齊驅！';
-            else if (u > 0.5 && race.chargerMidRank >= 2 && rankAt(race, race.charger, u) <= 1)
-                call = '🔥 ' + DOGS[race.charger].name + ' 殺上來了！';
+            else if (u > 0.85 && close < 0.03) call = '👀 幾乎並駕齊驅！';
+            else if (cRank <= 2 && race.chargerMidRank - cRank >= 2) call = '🔥 ' + DOGS[race.charger].name + ' 殺上來了！';
             else if (u > 0.82) call = '最後直道！';
             ov.innerHTML = '<div class="dograce-ov-top">🏃 領先：<b style="color:' + DOGS[lead].color + '">' + DOGS[lead].name + '</b>' + (call ? '　' + call : '') + '</div>';
             return;
@@ -792,7 +791,7 @@
             if (sec !== _lastSec) { _lastSec = sec; updatePhaseText(ph); }
             applyView(now);
             if (_subview === 'track') {
-                var u = (ph.phase === 'race') ? raceUAt((ph.e - PARADE_MS) / RACE_DUR) : (ph.phase === 'result' ? 1 : 0);
+                var u = (ph.phase === 'race') ? (ph.e - PARADE_MS) / RACE_DUR : (ph.phase === 'result' ? 1 : 0);
                 placeDogs(race, u, ph.phase === 'race' || ph.phase === 'parade');
                 updateOverlay(ph, race, u);
             }
@@ -896,7 +895,7 @@
         race: function (id) { return seededRace(id == null ? phaseOf(nowMs()).raceId : id); },
         winner: winnerOf, placeBet: placeBet, settle: settleWins, tickets: ensureTickets,
         dia: diaBalance, DOGS: DOGS, CUR: { gold: CUR_GOLD, dia: CUR_DIA },
-        progressAt: progressAt, orderAt: orderAt, rankAt: rankAt, u: raceUAt, SCRIPTS: SCRIPTS
+        progressAt: progressAt, orderAt: orderAt, rankAt: rankAt, SCRIPTS: SCRIPTS
     };
 
     // 🎯 入口：自動化分頁「🔌 外掛」列（木人場旁）加「🐕 賽狗場」鈕；視窗/縮球一旦開啟即跨畫面常駐（可拖曳/縮球）。
