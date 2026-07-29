@@ -1054,7 +1054,7 @@
     { k: 'mode', n: '遊戲模式' },
     { k: 'npc', n: 'NPC總覽' }
   ];
-  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all', combatAvatar: '' };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
+  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all', combatAvatar: '', polyRange: 'all', polySort: 'lv', polySortDesc: false };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
   // 搜尋打字防抖:每次按鍵只重設計時器,停手這麼久才真的過濾+重渲染(降低逐字輸入的 INP)。
   var SEARCH_DEBOUNCE_MS = 150;
   var _searchTimer = null;
@@ -1148,6 +1148,16 @@
       // ⚡ 戰鬥機制頁「角色 × 武器攻速」的角色選擇(見 atkApmHTML)
       var av = e.target.closest ? e.target.closest('[data-atkav]') : null;
       if (av) { state.combatAvatar = av.getAttribute('data-atkav'); render(); return; }
+      // 🏹 變形頁:遠近篩選 + 點欄位標題排序(同一欄再點一次=反向)
+      var prg = e.target.closest ? e.target.closest('[data-polyrange]') : null;
+      if (prg) { state.polyRange = prg.getAttribute('data-polyrange'); render(); return; }
+      var pst = e.target.closest ? e.target.closest('[data-polysort]') : null;
+      if (pst) {
+        var _nk = pst.getAttribute('data-polysort');
+        if (state.polySort === _nk) state.polySortDesc = !state.polySortDesc;
+        else { state.polySort = _nk; state.polySortDesc = false; }
+        render(); return;
+      }
       // 收藏三分頁的「模式」切換(再點同一顆=收合)
       var cm = e.target.closest ? e.target.closest('[data-collmode]') : null;
       if (cm) { var cmv = cm.getAttribute('data-collmode'); state.collMode = (state.collMode === cmv) ? null : cmv; render(); return; }
@@ -2373,15 +2383,49 @@
     //   (抽取只看 f.lv <= 你的等級,見 js/02 polyRandomCandidates),分段標題反而讓人誤會
     //   「這個等級帶只能變這幾個」。遠距離型態讀遊戲的 RANGED_POLY_FORMS(作者改名單自動跟上)。
     var _polyForms = [];
-    POLY_TIERS.forEach(function (t) { (t.forms || []).forEach(function (f) { _polyForms.push({ f: f, color: t.color || '' }); }); });
-    _polyForms.sort(function (a, b) { return (a.f.lv || 0) - (b.f.lv || 0); });   // 同等級維持原順序(sort 穩定)
+    POLY_TIERS.forEach(function (t) { (t.forms || []).forEach(function (f) { _polyForms.push({ f: f, color: t.color || '', i: _polyForms.length }); }); });   // i=作者原始順序,當排序的最終 tiebreaker
     var _isRangedForm = function (n) { try { return typeof RANGED_POLY_FORMS !== 'undefined' && RANGED_POLY_FORMS.has(n); } catch (e) { return false; } };
-    h += wTbl(['型態', '需要等級', '攻擊間隔', '施法冷卻', '被擊硬直', '怪物重生'], _polyForms.map(function (x) {
+    // 🏹⚔️ 遠近篩選:抽到什麼只看你手上是不是弓/十字弓,所以「我現在拿弓」時另外 69 個近距型態全是雜訊。
+    var _prange = state.polyRange || 'all';
+    var _rangeRow = '<div class="m-wiki-mfilter">' +
+      [['all', '全部型態'], ['melee', '⚔️ 近距離'], ['ranged', '🏹 遠距離（拿弓／十字弓）']].map(function (o) {
+        return '<button type="button" class="m-wiki-mfbtn' + (o[0] === _prange ? ' on' : '') + '" data-polyrange="' + o[0] + '">' + o[1] + '</button>';
+      }).join('') + '</div>';
+    var _shown = _polyForms.filter(function (x) {
+      if (_prange === 'ranged') return _isRangedForm(x.f.n);
+      if (_prange === 'melee') return !_isRangedForm(x.f.n);
+      return true;
+    });
+    // 🔢 點欄位標題排序:79 個型態要找「哪個最快」原本得自己掃完整表。排序值直接 parseFloat 顯示字串
+    //   (與畫面上看到的同一個值;"0.46~0.67" 這種區間取較快的那端、'—' → NaN 排最後),不必另建一套換算。
+    var POLY_COLS = [
+      { k: 'n', h: '型態', v: function (x) { return x.f.n; }, txt: 1 },
+      { k: 'lv', h: '需要等級', v: function (x) { return x.f.lv || 0; } },
+      { k: 'atk', h: '攻擊間隔', v: function (x) { return parseFloat(polyAtk(x.f)); } },
+      { k: 'cast', h: '施法冷卻', v: function (x) { return parseFloat(polyCast(x.f)); } },
+      { k: 'stun', h: '被擊硬直', v: function (x) { return parseFloat(polyStun(x.f)); } },
+      { k: 'wlk', h: '怪物重生', v: function (x) { return parseFloat(polyWlk(x.f)); } }
+    ];
+    var _pkey = state.polySort || 'lv', _pdesc = !!state.polySortDesc;
+    var _col = POLY_COLS.filter(function (c) { return c.k === _pkey; })[0] || POLY_COLS[1];
+    _shown.sort(function (a, b) {
+      var va = _col.v(a), vb = _col.v(b);
+      var na = (typeof va === 'number' && isNaN(va)), nb = (typeof vb === 'number' && isNaN(vb));
+      if (na !== nb) return na ? 1 : -1;   // 缺值(—)一律排最後,不受升降序影響
+      var r = _col.txt ? String(va).localeCompare(String(vb)) : (na ? 0 : va - vb);
+      if (r === 0) return (a.f.lv || 0) - (b.f.lv || 0) || (a.i - b.i);   // 同值→照等級、再照作者原始順序(預設排序＝改動前的樣子)
+      return _pdesc ? -r : r;
+    });
+    h += _rangeRow;
+    h += wTbl(POLY_COLS.map(function (c) {
+      return '<span class="m-wiki-sortth' + (c.k === _pkey ? ' on' : '') + '" data-polysort="' + c.k + '">' + c.h + (c.k === _pkey ? (_pdesc ? ' ▼' : ' ▲') : '') + '</span>';
+    }), _shown.map(function (x) {
       var f = x.f;
       // 型態名不換行:窄畫面下四字以上會被拆成三四行、整列變超高很難讀,寬度不足時讓表格自己橫捲(m-wiki-tblwrap)
       return ['<span class="' + x.color + '" style="white-space:nowrap;">' + esc(f.n) + (_isRangedForm(f.n) ? ' 🏹' : '') + '</span>',
         'Lv' + (f.lv || 1), polyAtk(f), polyCast(f), polyStun(f), polyWlk(f)];
     }));
+    h += wDesc('點欄位標題可<b>排序</b>（再點一次反向）。速度欄位<b>越小越快</b>，所以升序＝最快的排最前面；查不到值的（—）一律排最後。目前共 <b>' + _shown.length + '</b> 個型態。');
     // 🧝 戒指限定型態(夏納/真夏納):不在 POLY_TIERS,變形卷軸抽不到,只有變形控制戒指指定得到
     if (typeof CONTROL_ONLY_POLY_FORMS !== 'undefined' && CONTROL_ONLY_POLY_FORMS.length) {
       h += '<div class="m-wiki-sub">💍 變形控制戒指限定（只能靠戒指指定）</div>';
@@ -4007,6 +4051,8 @@
       '.m-wiki-card .m-wiki-tblwrap,.m-wiki-note .m-wiki-tblwrap{--wtbl-bg:#111c30;}',
       '.m-wiki-tblwrap th:first-child,.m-wiki-tblwrap td:first-child{position:sticky;left:0;background:var(--wtbl-bg);}',
       '.m-wiki-tblwrap th:first-child{z-index:1;}',
+      '.m-wiki-sortth{cursor:pointer;user-select:none;border-bottom:1px dotted #64748b;white-space:nowrap;}',   /* 可點排序的欄位標題(變形頁) */
+      '.m-wiki-sortth.on{color:#fcd34d;border-bottom-color:#fcd34d;}',
       /* 👉 還能往右捲的提示(NN/g:切邊/陰影最好認,點狀指示沒人看得到)。純 CSS 自動化:
          陰影層 background-attachment:scroll(固定貼在容器右緣)、遮蓋層 local(跟著內容捲)
          → 捲到最右邊時遮蓋層剛好蓋掉陰影,不必用 JS 監聽捲動/resize。 */
