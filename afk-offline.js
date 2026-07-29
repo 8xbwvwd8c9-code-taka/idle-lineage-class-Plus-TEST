@@ -1175,11 +1175,29 @@
     if (_runErr) {   // 結算中途拋例外 → 把死因印出來(見上方 catch);沒這行的話玩家只看得到「離線掛機 0 分鐘」,完全不知道發生什麼事
       var _eEsc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
       var _eMsg = _eEsc((_runErr && _runErr.message) ? _runErr.message : _runErr);
-      var _eAt = (_runErr && _runErr.stack) ? _eEsc((_runErr.stack.split('\n')[1] || '').trim()) : '';
+      var _eStack = (_runErr && _runErr.stack) ? String(_runErr.stack) : '';
+      var _eAt = _eStack.split('\n').slice(1, 4).map(function (s) { return s.trim(); }).filter(Boolean);   // 印 3 層:只印 1 層時看不出是「誰」被改壞的
+      // 🕵️ 第三方腳本判定:遊戲(含全部外掛)都是同源載入的一般 <script>,堆疊不會出現 extension:// 或
+      //   「eval at …」這種來源。出現就代表有瀏覽器擴充／使用者腳本(油猴之類)改寫了遊戲函式——常見手法是
+      //   拿 fn.toString() 重新 eval 一份,那份會**掉光閉包**,於是任何 monkey-patch 的 wrapper 一被呼叫就噴
+      //   「xxx is not defined」。這種只有玩家自己停用得掉,叫他回報給作者只會把他導向錯的地方。
+      //   (2026-07-29 兩名玩家回報:第三方 gmRebindFn 重綁了 afk-training 包住的傭兵受擊函式 → 結算第一拍就中斷。)
+      //   **只認最上面那一層**(＝真正丟出錯誤的那行是誰的),不掃整條堆疊:堆疊底部是「誰呼叫的」,
+      //   那裡出現外來框架很正常(主控台、自動化工具都算),拿它判會把我方的真 bug 說成第三方——
+      //   而那比漏判更糟:玩家就不回報了,我們什麼都不知道。誤判方向要偏向「當成我們的錯」。
+      var _foreign = false;
+      try {
+        var _o = location.origin, _top = _eAt[0] || '';
+        _foreign = /extension:\/\//i.test(_top) || (_top.indexOf('eval at ') >= 0 && _top.indexOf(_o) < 0);
+      } catch (e) {}
       try {
         if (typeof logSys === 'function') logSys('<span class="text-red-400 font-bold">⚠ 離線結算中斷：' + _eMsg + '</span>'
-          + (_eAt ? '<br><span style="color:#94a3b8;font-size:.85em;">' + _eAt + '</span>' : '')
-          + '<br><span style="color:#94a3b8;font-size:.85em;">收益只結算到中斷前。請把這段訊息回報給作者。</span>');
+          + (_eAt.length ? '<br><span style="color:#94a3b8;font-size:.85em;">' + _eAt.map(_eEsc).join('<br>') + '</span>' : '')
+          + '<br><span style="color:#94a3b8;font-size:.85em;">收益只結算到中斷前。'
+          + (_foreign
+            ? '偵測到<b>瀏覽器擴充／使用者腳本</b>（油猴之類）改寫了遊戲函式，是它讓結算中斷的，不是遊戲本身的問題。請先停用那類腳本再重新載入。'
+            : '請把這段訊息回報給作者。')
+          + '</span>');
       } catch (e) {}
     }
     if (_abortCatchup) {   // 玩家長按放棄:標一句「已略過剩餘」(收益只算到放棄當下,剩餘時間不再結算、不會重算)
@@ -1348,6 +1366,9 @@
     stamp: stamp,
     readTs: readTs,
     mapName: mapName,   // 對外:地圖 id→中文名(供 afk-mobile 在匯入頁顯示「掛在哪張地圖」)
+    // 對外:結算是否進行中。結算迴圈是非同步的(每個檢查點讓出主執行緒),期間「換掉 currentSlot/player」
+    //   會讓剩下的 tick 與錨點推進算到新角色頭上 → 任何「就地換角」都必須先問這個(afk-mobile 換角在用)。
+    busy: function () { return catchingUp; },
     histKey: histKey,   // 對外:目前角色的離線紀錄 key(供 afk-history)
     setCkptMs: function (ms) { CKPT_MS = Math.max(200, +ms || 5000); },   // 🧪 測試用:縮短檢查點間隔(驗「結算中斷只丟尾段」)
     forceCatchup: function (mins, noFast) { _forceNoFast = !!noFast; runCatchup(Math.floor((mins || 60) * 60000 / TICK_MS), true, (typeof mapState !== 'undefined' && mapState && mapState.current) || ''); }   // 帶當前地圖,否則 gotoMap(undefined) 空轉零收益;noFast=true 強制全模擬(A/B 用)
@@ -1408,19 +1429,35 @@
         return _isaVals[k];
       };
     }
-    // 4) pvpEnsureState():每次呼叫都把性向鎖、復仇名單、社交私訊名單(最多 20 人 × 12 則)整理一遍。
+    // 4) pvpEnsureState():每次呼叫都把性向鎖(最多 200 筆)、復仇名單、社交私訊名單(最多 20 人 × 12 則)、
+    //    擊殺密語(最多 20 筆)整包重新正規化一遍,而上游把它掛在「每次出怪」(js/03 spawnMob)與「每次擊殺」
+    //    (pvpOnKillMob)上 → 24 小時結算被呼叫 12~16 萬次。清單全空時幾乎免費,一有內容就是結算的最大熱點。
     //    補跑期間用便宜簽章判斷「有沒有變」,沒變就跳過;非補跑一律照跑(線上行為不動)。
+    //    🚨 簽章只能放 O(1) 又代表「結構真的變了」的東西(清單長度)。
+    //    ⚠ 性向值(alignmentValue)絕對不可放進簽章:每殺一隻普通怪它就 +1(js/03 pvpChangeAlignment(1)),
+    //      放進去等於每殺一隻就 miss 一次,直到性向值撞到 ±32767 上限才會開始命中 —— 也就是清單有內容
+    //      (被追殺過/有復仇名單/殺過白目玩家)時整晚都在重算,快取形同虛設。它在 pvpEnsureState 裡只是
+    //      夾範圍,而每個寫入點自己都夾過了,所以命中時自己補一次即可。pvpOn 同理:靠 npcClanWarActive
+    //      (自帶 2 秒快取)當場問,不靠簽章,否則補跑中途被 NPC 血盟宣戰會漏掉開紅。
     if (typeof pvpEnsureState === 'function') {
       var _pes = pvpEnsureState, _pesSig = null;
       window.pvpEnsureState = function () {
         if (!(typeof state !== 'undefined' && state && state.ff && !state.ffSmall)) { _pesSig = null; return _pes.apply(this, arguments); }
         var sig;
         try {
-          var sc = player.socialNpcContacts, rv = player.pvpRevengeList, tp = player.trollPlayers;
-          sig = (player.alignmentValue || 0) + '|' + (sc ? sc.length : -1) + '|' + (sc && sc[0] ? (sc[0].lastChatAt || 0) : 0)
-              + '|' + (rv ? rv.length : -1) + '|' + (tp ? tp.length : -1) + '|' + (player.pvpOn ? 1 : 0);
+          var sc = player.socialNpcContacts, rv = player.pvpRevengeList,
+              tp = player.trollPlayers, kw = player.pvpKillWhispers;
+          sig = (sc ? sc.length : -1) + '|' + (sc && sc[0] ? (sc[0].lastChatAt || 0) : 0)
+              + '|' + (rv ? rv.length : -1) + '|' + (tp ? tp.length : -1) + '|' + (kw ? kw.length : -1);
         } catch (e) { sig = null; }
-        if (sig != null && sig === _pesSig) return;   // 這幾樣都沒動 → 整理過的結果仍然有效
+        if (sig != null && sig === _pesSig) {
+          try {   // 跳過整包正規化,但「有語意」的兩件事照做
+            if (typeof pvpClampAlignment === 'function') player.alignmentValue = pvpClampAlignment(player.alignmentValue);
+            if (player.pvpOn === undefined) player.pvpOn = false;
+            if (typeof npcClanWarActive === 'function' && npcClanWarActive(player)) player.pvpOn = true;
+          } catch (e) {}
+          return;
+        }
         var r = _pes.apply(this, arguments);
         _pesSig = sig;
         return r;

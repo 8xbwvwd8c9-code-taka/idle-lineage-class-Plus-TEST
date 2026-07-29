@@ -1,6 +1,9 @@
 /* ============================================================================
  * prepush-guard.mjs — PreToolUse hook:git push 前的硬性把關
  *
+ * 0. 使用者沒同意就不准 push:指令尾端要有 #user-approved(使用者親口說了才能加)。
+ *    與下面那些「內容把關」分開 —— 一個管「誰決定上線」,一個管「內容夠不夠格上線」。
+ *
  * 擋掉 CLAUDE.md 記過、會壞掉線上版本的雷:
  *   1. index.html / 外掛 / sw.js 殘留 rebase 衝突標記(<<<<<<< 等)→ 整頁壞掉
  *   2. 某支 afk-*.js 沒在 index.html 補 <script> 引用 → 功能失效 / 被同步洗掉
@@ -35,8 +38,21 @@ try { data = JSON.parse(raw); } catch {}
 
 const cmd = data?.tool_input?.command || '';
 // 只攔 git push;其餘指令直接放行
-if (data?.tool_name !== 'Bash' || !/\bgit\s+push\b/.test(cmd)) process.exit(0);
-// 明確標記 #afk-tmp-upload 的 push 放行:分塊上傳暫存分支(HEAD 不在 main、工作樹非交付狀態)會誤觸把關
+// ⚠ Bash 與 PowerShell 兩個工具都要收:只收 Bash 的話,同一道 git push 改用 PowerShell 下就整個繞過去,把關等於沒有(實測過)
+if (!/^(Bash|PowerShell)$/.test(data?.tool_name || '') || !/\bgit\s+push\b/.test(cmd)) process.exit(0);
+
+// ── 0. 使用者同意閘 ─────────────────────────────────────────
+//   「內容夠不夠格上線」與「誰決定要上線」是兩件事,下面所有把關只管前者。
+//   刻意排在 #afk-tmp-upload 之前:暫存分支上傳可以跳過內容把關,但不能跳過使用者的同意。
+if (!cmd.includes('#user-approved')) {
+  console.error('⛔ git push 需要使用者明確同意(這個 repo 的規則)。\n' +
+    '  • 使用者親口說要 push 之後,在指令尾端加註解 #user-approved 再下一次\n' +
+    '  • 沒得到同意不可以自己加 —— 這道把關的意義就在這裡\n' +
+    '  • 例:git push origin main   #user-approved');
+  process.exit(2);
+}
+
+// 明確標記 #afk-tmp-upload 的 push 跳過內容把關:分塊上傳暫存分支(HEAD 不在 main、工作樹非交付狀態)會誤觸
 if (cmd.includes('#afk-tmp-upload')) process.exit(0);
 
 const fails = [];
