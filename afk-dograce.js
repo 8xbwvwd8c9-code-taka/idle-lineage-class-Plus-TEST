@@ -14,7 +14,7 @@
 
     // ---- 樣式(自 main 的 css/floating-ui.css 抽出、外掛自帶注入:此分支 css/ 還原上游後賽狗場樣式遺失,
     //      球變成無定位的裸元素貼在左上角被橫幅蓋住=玩家「看不到入口」。自帶樣式,同步上游 css 也不會再丟) ----
-    (function () { if (document.getElementById('afk-dograce-css')) return; var st = document.createElement('style'); st.id = 'afk-dograce-css'; st.textContent = "\n/* ===== 🐕 奇岩賽狗場浮動視窗 / 縮球 / U 型賽道 ===== */\n/* 可用高度＝畫面 - 頂端橫幅 - 底部導覽,公式與 afk-mobile 一致。\n   ⚠ 一定要 dvh:手機瀏覽器的 100vh 是「工具列收起時」的高度,比實際看得到的還大 → 底部會被導覽吃掉,\n     而且只在真機上才看得出來(桌機/模擬器的視窗高度固定,vh 跟 dvh 一樣大,測不出來)。\n   前一行 vh 版是給不認得 dvh 的舊瀏覽器墊底(不留的話整條 height 會失效、視窗塌成一條)。\n   --m-nav-h 沒人設時 fallback 0 剛好正確:那代表 afk-mobile 關著、根本沒有底部導覽。 */\n.dograce-win{position:fixed;z-index:74;width:min(94vw,430px);display:flex;flex-direction:column;\n  height:min(calc((100vh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .92),760px);\n  height:min(calc((100dvh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .92),760px);\n  border:2px solid #8b6a2f;border-radius:12px;background:#0f1621f5;box-shadow:0 18px 40px #000c;color:#e2e8f0;\n  user-select:none;touch-action:none;font-family:Arial,\"Microsoft JhengHei\",sans-serif}\n.dograce-win.is-min{height:auto}\n.dograce-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;cursor:grab;\n  color:#fff3c4;border-bottom:1px solid #8b6a2f;border-radius:10px 10px 0 0;\n  background:linear-gradient(135deg,#3d2b0e,#9b7629,#5f4517,#b28c38,#34240d)}\n.dograce-title{font-weight:900;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.dograce-phase{font-weight:600;font-size:12px;color:#fde68a}\n.dograce-headbtns{display:flex;gap:4px;flex:0 0 auto}\n.dograce-hb{width:26px;height:26px;border:1px solid #d9bd70;border-radius:6px;background:#151b25;color:#fff3cf;font-size:13px;line-height:1;cursor:pointer;padding:0}\n.dograce-hb:hover{background:#243040}\n.dograce-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}\n/* 分頁 */\n.dograce-tabs{flex:0 0 auto;display:flex;border-bottom:1px solid #33414d}\n.dograce-tab{flex:1;padding:8px 4px;background:#141c28;color:#94a3b8;border:0;border-right:1px solid #33414d;font-size:13px;font-weight:700;cursor:pointer}\n.dograce-tab:last-child{border-right:0}\n.dograce-tab.is-active{background:#1e2b3d;color:#fde68a;box-shadow:inset 0 -2px 0 #b28c38}\n.dograce-panel{flex:1;min-height:0;position:relative;overflow:hidden}\n/* 大 U 型賽道 */\n.dograce-trackview{position:relative;width:100%;height:100%;background:radial-gradient(ellipse at 50% 12%,#14241a,#0a1109);overflow:hidden}\n#dograce-svg{width:100%;height:100%;display:block}\n.dograce-band{fill:#1f3324;stroke:#3c5a3f;stroke-width:1.5;opacity:.95}\n.dograce-laneline{fill:none;stroke:#ffffff26;stroke-width:.8;stroke-dasharray:3 3}\n.dograce-line{stroke:#e2e8f0;stroke-width:3;stroke-dasharray:3 2;opacity:.85}\n.dograce-finish{stroke:#fbbf24;opacity:1;stroke-dasharray:none;stroke-width:4}\n.dograce-dogs{position:absolute;inset:0;pointer-events:none}\n.dograce-dog{position:absolute;transform:translate(-50%,-66%);display:flex;flex-direction:column;align-items:center;transition:left .08s linear,top .08s linear}\n.dograce-dog img{width:44px;height:44px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 3px 3px #000b)}\n.dograce-plate{font-size:10px;font-weight:700;line-height:1;color:#f8fafc;background:#0b1220dd;border:1px solid;border-radius:4px;padding:1px 4px;margin-bottom:2px;white-space:nowrap;text-shadow:0 1px 2px #000}\n.dograce-plate b{display:inline-block;color:#0b1220;border-radius:3px;padding:0 3px;margin-right:2px;font-weight:900}\n.dograce-overlay{position:absolute;left:0;right:0;top:0;z-index:5;text-align:center;pointer-events:none;padding:6px 8px}\n/* 終點在賽道上方,所以獲勝框改貼下緣(U 型彎道以下本來就是空的),不擋衝線畫面 */\n.dograce-overlay.is-result{top:auto;bottom:10px;z-index:500}\n.dograce-ov-top{display:inline-block;font-size:14px;font-weight:800;color:#fde68a;text-shadow:0 1px 3px #000,0 0 6px #000;background:#0b1220d9;border-radius:7px;padding:3px 9px}\n.dograce-ov-panel{display:inline-block;background:#0b1220e6;border:1px solid #8b6a2f;border-radius:9px;padding:5px 11px}\n.dograce-ov-mid{margin-top:38%;font-size:22px;font-weight:900;color:#fbbf24;text-shadow:0 2px 6px #000}\n.dograce-ov-win{font-size:20px;font-weight:900;color:#fff;text-shadow:0 2px 6px #000,0 0 10px #000}\n.dograce-ov-rank{margin-top:3px;font-size:13px;font-weight:700;color:#e2e8f0;text-shadow:0 1px 3px #000}\n.dograce-ov-rank span{margin:0 5px}\n/* 下注 / 紀錄 內容區可捲動 */\n.dograce-betwrap,.dograce-tkwrap{position:absolute;inset:0;overflow-y:auto;padding:9px;touch-action:manipulation;background:#0f1621}\n.dograce-prev{margin:2px 0 8px;padding:5px 8px;border:1px solid #33414d;border-radius:6px;background:#141c28;font-size:12px;color:#cbd5e1}\n.dograce-betbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13px;font-weight:800;color:#fde68a}\n.dograce-cur{flex:1;min-width:0;padding:5px 6px;border:1px solid #475569;border-radius:6px;background:#141c28;color:#cbd5e1;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.dograce-cur.is-on{border-color:#d9bd70;background:#2a2410;color:#fde68a}\n.dograce-chips{display:flex;align-items:center;gap:3px;margin-bottom:7px;font-size:11px;color:#94a3b8;font-weight:600}\n.dograce-chip{min-width:24px;height:22px;border:1px solid #475569;border-radius:5px;background:#1e293b;color:#e2e8f0;font-size:11px;cursor:pointer;padding:0 4px}\n.dograce-chip.is-on{background:#b28c38;color:#0b1220;border-color:#d9bd70;font-weight:800}\n.dograce-resultbar{margin-bottom:6px;padding:5px 7px;border:1px solid #475569;border-radius:6px;background:#141c28;font-size:12px;line-height:1.5}\n.dograce-resultbar b{margin-right:4px}\n.dograce-photo{color:#fca5a5;font-weight:800}\n.dograce-doglist{display:flex;flex-direction:column;gap:4px}\n.dograce-dogcard{display:flex;align-items:center;gap:6px;padding:5px 6px;border:1px solid #33414d;border-radius:7px;background:#161f2c}\n.dograce-num{flex:0 0 auto;width:20px;height:20px;border-radius:5px;color:#0b1220;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center}\n.dograce-name{flex:1;min-width:0;font-size:13px;font-weight:700;line-height:1.15;display:flex;flex-direction:column}\n.dograce-name small{font-size:10px;font-weight:400;color:#94a3b8}\n.dograce-odds{flex:0 0 auto;font-size:13px;font-weight:800;color:#fbbf24;text-align:right}\n.dograce-odds small{display:block;font-size:9.5px;font-weight:600;color:#94a3b8}\n.dograce-mine{display:inline-block;font-size:10px;color:#6ee7b7;border:1px solid #10b981;border-radius:4px;padding:0 4px}\n.dograce-dry{display:inline-block;font-size:10px;color:#fcd34d;border:1px solid #b45309;border-radius:4px;padding:0 4px}\n.dograce-betbtn{flex:0 0 auto;padding:4px 9px;border:1px solid #16a34a;border-radius:6px;background:linear-gradient(135deg,#166534,#22c55e);color:#eafff1;font-weight:800;font-size:12px;cursor:pointer}\n.dograce-betbtn:hover{filter:brightness(1.12)}\n.dograce-yes{border-color:#d9bd70;background:linear-gradient(135deg,#a16207,#eab308);color:#1a1200}\n.dograce-nobtn{flex:0 0 auto;margin-left:4px;padding:4px 8px;border:1px solid #64748b;border-radius:6px;background:#1e293b;color:#cbd5e1;font-weight:800;font-size:12px;cursor:pointer}\n.dograce-lock{flex:0 0 auto;color:#64748b;width:44px;text-align:center}\n.dograce-foot{margin-top:7px;font-size:10px;color:#64748b;text-align:center}\n/* 紀錄面板 */\n.dograce-tkhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:13px;font-weight:800;color:#fde68a}\n.dograce-clear{border:1px solid #475569;border-radius:5px;background:#1e293b;color:#cbd5e1;font-size:10px;padding:3px 6px;cursor:pointer}\n.dograce-empty{padding:22px 8px;text-align:center;color:#64748b;font-size:12px}\n.dograce-tklist{display:flex;flex-direction:column;gap:5px}\n.dograce-tk{display:grid;grid-template-columns:1fr auto;grid-template-areas:\"main right\" \"sub right\";gap:1px 8px;padding:6px 8px;border:1px solid #33414d;border-left-width:4px;border-radius:6px;background:#161f2c}\n.dograce-tk.pend{border-left-color:#64748b}\n.dograce-tk.win{border-left-color:#fbbf24;background:#2a2410}\n.dograce-tk.lose{border-left-color:#7f1d1d;opacity:.75}\n.dograce-tk-main{grid-area:main;font-size:13px}\n.dograce-tk-odds{font-size:11px;color:#94a3b8}\n.dograce-tk-sub{grid-area:sub;font-size:10px;color:#64748b}\n.dograce-tk-right{grid-area:right;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:3px}\n.dograce-tk-badge{font-size:11px;font-weight:700}\n.dograce-tk-pay{font-size:11px;color:#6ee7b7;font-weight:700}\n/* 縮球 */\n.dograce-ball{position:fixed;z-index:74;width:56px;height:56px;border-radius:50%;border:2px solid #d9bd70;\n  background:radial-gradient(circle at 40% 35%,#3d2b0e,#0f1621);box-shadow:0 6px 16px #000b;color:#fde68a;\n  display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;touch-action:none;user-select:none}\n.dograce-ball-ico{font-size:20px;line-height:1}\n.dograce-ball-cd{font-size:10px;font-weight:800;line-height:1;margin-top:1px}\n/* 縮球階段色：一眼看出能不能押注 / 開賽倒數 */\n.dograce-ball.db-bet{border-color:#22c55e;box-shadow:0 6px 16px #000b,0 0 10px #22c55e88;color:#bbf7d0}\n.dograce-ball.db-parade{border-color:#f59e0b;box-shadow:0 6px 16px #000b,0 0 12px #f59e0bcc;color:#fde68a;animation:dograce-pulse 1s ease-in-out infinite}\n.dograce-ball.db-race{border-color:#ef4444;box-shadow:0 6px 16px #000b,0 0 14px #ef4444cc;color:#fecaca;animation:dograce-pulse .7s ease-in-out infinite}\n.dograce-ball.db-result{border-color:#d9bd70;box-shadow:0 6px 16px #000b,0 0 10px #d9bd7099;color:#fde68a}\n@keyframes dograce-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}\n@media(max-width:760px){\n  .dograce-win{width:96vw;\n    height:calc((100vh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .96);\n    height:calc((100dvh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .96)}\n  .dograce-dog img{width:50px;height:50px}\n  .dograce-plate{font-size:11px}\n}\n"; (document.head || document.documentElement).appendChild(st); })();
+    (function () { if (document.getElementById('afk-dograce-css')) return; var st = document.createElement('style'); st.id = 'afk-dograce-css'; st.textContent = "\n/* ===== 🐕 奇岩賽狗場浮動視窗 / 縮球 / U 型賽道 ===== */\n/* 可用高度＝畫面 - 頂端橫幅 - 底部導覽,公式與 afk-mobile 一致。\n   ⚠ 一定要 dvh:手機瀏覽器的 100vh 是「工具列收起時」的高度,比實際看得到的還大 → 底部會被導覽吃掉,\n     而且只在真機上才看得出來(桌機/模擬器的視窗高度固定,vh 跟 dvh 一樣大,測不出來)。\n   前一行 vh 版是給不認得 dvh 的舊瀏覽器墊底(不留的話整條 height 會失效、視窗塌成一條)。\n   --m-nav-h 沒人設時 fallback 0 剛好正確:那代表 afk-mobile 關著、根本沒有底部導覽。 */\n.dograce-win{position:fixed;z-index:74;width:min(94vw,430px);display:flex;flex-direction:column;\n  height:min(calc((100vh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .92),760px);\n  height:min(calc((100dvh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .92),760px);\n  border:2px solid #8b6a2f;border-radius:12px;background:#0f1621f5;box-shadow:0 18px 40px #000c;color:#e2e8f0;\n  user-select:none;touch-action:none;font-family:Arial,\"Microsoft JhengHei\",sans-serif}\n.dograce-win.is-min{height:auto}\n.dograce-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;cursor:grab;\n  color:#fff3c4;border-bottom:1px solid #8b6a2f;border-radius:10px 10px 0 0;\n  background:linear-gradient(135deg,#3d2b0e,#9b7629,#5f4517,#b28c38,#34240d)}\n.dograce-title{font-weight:900;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.dograce-phase{font-weight:600;font-size:12px;color:#fde68a}\n.dograce-headbtns{display:flex;gap:4px;flex:0 0 auto}\n.dograce-hb{width:26px;height:26px;border:1px solid #d9bd70;border-radius:6px;background:#151b25;color:#fff3cf;font-size:13px;line-height:1;cursor:pointer;padding:0}\n.dograce-hb:hover{background:#243040}\n.dograce-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}\n/* 分頁 */\n.dograce-tabs{flex:0 0 auto;display:flex;border-bottom:1px solid #33414d}\n.dograce-tab{flex:1;padding:8px 4px;background:#141c28;color:#94a3b8;border:0;border-right:1px solid #33414d;font-size:13px;font-weight:700;cursor:pointer}\n.dograce-tab:last-child{border-right:0}\n.dograce-tab.is-active{background:#1e2b3d;color:#fde68a;box-shadow:inset 0 -2px 0 #b28c38}\n.dograce-panel{flex:1;min-height:0;position:relative;overflow:hidden}\n/* 大 U 型賽道 */\n.dograce-trackview{position:relative;width:100%;height:100%;background:radial-gradient(ellipse at 50% 12%,#14241a,#0a1109);overflow:hidden}\n#dograce-svg{width:100%;height:100%;display:block}\n.dograce-band{fill:#1f3324;stroke:#3c5a3f;stroke-width:1.5;opacity:.95}\n.dograce-laneline{fill:none;stroke:#ffffff26;stroke-width:.8;stroke-dasharray:3 3}\n.dograce-line{stroke:#e2e8f0;stroke-width:3;stroke-dasharray:3 2;opacity:.85}\n.dograce-finish{stroke:#fbbf24;opacity:1;stroke-dasharray:none;stroke-width:4}\n.dograce-dogs{position:absolute;inset:0;pointer-events:none}\n.dograce-dog{position:absolute;transform:translate(-50%,-66%);display:flex;flex-direction:column;align-items:center;transition:left .08s linear,top .08s linear}\n.dograce-dog img{width:44px;height:44px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 3px 3px #000b)}\n.dograce-plate{font-size:10px;font-weight:700;line-height:1;color:#f8fafc;background:#0b1220dd;border:1px solid;border-radius:4px;padding:1px 4px;margin-bottom:2px;white-space:nowrap;text-shadow:0 1px 2px #000}\n.dograce-plate b{display:inline-block;color:#0b1220;border-radius:3px;padding:0 3px;margin-right:2px;font-weight:900}\n.dograce-overlay{position:absolute;left:0;right:0;top:0;z-index:5;text-align:center;pointer-events:none;padding:6px 8px}\n/* 終點在賽道上方,所以獲勝框改貼下緣(U 型彎道以下本來就是空的),不擋衝線畫面 */\n.dograce-overlay.is-result{top:auto;bottom:10px;z-index:500}\n.dograce-ov-top{display:inline-block;font-size:14px;font-weight:800;color:#fde68a;text-shadow:0 1px 3px #000,0 0 6px #000;background:#0b1220d9;border-radius:7px;padding:3px 9px}\n.dograce-ov-panel{display:inline-block;background:#0b1220e6;border:1px solid #8b6a2f;border-radius:9px;padding:5px 11px}\n.dograce-ov-mid{margin-top:38%;font-size:22px;font-weight:900;color:#fbbf24;text-shadow:0 2px 6px #000}\n.dograce-ov-win{font-size:20px;font-weight:900;color:#fff;text-shadow:0 2px 6px #000,0 0 10px #000}\n.dograce-ov-rank{margin-top:3px;font-size:13px;font-weight:700;color:#e2e8f0;text-shadow:0 1px 3px #000}\n.dograce-ov-rank span{margin:0 5px}\n/* 下注 / 紀錄 內容區可捲動 */\n.dograce-betwrap,.dograce-tkwrap{position:absolute;inset:0;overflow-y:auto;padding:9px;touch-action:manipulation;background:#0f1621}\n.dograce-prev{margin:2px 0 8px;padding:5px 8px;border:1px solid #33414d;border-radius:6px;background:#141c28;font-size:12px;color:#cbd5e1}\n.dograce-betbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13px;font-weight:800;color:#fde68a}\n.dograce-cur{flex:1;min-width:0;padding:5px 6px;border:1px solid #475569;border-radius:6px;background:#141c28;color:#cbd5e1;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.dograce-cur.is-on{border-color:#d9bd70;background:#2a2410;color:#fde68a}\n.dograce-chips{display:flex;align-items:center;gap:3px;margin-bottom:7px;font-size:11px;color:#94a3b8;font-weight:600}\n.dograce-chip{min-width:24px;height:22px;border:1px solid #475569;border-radius:5px;background:#1e293b;color:#e2e8f0;font-size:11px;cursor:pointer;padding:0 4px}\n.dograce-chip.is-on{background:#b28c38;color:#0b1220;border-color:#d9bd70;font-weight:800}\n.dograce-resultbar{margin-bottom:6px;padding:5px 7px;border:1px solid #475569;border-radius:6px;background:#141c28;font-size:12px;line-height:1.5}\n.dograce-resultbar b{margin-right:4px}\n.dograce-photo{color:#fca5a5;font-weight:800}\n.dograce-doglist{display:flex;flex-direction:column;gap:4px}\n.dograce-dogcard{display:flex;align-items:center;gap:6px;padding:5px 6px;border:1px solid #33414d;border-radius:7px;background:#161f2c}\n.dograce-num{flex:0 0 auto;width:20px;height:20px;border-radius:5px;color:#0b1220;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center}\n.dograce-name{flex:1;min-width:0;font-size:13px;font-weight:700;line-height:1.15;display:flex;flex-direction:column}\n.dograce-name small{font-size:10px;font-weight:400;color:#94a3b8}\n.dograce-odds{flex:0 0 auto;font-size:13px;font-weight:800;color:#fbbf24;text-align:right}\n.dograce-odds small{display:block;font-size:9.5px;font-weight:600;color:#94a3b8}\n.dograce-mine{display:inline-block;font-size:10px;color:#6ee7b7;border:1px solid #10b981;border-radius:4px;padding:0 4px}\n.dograce-dry{display:inline-block;font-size:10px;color:#fcd34d;border:1px solid #b45309;border-radius:4px;padding:0 4px}\n.dograce-betbtn{flex:0 0 auto;padding:4px 9px;border:1px solid #16a34a;border-radius:6px;background:linear-gradient(135deg,#166534,#22c55e);color:#eafff1;font-weight:800;font-size:12px;cursor:pointer}\n.dograce-betbtn:hover{filter:brightness(1.12)}\n.dograce-lock{flex:0 0 auto;color:#64748b;width:44px;text-align:center}\n.dograce-foot{margin-top:7px;font-size:10px;color:#64748b;text-align:center}\n/* 紀錄面板 */\n.dograce-tkhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:13px;font-weight:800;color:#fde68a}\n.dograce-clear{border:1px solid #475569;border-radius:5px;background:#1e293b;color:#cbd5e1;font-size:10px;padding:3px 6px;cursor:pointer}\n.dograce-empty{padding:22px 8px;text-align:center;color:#64748b;font-size:12px}\n.dograce-tklist{display:flex;flex-direction:column;gap:5px}\n.dograce-tk{display:grid;grid-template-columns:1fr auto;grid-template-areas:\"main right\" \"sub right\";gap:1px 8px;padding:6px 8px;border:1px solid #33414d;border-left-width:4px;border-radius:6px;background:#161f2c}\n.dograce-tk.pend{border-left-color:#64748b}\n.dograce-tk.win{border-left-color:#fbbf24;background:#2a2410}\n.dograce-tk.lose{border-left-color:#7f1d1d;opacity:.75}\n.dograce-tk-main{grid-area:main;font-size:13px}\n.dograce-tk-odds{font-size:11px;color:#94a3b8}\n.dograce-tk-sub{grid-area:sub;font-size:10px;color:#64748b}\n.dograce-tk-right{grid-area:right;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:3px}\n.dograce-tk-badge{font-size:11px;font-weight:700}\n.dograce-tk-pay{font-size:11px;color:#6ee7b7;font-weight:700}\n/* 縮球 */\n.dograce-ball{position:fixed;z-index:74;width:56px;height:56px;border-radius:50%;border:2px solid #d9bd70;\n  background:radial-gradient(circle at 40% 35%,#3d2b0e,#0f1621);box-shadow:0 6px 16px #000b;color:#fde68a;\n  display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;touch-action:none;user-select:none}\n.dograce-ball-ico{font-size:20px;line-height:1}\n.dograce-ball-cd{font-size:10px;font-weight:800;line-height:1;margin-top:1px}\n/* 縮球階段色：一眼看出能不能押注 / 開賽倒數 */\n.dograce-ball.db-bet{border-color:#22c55e;box-shadow:0 6px 16px #000b,0 0 10px #22c55e88;color:#bbf7d0}\n.dograce-ball.db-parade{border-color:#f59e0b;box-shadow:0 6px 16px #000b,0 0 12px #f59e0bcc;color:#fde68a;animation:dograce-pulse 1s ease-in-out infinite}\n.dograce-ball.db-race{border-color:#ef4444;box-shadow:0 6px 16px #000b,0 0 14px #ef4444cc;color:#fecaca;animation:dograce-pulse .7s ease-in-out infinite}\n.dograce-ball.db-result{border-color:#d9bd70;box-shadow:0 6px 16px #000b,0 0 10px #d9bd7099;color:#fde68a}\n@keyframes dograce-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}\n@media(max-width:760px){\n  .dograce-win{width:96vw;\n    height:calc((100vh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .96);\n    height:calc((100dvh - var(--orig-bar-h,0px) - var(--m-nav-h,0px)) * .96)}\n  .dograce-dog img{width:50px;height:50px}\n  .dograce-plate{font-size:11px}\n}\n"; (document.head || document.documentElement).appendChild(st); })();
 
     // ---- 時間常數（一場 5 分鐘；全部具名，方便調節奏） ----
     var CYCLE_MS = 300000;      // 一場總長（5 分鐘）
@@ -50,7 +50,6 @@
     var DIA_CHIPS = [                   // 龍鑽籌碼（顆）
         { v: 1, label: '1' }, { v: 5, label: '5' }, { v: 10, label: '10' }, { v: 50, label: '50' }
     ];
-    var DIA_CONFIRM_MS = 5000;          // 龍鑽下注的二次確認視窗（沒按就自動取消）
 
     // ---- 固定狗群（跨場固定身分；由強到弱＝賽道 1~8 號） ----
     var DOGS = [
@@ -403,6 +402,7 @@
     function fmtAmt(cur, n) {   // 精確：日誌、餘額
         return cur === CUR_DIA ? '💎 ' + n.toLocaleString() + ' 顆' : '💰 ' + n.toLocaleString();
     }
+    function dogTag(i) { return '<b style="color:' + DOGS[i].color + '">' + DOGS[i].name + '</b>'; }
     function fmtShort(cur, n) {   // 縮寫：狗卡上「已押 / 贏多少」這種塞不下全長數字的地方
         if (cur === CUR_DIA) return String(n);
         if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + '億';
@@ -416,25 +416,11 @@
     var _raf = null, _lastSec = -1, _tab = 'race';
     var _betCur = CUR_GOLD, _chipIdx = 0;   // 籌碼記「第幾顆」,切幣別時位置不變
     var _subview = '', _subviewRaceId = -1, _seenResult = {};
-    var _pending = null, _pendingTimer = null;   // 龍鑽下注的二次確認
 
     function chipsOf(cur) { return cur === CUR_DIA ? DIA_CHIPS : GOLD_CHIPS; }
     function curChip() {
         var list = chipsOf(_betCur);
         return list[Math.max(0, Math.min(list.length - 1, _chipIdx))].v;
-    }
-    function clearPending() {
-        if (_pendingTimer) { clearTimeout(_pendingTimer); _pendingTimer = null; }
-        _pending = null;
-    }
-    // 龍鑽稀缺,點一下不會直接扣:先變成「確定押 N？」,沒按就自動取消
-    function armPending(dogIdx, amount) {
-        clearPending();
-        _pending = { dogIdx: dogIdx, amount: amount };
-        _pendingTimer = setTimeout(function () {
-            _pendingTimer = null; _pending = null;
-            if (_subview === 'bet') renderBetPanel();
-        }, DIA_CONFIRM_MS);
     }
 
     function el(id) { return document.getElementById(id); }
@@ -476,7 +462,7 @@
         }
         win.style.display = '';
         var ball = el('dograce-ball'); if (ball) ball.style.display = 'none';
-        _tab = 'race'; _subview = ''; clearPending();
+        _tab = 'race'; _subview = '';
         settleWins();   // 關掉遊戲期間開的獎沒人結算,開視窗先補完
         pruneTickets();
         syncTabs();
@@ -501,27 +487,17 @@
             return;
         }
         var tab = e.target.closest('[data-tab]');
-        if (tab) { _tab = tab.getAttribute('data-tab'); _subview = ''; clearPending(); syncTabs(); applyView(nowMs()); return; }
+        if (tab) { _tab = tab.getAttribute('data-tab'); _subview = ''; syncTabs(); applyView(nowMs()); return; }
         var cur = e.target.closest('[data-cur]');
-        if (cur) { _betCur = cur.getAttribute('data-cur') === CUR_DIA ? CUR_DIA : CUR_GOLD; clearPending(); renderBetPanel(); return; }
+        if (cur) { _betCur = cur.getAttribute('data-cur') === CUR_DIA ? CUR_DIA : CUR_GOLD; renderBetPanel(); return; }
         var chip = e.target.closest('[data-chip]');
-        if (chip) { _chipIdx = parseInt(chip.getAttribute('data-chip'), 10); clearPending(); renderBetPanel(); return; }
+        if (chip) { _chipIdx = parseInt(chip.getAttribute('data-chip'), 10); renderBetPanel(); return; }
         var dogBet = e.target.closest('[data-bet]');
         if (dogBet) {
-            var idx = parseInt(dogBet.getAttribute('data-bet'), 10), amt = curChip();
-            if (_betCur === CUR_DIA) armPending(idx, amt);       // 龍鑽先問一次再扣
-            else placeBet(idx, amt, CUR_GOLD);
+            placeBet(parseInt(dogBet.getAttribute('data-bet'), 10), curChip(), _betCur);
             renderBetPanel();
             return;
         }
-        var yes = e.target.closest('[data-yes]');
-        if (yes) {
-            var p = _pending; clearPending();
-            if (p) placeBet(p.dogIdx, p.amount, CUR_DIA);
-            renderBetPanel();
-            return;
-        }
-        if (e.target.closest('[data-no]')) { clearPending(); renderBetPanel(); return; }
         if (e.target.closest('[data-clearticket]')) { clearFinishedTickets(); return; }
     }
 
@@ -732,14 +708,18 @@
         if (ph.phase === 'parade') { ov.innerHTML = '<div class="dograce-ov-mid">🚦 入閘中…</div>'; return; }
         if (ph.phase === 'race') {
             var ord = orderAt(race, u), lead = ord[0].i, close = ord[0].p - ord[1].p;
+            // 貼這麼近的時候「誰領先」意義不大,改成直接講是哪兩隻在咬
+            if (u > 0.85 && close < 0.03) {
+                ov.innerHTML = '<div class="dograce-ov-top">👀 ' + dogTag(ord[0].i) + '、' + dogTag(ord[1].i) + ' 幾乎並駕齊驅！</div>';
+                return;
+            }
             // 「殺上來了」看的是「有沒有在往前爬」,不是「已經追到第二名」——後者只在最後一兩秒成立,報了等於沒報
             var cRank = (u > 0.5 && race.chargerMidRank >= 2) ? rankAt(race, race.charger, u) : 99;
             var call = '';
             if (u < 0.07) call = '🚀 出閘！';
-            else if (u > 0.85 && close < 0.03) call = '👀 幾乎並駕齊驅！';
             else if (cRank <= 2 && race.chargerMidRank - cRank >= 2) call = '🔥 ' + DOGS[race.charger].name + ' 殺上來了！';
             else if (u > 0.82) call = '最後直道！';
-            ov.innerHTML = '<div class="dograce-ov-top">🏃 領先：<b style="color:' + DOGS[lead].color + '">' + DOGS[lead].name + '</b>' + (call ? '　' + call : '') + '</div>';
+            ov.innerHTML = '<div class="dograce-ov-top">🏃 領先：' + dogTag(lead) + (call ? '　' + call : '') + '</div>';
             return;
         }
         if (ph.phase === 'result') {
@@ -764,13 +744,12 @@
         var ph = phaseOf(now);
         var want = desiredSubview(ph);
         if (want !== _subview) {
-            if (_subview === 'bet') clearPending();   // 封盤/切分頁就別留著沒按完的確認
             _subview = want; _subviewRaceId = ph.raceId;
             if (want === 'tickets') renderTicketPanel();
             else if (want === 'bet') renderBetPanel(ph);
             else renderTrackView(ph);
         } else if (want === 'bet' && ph.raceId !== _subviewRaceId) {
-            _subviewRaceId = ph.raceId; clearPending(); renderBetPanel(ph);   // 新一場：刷新賠率/狀態
+            _subviewRaceId = ph.raceId; renderBetPanel(ph);   // 新一場：刷新賠率/狀態
         }
     }
     function startLoop() { if (_raf == null) _raf = requestAnimationFrame(loop); }
@@ -845,21 +824,17 @@
         for (var i = 0; i < N_DOGS; i++) {
             var d = race.dogs[i], rf = recentForm(i, ph.raceId, 8), mine = side.byDog[i] || 0;
             var dry = droughtOf(i, ph.raceId);
-            var asking = _pending && _pending.dogIdx === i;
             html += '<div class="dograce-dogcard">' +
                 '<span class="dograce-num" style="background:' + d.color + '">' + (i + 1) + '</span>' +
                 '<span class="dograce-name">' + d.name + '<small>' + d.stateEmoji + d.state + '　近' + rf.total + '場' + rf.w + '勝' +
                 (dry >= DROUGHT_MIN_SHOW ? '　<span class="dograce-dry">⚡ 連' + dry + '場沒贏</span>' : '') +
                 (mine ? '　<span class="dograce-mine">已押 ' + fmtShort(cur, mine) + '</span>' : '') + '</small></span>' +
                 '<span class="dograce-odds">×' + d.odds.toFixed(1) + '<small>贏 ' + fmtShort(cur, payoutOf(cur, chip, d.odds)) + '</small></span>' +
-                (asking
-                    ? '<button type="button" class="dograce-betbtn dograce-yes" data-yes="1">✓ 確定押 ' + fmtShort(cur, _pending.amount) + '</button>' +
-                      '<button type="button" class="dograce-nobtn" data-no="1">✗</button>'
-                    : '<button type="button" class="dograce-betbtn" data-bet="' + i + '">押 ' + fmtShort(cur, chip) + '</button>') +
+                '<button type="button" class="dograce-betbtn" data-bet="' + i + '">押 ' + fmtShort(cur, chip) + '</button>' +
                 '</div>';
         }
         html += '</div>';
-        html += '<div class="dograce-foot">本場已押 ' + fmtAmt(cur, side.total) + '　·　開獎後中獎自動入袋，不必來領</div>';
+        html += '<div class="dograce-foot">本場已押 ' + fmtAmt(cur, side.total) + '　·　開獎後中獎自動入袋</div>';
         html += '</div>';
         panel.innerHTML = html;
     }
