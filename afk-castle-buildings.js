@@ -1395,6 +1395,12 @@
         try {
             if (typeof DB === 'undefined' || !DB || !DB.towns) return;
 
+            // 0. 確保 NPC_SPR_FIXED 有管家專屬 sprite（防核心補丁未套用／瀏覽器快取舊版 js/11-world-map.js）
+            //    1256＝商販型 sprite，三座城堡皆未使用，適合管家形象。
+            if (typeof NPC_SPR_FIXED !== 'undefined' && !NPC_SPR_FIXED.npc_butler) {
+                NPC_SPR_FIXED.npc_butler = '1256';
+            }
+
             var CASTLE_TOWNS = ['town_kent_castle', 'town_windwood_castle', 'town_heine_castle'];
             var BUTLER_SPOTS = {
                 town_kent_castle: [58, 48],
@@ -1419,6 +1425,7 @@
                         id: 'npc_butler',
                         n: '管家',
                         title: '建築管理',
+                        type: 'butler',
                         d: '你好，我是城堡的管家。我可以協助你管理城堡的建築物。'
                     });
                     butlerIdx = town.npcs.length - 1;
