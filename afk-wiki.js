@@ -306,6 +306,14 @@
     ['弓 / 遠距', '走遠距離的命中與傷害、可觸發連射，但需要箭矢。']
   ];
 
+  // 職業 → [男角外觀, 女角外觀]:速度類資料(ATK_APM / HITSTUN_TICKS / CAST_TICKS)都是以「外觀」為 key,
+  //   但玩家認的是職業 → 這份負責橋接,並讓「男女同值就併成一列/一顆鈕、不同才分男女」的呈現全站一致。
+  //   順序為使用者指定(王族→騎士→妖精→法師→黑暗妖精→龍騎士→幻術士→戰士)。
+  var CLASS_AVATARS = [
+    ['王族', '王子', '公主'], ['騎士', '男騎士', '女騎士'], ['妖精', '男妖精', '女妖精'], ['法師', '男法師', '女法師'],
+    ['黑暗妖精', '男黑暗妖精', '女黑暗妖精'], ['龍騎士', '男龍騎士', '女龍騎士'], ['幻術士', '男幻術士', '女幻術士'], ['戰士', '男戰士', '女戰士']
+  ];
+
   // ===== 戰鬥機制(本檔維護;白話講清楚傷害怎麼算) ============================
   var COMBAT_SECTIONS = [
     // ── 一、你的核心數值怎麼來 ──
@@ -346,9 +354,8 @@
       var bl = [{ t: 'p', p: '另有兩個依<b>職業（含性別）</b>決定的速度值，越小越快（秒）：<b>硬直</b>＝被直接命中後、下一次普攻要延遲多久（持續傷害不算，每個攻擊週期最多一次）；<b>施法冷卻下限</b>＝攻擊魔法自動施放的最短間隔。' }];
       try {
         if (typeof HITSTUN_TICKS !== 'undefined' && typeof CAST_TICKS !== 'undefined') {
-          var CLS = [['王族', '王子', '公主'], ['騎士', '男騎士', '女騎士'], ['妖精', '男妖精', '女妖精'], ['法師', '男法師', '女法師'], ['黑暗妖精', '男黑暗妖精', '女黑暗妖精'], ['龍騎士', '男龍騎士', '女龍騎士'], ['戰士', '男戰士', '女戰士'], ['幻術士', '男幻術士', '女幻術士']];
           var sec = function (tbl, m, f) { var a = tbl[m], b = tbl[f]; return a === b ? (a / 10).toFixed(1) : ('男 ' + (a / 10).toFixed(1) + ' / 女 ' + (b / 10).toFixed(1)); };   // 男女同值→單一;不同→分列
-          bl.push({ t: 'tbl', h: ['職業', '硬直（秒）', '施法冷卻下限（秒）'], rows: CLS.map(function (c) { return [c[0], sec(HITSTUN_TICKS, c[1], c[2]), sec(CAST_TICKS, c[1], c[2])]; }) });
+          bl.push({ t: 'tbl', h: ['職業', '硬直（秒）', '施法冷卻下限（秒）'], rows: CLASS_AVATARS.map(function (c) { return [c[0], sec(HITSTUN_TICKS, c[1], c[2]), sec(CAST_TICKS, c[1], c[2])]; }) });
         }
       } catch (e) {}
       bl.push({ t: 'p', p: '速度型<b>變身</b>（變形卷軸／套裝變身）會用該型態自己的攻擊間隔／施法／硬直<b>取代</b>這些值（見「變形」分頁）。施法冷卻只是<b>下限</b>，實際還受該攻擊技本身的冷卻與 MP 是否足夠一起節流。' });
@@ -1054,7 +1061,7 @@
     { k: 'mode', n: '遊戲模式' },
     { k: 'npc', n: 'NPC總覽' }
   ];
-  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all', combatAvatar: '', polyRange: 'all', polySort: 'lv', polySortDesc: false };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
+  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all', combatCls: '', polyRange: 'all', polySort: 'lv', polySortDesc: false };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
   // 搜尋打字防抖:每次按鍵只重設計時器,停手這麼久才真的過濾+重渲染(降低逐字輸入的 INP)。
   var SEARCH_DEBOUNCE_MS = 150;
   var _searchTimer = null;
@@ -1145,9 +1152,9 @@
       // 🗺️ 收藏-遺物的「掉落區域篩選」(按區域看收集進度/缺哪些)
       var rlrg = e.target.closest ? e.target.closest('[data-relicregion]') : null;
       if (rlrg) { state.relicRegion = rlrg.getAttribute('data-relicregion'); render(); return; }
-      // ⚡ 戰鬥機制頁「角色 × 武器攻速」的角色選擇(見 atkApmHTML)
-      var av = e.target.closest ? e.target.closest('[data-atkav]') : null;
-      if (av) { state.combatAvatar = av.getAttribute('data-atkav'); render(); return; }
+      // ⚡ 戰鬥機制頁「角色 × 武器攻速」的職業選擇(見 atkApmHTML)
+      var av = e.target.closest ? e.target.closest('[data-atkcls]') : null;
+      if (av) { state.combatCls = av.getAttribute('data-atkcls'); render(); return; }
       // 🏹 變形頁:遠近篩選 + 點欄位標題排序(同一欄再點一次=反向)
       var prg = e.target.closest ? e.target.closest('[data-polyrange]') : null;
       if (prg) { state.polyRange = prg.getAttribute('data-polyrange'); render(); return; }
@@ -2775,38 +2782,62 @@
 
   // ⚡ 角色 × 武器 基礎攻速:原本一張 16 欄 × 17 列的大表,手機(390px)得橫捲 548px——
   //   欄位全是同類量,捲到第 8 欄早忘了前面看的是哪一欄(NN/g:這種矩陣表橫捲救不了)。
-  //   改成「先選一個角色」→ 列出該角色 16 種武器的攻速,依快到慢排(2 欄 × 16 列,手機一頁看完),
-  //   順便解決「我這角色拿什麼最快」這個真正的問題;要跨角色比較的仍可切「全部角色」看原本大表。
-  //   預設帶入玩家目前角色的外觀(只讀 player,主選單讀不到就用表上第一個)。
+  //   改成「先選一個職業」→ 列出該職業 15 種武器的攻速,依快到慢排(3 欄,手機一頁看完),
+  //   順便解決「我這職業拿什麼最快」這個真正的問題;要跨角色比較的仍可切「全部角色」看原本大表。
+  //   ⚠ 不能只按職業:實測騎士/妖精/黑暗妖精/龍騎士的「魔杖·奇古獸」男女不同值(妖精連矛也不同),
+  //     故同一列在男女不同時顯示「男 X / 女 Y」(同頁的硬直/施法冷卻表早就是這個作法),排序取較快那端。
+  //   預設帶入玩家目前角色的職業(只讀 player,主選單讀不到就用第一個)。
   function atkApmHTML() {
     if (typeof ATK_APM === 'undefined') return '';
     var avatars = Object.keys(ATK_APM);
     if (!avatars.length) return '';
     var fams = Object.keys(ATK_APM[avatars[0]]);
-    var cur = state.combatAvatar;
-    if (!cur) { try { cur = (window.player && player.avatar && ATK_APM[player.avatar]) ? player.avatar : avatars[0]; } catch (e) { cur = avatars[0]; } }
-    var row = '<div class="m-wiki-mfilter">' + avatars.map(function (av) {
-      return '<button type="button" class="m-wiki-mfbtn' + (av === cur ? ' on' : '') + '" data-atkav="' + esc(av) + '">' + esc(av) + '</button>';
-    }).join('') + '<button type="button" class="m-wiki-mfbtn' + (cur === 'all' ? ' on' : '') + '" data-atkav="all">📊 全部角色</button></div>';
+    // 職業分組:缺一邊性別的資料就用有的那個當男女共用;CLASS_AVATARS 沒涵蓋到的外觀(作者新增)自成一組,不漏
+    var groups = CLASS_AVATARS.filter(function (c) { return ATK_APM[c[1]] || ATK_APM[c[2]]; }).map(function (c) {
+      var m = ATK_APM[c[1]] ? c[1] : c[2], f = ATK_APM[c[2]] ? c[2] : c[1];
+      return { cls: c[0], m: m, f: f };
+    });
+    var covered = {}; groups.forEach(function (g) { covered[g.m] = 1; covered[g.f] = 1; });
+    avatars.forEach(function (av) { if (!covered[av]) groups.push({ cls: av, m: av, f: av }); });
+    var gkey = function (g) { return JSON.stringify([ATK_APM[g.m], ATK_APM[g.f]]); };
+    var cur = state.combatCls;
+    if (!cur) {
+      cur = groups[0].cls;
+      try { var pav = window.player && player.avatar; if (pav) { var hit = groups.filter(function (g) { return g.m === pav || g.f === pav; })[0]; if (hit) cur = hit.cls; } } catch (e) {}
+    }
+    var row = '<div class="m-wiki-mfilter">' + groups.map(function (g) {
+      return '<button type="button" class="m-wiki-mfbtn' + (g.cls === cur ? ' on' : '') + '" data-atkcls="' + esc(g.cls) + '">' + esc(g.cls) + '</button>';
+    }).join('') + '<button type="button" class="m-wiki-mfbtn' + (cur === 'all' ? ' on' : '') + '" data-atkcls="all">📊 全部角色</button></div>';
     var tblHTML, sameNote = '';
-    if (cur === 'all') {   // 跨角色比較:原本的大表(桌機夠寬,手機得橫捲)
+    if (cur === 'all') {   // 跨角色比較:原本的大表(桌機夠寬,手機得橫捲);這裡維持「外觀」粒度才看得到男女差異
       tblHTML = wTbl(['角色'].concat(fams), avatars.map(function (av) {
         return [av].concat(fams.map(function (f) { var v = ATK_APM[av][f]; return v != null ? String(v) : '—'; }));
       }));
     } else {
-      // 🔁 16 個角色其實只有 8 組數值(如王子/公主/男戰士/女戰士完全相同)→ 標出同組的,省得一個個點來對
-      var _k = JSON.stringify(ATK_APM[cur] || {});
-      var same = avatars.filter(function (a) { return a !== cur && JSON.stringify(ATK_APM[a]) === _k; });
-      if (same.length) sameNote = '<div class="m-wiki-desc" style="margin-top:4px;">・這組數值與 <b>' + same.map(esc).join('／') + '</b> 完全相同（16 個角色只有 8 組不同的攻速）。</div>';
-      var list = fams.map(function (f) { return { f: f, v: ATK_APM[cur] ? ATK_APM[cur][f] : null }; })
-        .filter(function (x) { return x.v != null; })
-        .sort(function (a, b) { return b.v - a.v || a.f.localeCompare(b.f); });   // 快→慢
+      var g = groups.filter(function (x) { return x.cls === cur; })[0] || groups[0];
+      // 🔁 8 個職業其實只有 5 組數值(王族=戰士、騎士=龍騎士、法師=幻術士)→ 標出同組的,省得一個個點來對
+      var _k = gkey(g);
+      var same = groups.filter(function (x) { return x.cls !== g.cls && gkey(x) === _k; }).map(function (x) { return x.cls; });
+      if (same.length) sameNote = '<div class="m-wiki-desc" style="margin-top:4px;">・這組數值與 <b>' + same.map(esc).join('／') + '</b> 完全相同。</div>';
+      var pair = function (vm, vf, fmt) {
+        if (vm == null && vf == null) return '—';
+        if (vm === vf || vf == null || vm == null) return fmt(vm == null ? vf : vm);
+        return '男 ' + fmt(vm) + ' / 女 ' + fmt(vf);
+      };
+      var apmF = function (v) { return String(v); }, itvF = function (v) { return (60 / v).toFixed(2); };
+      var list = fams.map(function (f) { return { f: f, vm: ATK_APM[g.m][f], vf: ATK_APM[g.f][f] }; })
+        .filter(function (x) { return x.vm != null || x.vf != null; })
+        .sort(function (a, b) {   // 快→慢(每分鐘次數高→低);男女不同時取較快那端當基準
+          var fa = Math.max(a.vm == null ? -1 : a.vm, a.vf == null ? -1 : a.vf), fb = Math.max(b.vm == null ? -1 : b.vm, b.vf == null ? -1 : b.vf);
+          return fb - fa || a.f.localeCompare(b.f);
+        });
       tblHTML = wTbl(['武器種類', '每分鐘攻擊次數', '間隔（秒）'], list.map(function (x) {
-        return ['<span style="white-space:nowrap;">' + esc(x.f) + '</span>', String(x.v), (60 / x.v).toFixed(2)];
+        return ['<span style="white-space:nowrap;">' + esc(x.f) + '</span>', pair(x.vm, x.vf, apmF), pair(x.vm, x.vf, itvF)];
       }));
     }
     return row + sameNote + tblHTML
-      + '<div class="m-wiki-desc" style="margin-top:4px;">・加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／龍騎士覺醒…）在這個基礎值上<b>相乘疊加</b>，不是覆蓋。<b>變身</b>會直接<b>取代</b>基礎攻速（有的反而更慢），之後才吃加速類乘算。</div>';
+      + '<div class="m-wiki-desc" style="margin-top:4px;">・同職業<b>男女大多相同</b>，只有少數武器不同（會標成「男 X / 女 Y」）：騎士／龍騎士／黑暗妖精的<b>魔杖・奇古獸</b>，妖精再加上<b>單手矛・雙手矛</b>。</div>'
+      + '<div class="m-wiki-desc">・加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／龍騎士覺醒…）在這個基礎值上<b>相乘疊加</b>，不是覆蓋。<b>變身</b>會直接<b>取代</b>基礎攻速（有的反而更慢），之後才吃加速類乘算。</div>';
   }
 
   function renderCombat() {
