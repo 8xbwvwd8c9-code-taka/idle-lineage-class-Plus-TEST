@@ -3899,8 +3899,11 @@
       '.m-wiki-kv b{color:#e2e8f0;margin-right:8px;}',
       '.c-mapunlock{color:#fca5a5;}',
       '.c-mappath{color:#7dd3fc;}',
-      '.m-wiki-stbl-wrap{overflow-x:auto;margin-top:9px;-webkit-overflow-scrolling:touch;}',
-      '.m-wiki-tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}',   /* 寬表格(攻速表等)在窄畫面自己捲,不撐破頁面 */
+      /* 🚨 兩個橫捲容器都必須 flex:none:#m-wiki-body 是 flex column,而 overflow-x:auto 會讓元素變成
+         scroll container → 它的 min-height:auto 依規範解析成 0(非 scroll container 才會保住內容高度)
+         → 預設 flex-shrink:1 就把整個表格壓成高度 0、內容完全看不見(桌機手機都中,只剩區段標題)。 */
+      '.m-wiki-stbl-wrap{overflow-x:auto;margin-top:9px;-webkit-overflow-scrolling:touch;flex:none;}',
+      '.m-wiki-tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;flex:none;}',   /* 寬表格(攻速表等)在窄畫面自己捲,不撐破頁面 */
       '.m-wiki-stbl{border-collapse:collapse;font-size:12px;width:100%;min-width:max-content;}',
       '.m-wiki-stbl th,.m-wiki-stbl td{border:1px solid #1e293b;padding:3px 8px;text-align:center;white-space:nowrap;}',
       '.m-wiki-stbl th{background:#0f1d33;color:#fcd34d;font-weight:bold;}',
