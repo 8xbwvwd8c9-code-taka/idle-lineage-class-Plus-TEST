@@ -2327,20 +2327,26 @@
     var durMin = Math.round(dur / 60);
     var h = '<div class="m-wiki-note">變形＝用<b>' + wDexLink('變形卷軸') + '</b>暫時把自己變成某種型態，改變你的<b>速度</b>（攻擊間隔／施法冷卻／被擊硬直／怪物重生），持續 <b>' + durMin + ' 分鐘</b>，到時自動解除、不佔裝備欄。<b>套裝專屬變身</b>另外附帶一組戰鬥加成（見最下方）。</div>';
     h += '<div class="m-wiki-sub">🌀 怎麼變形</div>';
-    h += '<div class="m-wiki-kv"><b>' + wDexLink('變形卷軸') + '（隨機，也叫變形術）</b>使用後從<b>你等級以下（含）的所有型態</b>中<b>隨機</b>變成一種（不限當前等級那一段），持續 ' + durMin + ' 分鐘。可在設定開「自動使用／自動購買」自動維持。</div>';
+    h += '<div class="m-wiki-kv"><b>' + wDexLink('變形卷軸') + '（隨機，也叫變形術）</b>使用後從<b>所有「需要等級 ≤ 你的等級」的型態</b>中<b>隨機</b>變成一種，持續 ' + durMin + ' 分鐘。可在設定開「自動使用／自動購買」自動維持。</div>';
     h += '<div class="m-wiki-kv"><b>' + wDexLink('變形控制戒指') + '（指定型態）</b>只要<b>背包帶著就生效</b>（不必佔戒指欄）。手動使用變形卷軸時會跳選單讓你<b>指定</b>要變哪一種；自動使用時則<b>維持上次選的型態</b>、不再隨機重抽。</div>';
     h += '<div class="m-wiki-kv"><b>套裝專屬變身</b>穿滿對應套裝會<b>強制</b>變成專屬型態（見最下方），<b>優先於卷軸變身</b>、不進隨機池，<b>卸下套裝立即消失</b>。</div>';
     h += '<div class="m-wiki-kv"><b>速度怎麼算</b>：變身會用<b>該型態自己的</b>攻擊間隔／施法冷卻／被擊硬直<b>取代</b>你原本由「職業＋性別×武器」決定的速度（有的變身反而更慢，看下表數字、越小越快）；取代後的<b>攻擊速度</b>仍會再吃加速術／勇敢藥水／精靈餅乾／各精通的<b>相乘</b>加速；<b>但施法間隔完全不受任何加速影響</b>——放技能的快慢只看職業（或變身）本身的施法速度，堆攻速對連法沒有幫助。移動速度則影響<b>怪物重生（下一批出現）</b>快慢。<br><b>戰鬥加成怎麼疊</b>：只有<b>套裝專屬變身</b>會附帶 額外傷害／命中／魔法傷害／MP… 這類加成，直接<b>加</b>在你原本數值上；<b>隨機的變形卷軸型態現在只改速度、沒有這些加成</b>。</div>';
-    h += '<div class="m-wiki-sub">📊 各等級的變形型態與加成</div>';
-    h += '<div class="m-wiki-note" style="margin-top:0;">用變形卷軸會從<b>你等級以下的全部型態</b>裡隨機抽（持變形控制戒指可指定）。⚠️ <b>會依你手上的武器分流</b>：拿<b>弓或十字弓</b>只會變成遠距離型態（妖魔弓箭手、妖魔巡守、骷髏弓箭手、黑暗精靈、黑暗巡守、銀光巡守、黃金巡守、白金巡守、莉絲安），拿其他武器或空手只會變成近距離型態；<b>中途換成不同類的武器會立刻重抽</b>。<b>名稱顏色</b>：Lv49 以下白、Lv50~51 淡黃、Lv52 以上金，與遊戲內一致。</div>';
+    h += '<div class="m-wiki-sub">📊 所有變形型態（依需要等級）</div>';
+    h += '<div class="m-wiki-note" style="margin-top:0;">用變形卷軸會從<b>所有「需要等級 ≤ 你的等級」的型態</b>裡隨機抽（持變形控制戒指可指定）。⚠️ <b>會依你手上的武器分流</b>：拿<b>弓或十字弓</b>只會變成<b>遠距離型態</b>（下表帶 🏹 的那些），拿其他武器或空手只會變成近距離型態；<b>中途換成不同類的武器會立刻重抽</b>。<b>名稱顏色</b>只是分級（Lv49 以下白、Lv50~51 淡黃、Lv52 以上金，與遊戲內一致），與能不能變無關。</div>';
     h += '<div class="m-wiki-note" style="margin-top:2px;">四個速度值單位皆為<b>秒、越小越快</b>：攻擊間隔＝兩次普攻的間隔、施法冷卻＝放技能的最短間隔、被擊硬直＝被打斷後的僵直、怪物重生＝下一批怪出現的等待。</div>';
-    POLY_TIERS.forEach(function (t) {
-      var range = (t.min <= 0) ? ('Lv' + t.max + ' 以下') : (t.max >= 9999 ? ('Lv' + t.min + ' 以上') : ('Lv' + t.min + '～' + t.max));
-      h += '<div class="m-wiki-sub" style="font-size:13px;">' + range + '</div>';
-      h += wTbl(['型態', '攻擊間隔', '施法冷卻', '被擊硬直', '怪物重生'], t.forms.map(function (f) {
-        return ['<span class="' + (t.color || '') + '">' + esc(f.n) + '</span>', polyAtk(f), polyCast(f), polyStun(f), polyWlk(f)];
-      }));
-    });
+    // 型態一律照「需要等級」排成一張表:原作者 POLY_TIERS 的分段只決定名稱顏色,不影響能不能變
+    //   (抽取只看 f.lv <= 你的等級,見 js/02 polyRandomCandidates),分段標題反而讓人誤會
+    //   「這個等級帶只能變這幾個」。遠距離型態讀遊戲的 RANGED_POLY_FORMS(作者改名單自動跟上)。
+    var _polyForms = [];
+    POLY_TIERS.forEach(function (t) { (t.forms || []).forEach(function (f) { _polyForms.push({ f: f, color: t.color || '' }); }); });
+    _polyForms.sort(function (a, b) { return (a.f.lv || 0) - (b.f.lv || 0); });   // 同等級維持原順序(sort 穩定)
+    var _isRangedForm = function (n) { try { return typeof RANGED_POLY_FORMS !== 'undefined' && RANGED_POLY_FORMS.has(n); } catch (e) { return false; } };
+    h += wTbl(['型態', '需要等級', '攻擊間隔', '施法冷卻', '被擊硬直', '怪物重生'], _polyForms.map(function (x) {
+      var f = x.f;
+      // 型態名不換行:窄畫面下四字以上會被拆成三四行、整列變超高很難讀,寬度不足時讓表格自己橫捲(m-wiki-tblwrap)
+      return ['<span class="' + x.color + '" style="white-space:nowrap;">' + esc(f.n) + (_isRangedForm(f.n) ? ' 🏹' : '') + '</span>',
+        'Lv' + (f.lv || 1), polyAtk(f), polyCast(f), polyStun(f), polyWlk(f)];
+    }));
     // 🧝 戒指限定型態(夏納/真夏納):不在 POLY_TIERS,變形卷軸抽不到,只有變形控制戒指指定得到
     if (typeof CONTROL_ONLY_POLY_FORMS !== 'undefined' && CONTROL_ONLY_POLY_FORMS.length) {
       h += '<div class="m-wiki-sub">💍 變形控制戒指限定（只能靠戒指指定）</div>';
