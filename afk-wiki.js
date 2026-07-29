@@ -339,20 +339,9 @@
       { t: 'p', p: '⚠️ 算②的時候，<b>智力提供的額外魔法點數<span style="color:#fbbf24">最多只算到 33</span></b>（智力 96 到頂）——智力再往上堆對法術傷害沒有幫助；<b>裝備／套裝／增益給的則沒有上限</b>，可以繼續往上疊。' },
       { t: 'p', p: '<b>法術階級</b>：自己施放看該法術本身的階級；<b>武器免費觸發</b>的法術則改看<b>武器有多稀有</b>——傳說／遺物武器固定 <b>5 階（×1.5）</b>，一般武器越罕見階級越高。' }
     ]},
-    { t: '攻擊速度：看「角色 × 武器種類」查表（每分鐘攻擊次數）', blocks: (function () {
-      var bl = [{ t: 'p', p: '基礎攻速＝「你的角色（職業＋性別）」對上「武器種類」查下表，單位是<b>每分鐘攻擊次數</b>（越多越快；間隔秒 ＝ 60 ÷ 次數），也就是裝備面板寫的那個值。<b>空手＝60 次</b>；戰士雙持單手斧看「雙斧」欄。' }];
-      try {
-        if (typeof ATK_APM !== 'undefined') {
-          var fams = Object.keys(ATK_APM[Object.keys(ATK_APM)[0]]);
-          var rows = Object.keys(ATK_APM).map(function (av) {
-            return [av].concat(fams.map(function (f) { var v = ATK_APM[av][f]; return v != null ? String(v) : '—'; }));
-          });
-          bl.push({ t: 'tbl', h: ['角色'].concat(fams), rows: rows });
-        }
-      } catch (e) {}
-      bl.push({ t: 'p', p: '加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／龍騎士覺醒…）在這個基礎值上<b>相乘疊加</b>，不是覆蓋。<b>變身</b>會直接<b>取代</b>基礎攻速（有的反而更慢），之後才吃加速類乘算。' });
-      return bl;
-    })() },
+    { t: '攻擊速度：看「角色 × 武器種類」查表（每分鐘攻擊次數）',
+      blocks: [{ t: 'p', p: '基礎攻速＝「你的角色（職業＋性別）」對上「武器種類」查表，單位是<b>每分鐘攻擊次數</b>（越多越快；間隔秒 ＝ 60 ÷ 次數），也就是裝備面板寫的那個值。<b>空手＝60 次</b>；戰士雙持單手斧看「雙斧」。' }],
+      html: function () { return atkApmHTML(); } },
     { t: '硬直與施法冷卻：兩個「職業速度」下限', blocks: (function () {
       var bl = [{ t: 'p', p: '另有兩個依<b>職業（含性別）</b>決定的速度值，越小越快（秒）：<b>硬直</b>＝被直接命中後、下一次普攻要延遲多久（持續傷害不算，每個攻擊週期最多一次）；<b>施法冷卻下限</b>＝攻擊魔法自動施放的最短間隔。' }];
       try {
@@ -1065,7 +1054,7 @@
     { k: 'mode', n: '遊戲模式' },
     { k: 'npc', n: 'NPC總覽' }
   ];
-  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all' };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
+  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all', combatAvatar: '' };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
   // 搜尋打字防抖:每次按鍵只重設計時器,停手這麼久才真的過濾+重渲染(降低逐字輸入的 INP)。
   var SEARCH_DEBOUNCE_MS = 150;
   var _searchTimer = null;
@@ -1156,6 +1145,9 @@
       // 🗺️ 收藏-遺物的「掉落區域篩選」(按區域看收集進度/缺哪些)
       var rlrg = e.target.closest ? e.target.closest('[data-relicregion]') : null;
       if (rlrg) { state.relicRegion = rlrg.getAttribute('data-relicregion'); render(); return; }
+      // ⚡ 戰鬥機制頁「角色 × 武器攻速」的角色選擇(見 atkApmHTML)
+      var av = e.target.closest ? e.target.closest('[data-atkav]') : null;
+      if (av) { state.combatAvatar = av.getAttribute('data-atkav'); render(); return; }
       // 收藏三分頁的「模式」切換(再點同一顆=收合)
       var cm = e.target.closest ? e.target.closest('[data-collmode]') : null;
       if (cm) { var cmv = cm.getAttribute('data-collmode'); state.collMode = (state.collMode === cmv) ? null : cmv; render(); return; }
@@ -2737,6 +2729,42 @@
     return note + c1 + c3 + c4 + c5;
   }
 
+  // ⚡ 角色 × 武器 基礎攻速:原本一張 16 欄 × 17 列的大表,手機(390px)得橫捲 548px——
+  //   欄位全是同類量,捲到第 8 欄早忘了前面看的是哪一欄(NN/g:這種矩陣表橫捲救不了)。
+  //   改成「先選一個角色」→ 列出該角色 16 種武器的攻速,依快到慢排(2 欄 × 16 列,手機一頁看完),
+  //   順便解決「我這角色拿什麼最快」這個真正的問題;要跨角色比較的仍可切「全部角色」看原本大表。
+  //   預設帶入玩家目前角色的外觀(只讀 player,主選單讀不到就用表上第一個)。
+  function atkApmHTML() {
+    if (typeof ATK_APM === 'undefined') return '';
+    var avatars = Object.keys(ATK_APM);
+    if (!avatars.length) return '';
+    var fams = Object.keys(ATK_APM[avatars[0]]);
+    var cur = state.combatAvatar;
+    if (!cur) { try { cur = (window.player && player.avatar && ATK_APM[player.avatar]) ? player.avatar : avatars[0]; } catch (e) { cur = avatars[0]; } }
+    var row = '<div class="m-wiki-mfilter">' + avatars.map(function (av) {
+      return '<button type="button" class="m-wiki-mfbtn' + (av === cur ? ' on' : '') + '" data-atkav="' + esc(av) + '">' + esc(av) + '</button>';
+    }).join('') + '<button type="button" class="m-wiki-mfbtn' + (cur === 'all' ? ' on' : '') + '" data-atkav="all">📊 全部角色</button></div>';
+    var tblHTML, sameNote = '';
+    if (cur === 'all') {   // 跨角色比較:原本的大表(桌機夠寬,手機得橫捲)
+      tblHTML = wTbl(['角色'].concat(fams), avatars.map(function (av) {
+        return [av].concat(fams.map(function (f) { var v = ATK_APM[av][f]; return v != null ? String(v) : '—'; }));
+      }));
+    } else {
+      // 🔁 16 個角色其實只有 8 組數值(如王子/公主/男戰士/女戰士完全相同)→ 標出同組的,省得一個個點來對
+      var _k = JSON.stringify(ATK_APM[cur] || {});
+      var same = avatars.filter(function (a) { return a !== cur && JSON.stringify(ATK_APM[a]) === _k; });
+      if (same.length) sameNote = '<div class="m-wiki-desc" style="margin-top:4px;">・這組數值與 <b>' + same.map(esc).join('／') + '</b> 完全相同（16 個角色只有 8 組不同的攻速）。</div>';
+      var list = fams.map(function (f) { return { f: f, v: ATK_APM[cur] ? ATK_APM[cur][f] : null }; })
+        .filter(function (x) { return x.v != null; })
+        .sort(function (a, b) { return b.v - a.v || a.f.localeCompare(b.f); });   // 快→慢
+      tblHTML = wTbl(['武器種類', '每分鐘攻擊次數', '間隔（秒）'], list.map(function (x) {
+        return ['<span style="white-space:nowrap;">' + esc(x.f) + '</span>', String(x.v), (60 / x.v).toFixed(2)];
+      }));
+    }
+    return row + sameNote + tblHTML
+      + '<div class="m-wiki-desc" style="margin-top:4px;">・加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／龍騎士覺醒…）在這個基礎值上<b>相乘疊加</b>，不是覆蓋。<b>變身</b>會直接<b>取代</b>基礎攻速（有的反而更慢），之後才吃加速類乘算。</div>';
+  }
+
   function renderCombat() {
     var note = '<div class="m-wiki-note">傷害不是「攻擊力扣防禦」這麼單純。下面把幾個會大幅左右輸出與生存、卻不直觀的機制講清楚。</div>';
     var secs = COMBAT_SECTIONS.map(sectionCard).join('');
@@ -3016,22 +3044,41 @@
   // 血盟(本檔手動維護;上游 v3.6 起整套改制:舊的「加入依詩蒂/特羅斯陣營、刷王族搜索狀換祝福」已全部移除)。
   //   何時要更新:上游改 js/25-clan-system.js 的常數或攻城規則(grep CLAN_ / startSiege / clanSetCastle)時。
   //   等級與 Buff 兩張表直接讀遊戲常數計算,作者調數值會自動跟上。
+  //   ⚡ 這張表原本 11 欄 × 10 列,手機(390px)要橫捲 466px、欄位全是同類量根本沒法比對。
+  //     實際看資料:7 個加成欄裡有 6 個是規律的(魔防/HP自然恢復/MP自然恢復＝血盟等級;
+  //     額外傷害/命中/魔法傷害/防禦(AC)＝每 2 級 1)→ 規律用一句話講完比查表清楚,
+  //     表格只留真正要查的 HP/MP 上限,11 欄縮成 4 欄、手機不用橫捲。
+  //     ⚠ 規律是「目前剛好成立」而非保證 → 每次渲染都重驗一遍,作者改數值不合了就自動退回完整大表,
+  //       不會留下一句錯的規則(這種手抄規律靜默失效正是最難發現的坑)。
   function clanLevelTable() {
     if (typeof CLAN_LEVEL_COSTS === 'undefined' || typeof CLAN_BUFF_BY_LEVEL === 'undefined') return '';
-    var cum = 0;
-    var rows = [];
-    for (var lv = 1; lv <= CLAN_BUFF_BY_LEVEL.length - 1; lv++) {
-      var need = (lv === 1) ? 0 : CLAN_LEVEL_COSTS[lv - 2];
-      cum += need;
-      var b = CLAN_BUFF_BY_LEVEL[lv] || {};
-      rows.push([
-        '<b>Lv.' + lv + (lv === CLAN_BUFF_BY_LEVEL.length - 1 ? '（滿）' : '') + '</b>',
-        lv === 1 ? '—' : cum.toLocaleString(),
-        lv === 1 ? '—' : (cum / 100).toLocaleString(),
-        '+' + b.hp, '+' + b.mp, '+' + b.extraDmg, '+' + b.extraHit, '+' + b.mr, '+' + b.magicDmg, '+' + b.hpR + ' / +' + b.mpR, String(b.ac)
-      ]);
+    var MAX = CLAN_BUFF_BY_LEVEL.length - 1;
+    var cum = [0], c = 0, lv;
+    for (lv = 1; lv <= MAX; lv++) { c += (lv === 1) ? 0 : (CLAN_LEVEL_COSTS[lv - 2] || 0); cum[lv] = c; }
+    var lvLabel = function (n) { return '<b>Lv.' + n + (n === MAX ? '（滿）' : '') + '</b>'; };
+    var regular = true;
+    for (lv = 1; lv <= MAX; lv++) {
+      var b0 = CLAN_BUFF_BY_LEVEL[lv] || {}, half = Math.ceil(lv / 2);
+      if (b0.mr !== lv || b0.hpR !== lv || b0.mpR !== lv || b0.extraDmg !== half || b0.extraHit !== half || b0.magicDmg !== half || b0.ac !== -half) { regular = false; break; }
     }
-    return wTbl(['血盟等級', '累計貢獻', '＝幾顆龍鑽', 'HP上限', 'MP上限', '額外傷害', '額外命中', '魔防', '魔法傷害', 'HP／MP自然恢復', '防禦(AC)'], rows);
+    if (!regular) {   // 規律不成立(作者改過數值)→ 完整大表,寧可橫捲也不能顯示錯的規則
+      var rowsFull = [];
+      for (lv = 1; lv <= MAX; lv++) {
+        var bf = CLAN_BUFF_BY_LEVEL[lv] || {};
+        rowsFull.push([lvLabel(lv), lv === 1 ? '—' : cum[lv].toLocaleString(), lv === 1 ? '—' : (cum[lv] / 100).toLocaleString(),
+          '+' + bf.hp, '+' + bf.mp, '+' + bf.extraDmg, '+' + bf.extraHit, '+' + bf.mr, '+' + bf.magicDmg, '+' + bf.hpR + ' / +' + bf.mpR, String(bf.ac)]);
+      }
+      return wTbl(['血盟等級', '累計貢獻', '＝幾顆龍鑽', 'HP上限', 'MP上限', '額外傷害', '額外命中', '魔防', '魔法傷害', 'HP／MP自然恢復', '防禦(AC)'], rowsFull);
+    }
+    var rows = [];
+    for (lv = 1; lv <= MAX; lv++) {
+      var b = CLAN_BUFF_BY_LEVEL[lv] || {};
+      rows.push([lvLabel(lv),
+        lv === 1 ? '—' : (cum[lv].toLocaleString() + '<br><span style="color:#94a3b8;font-size:11.5px;">＝' + (cum[lv] / 100).toLocaleString() + ' 顆龍鑽</span>'),
+        '+' + b.hp, '+' + b.mp]);
+    }
+    return wTbl(['血盟等級', '累計貢獻', 'HP上限', 'MP上限'], rows)
+      + wDesc('其餘加成<b>直接跟著血盟等級走</b>，不必查表：<b>魔防、HP自然恢復、MP自然恢復 ＝ 血盟等級</b>（Lv.5 就是各 +5）；<b>額外傷害、額外命中、魔法傷害、防禦(AC) ＝ 每 2 級 1 點</b>（Lv.1~2 是 1、Lv.3~4 是 2 … Lv.9~10 是 5；防禦是負值＝越低越強）。');
   }
 
   function renderPledge() {
