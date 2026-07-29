@@ -1996,8 +1996,31 @@
   var EQUIP_FILTERS = [['all', '全部'], ['royal', '王族'], ['knight', '騎士'], ['mage', '法師'], ['elf', '妖精'], ['dark', '黑暗妖精'], ['illusion', '幻術士'], ['dragon', '龍騎士'], ['warrior', '戰士']];   // 順序＝全部＋創角職業序(同 CLASSES)
   // 武器部位依「裝備圖鑑」細分(作者 EQUIP_CATEGORIES,分類用 equipCatKey/EQUIP_ITEM_CAT);防具/飾品維持原本粗分。
   var RELIC_SLOT = '__relic';   // 「遺物」虛擬部位的 key:刻意用 __ 開頭,不可能撞到真實 slot
+  var HASTE_SLOT = '__haste';   // 「加攻速」虛擬部位(同 RELIC_SLOT 機制:跨部位只留符合的,仍照部位分組)
   // 判斷遺物一律走遊戲的 isRelic()(單一事實來源;讀不到才退回自己看旗標,不讓小百科整頁壞掉)
   function isRelicItem(d) { try { return (typeof isRelic === 'function') ? isRelic(d) : !!(d && d.relic); } catch (e) { return !!(d && d.relic); } }
+
+  // ⚡ 這件裝備怎麼影響攻速:回傳一句摘要(列表右側顯示),null=不影響攻速。
+  //   靠欄位判斷、對齊遊戲攻速管線(js/02-stats-recompute 的 spdMult 那一段 ＋ js/04 的觸發式授予),
+  //   刻意不掃描說明文字——文字會誤收風味文(受詛咒的紅寶石戒指「加速恢復卻削弱防護」),
+  //   也會漏掉沒寫成「+N%」的(魔力凝聚的法陣「每 5 點體質增加 1% 攻擊速度」)。
+  //   ⚠ 條件觸發的也收(玩家要找齊所有能變快的手段),但摘要一律寫明條件,不會被誤看成常駐;
+  //     負值(鎧甲守衛的笨重巨劍 -50%)照樣列出,不然玩家會踩到變慢的雷。
+  //   套裝才有的攻速(真‧冥皇 5 件 +30%)寫在頁首說明卡,單件欄位查不到。
+  //   回傳 { txt:摘要, always:是否穿上就吃得到 };always 用來把常駐的排在條件觸發的前面
+  //   (光雙手劍就有 25 件「重擊時 +20%」,不排前面會把真正常駐的那幾件洗掉)。
+  function hasteInfo(d) {
+    var p = [], always = false;
+    if (d.atkSpdPct) { p.push('攻速' + (d.atkSpdPct > 0 ? '+' : '') + d.atkSpdPct + '%'); always = true; }
+    if (d.equipHaste || d.eff === 'haste') { p.push('常駐加速 +33%'); always = true; }
+    if (d.meleeHaste) { p.push('持近戰武器時 +' + d.meleeHaste + '%'); always = true; }
+    if (d.statArray) { p.push('體質每 5 點 +1%'); always = true; }
+    if (d.eff === 'cleave') p.push('重擊時 +20%（2 秒）');
+    if (d.critFuryHaste) p.push('爆擊後 +' + (d.critFuryHaste.pct || 30) + '%（' + (d.critFuryHaste.sec || 5) + ' 秒）');
+    if (d.polyAtkSpdPct) p.push('變身時 +' + d.polyAtkSpdPct + '%');
+    if (d.procInstakill && d.procInstakill.hasteSec) p.push('觸發即死後 +20%（' + d.procInstakill.hasteSec + ' 秒）');
+    return p.length ? { txt: p.join('、'), always: always } : null;
+  }
 
   // 🗺️ 遺物 → 掉落來源(怪+區域)索引:供「裝備→遺物」檢視按掉落區域篩選(玩家提議·A 方案)。
   //   運行時算一次;讀「與掉落查詢同一組」5 張掉落表(漏讀會少算怪→少算區域)。三段鏈全自動、零手動維護:
@@ -2106,6 +2129,7 @@
     //   (「收藏-遺物」那本要多點一次才看得到效果)。
     var slotRow = '<div class="m-wiki-mfilter"><button type="button" class="m-wiki-mfbtn' + (slot === 'all' ? ' on' : '') + '" data-equipslot="all">全部</button>' +
       '<button type="button" class="m-wiki-mfbtn' + (slot === RELIC_SLOT ? ' on' : '') + '" data-equipslot="' + RELIC_SLOT + '">🏺 遺物</button>' +
+      '<button type="button" class="m-wiki-mfbtn' + (slot === HASTE_SLOT ? ' on' : '') + '" data-equipslot="' + HASTE_SLOT + '">⚡ 加攻速</button>' +
       EQUIP_GROUPS.map(function (g) { return '<button type="button" class="m-wiki-mfbtn' + (g.k === slot ? ' on' : '') + '" data-equipslot="' + g.k + '">' + g.n + '</button>'; }).join('') + '</div>';
     // 職業 tag 列
     var clsRow = '<div class="m-wiki-mfilter">' + EQUIP_FILTERS.map(function (f) {
@@ -2129,6 +2153,17 @@
       '取得任何遺物會登錄「<b>遺物收集冊</b>」（遊戲內「收藏」面板第 4 本；進度依一般／經典兩種模式各自一份、與倉庫同規則；只記錄進度、無全收集加成）。',
       '自動賣出<b>預設保護遺物</b>不賣（可在自動賣出設定關閉；對單件設「永遠販賣」則照賣）。'
     ].map(bulletHTML).join('') + '</div>';
+    // ⚡ 攻速說明卡(手動維護;疊法對應 js/02-stats-recompute 的 spdMult 段落,改動上游時一起核對)
+    var hasteCard = '<div class="m-wiki-card"><div class="m-wiki-name">⚡ 攻速怎麼疊（挑裝備前先看）</div>' + [
+      '<b>加速術／自我加速藥水／裝備常駐加速</b>（惡魔雙刀・鋼爪・十字弓、惡魔之劍、伊娃之盾）三者<b>共用同一格 +33%、不會互相疊加</b>——已經有其中一個，另外兩個等於白拿。',
+      '其他來源都是<b>相乘疊加</b>：勇敢藥水 +33%、精靈餅乾 +15%、行走加速 +15%、切割 +20%、裝備上的攻速%、各職業精通。',
+      '⚠️ <b>「攻速 −N%」是變慢</b>（鎧甲守衛的笨重巨劍 −50% ＝攻擊間隔加倍），別只看傷害就穿。',
+      '🌑 <b>真‧冥皇套裝湊滿 5 件</b>另有攻速 <b>+30%</b>（與加速、勇敢藥水相乘疊加）——這是套裝效果，單件上看不到。',
+      '條件觸發的（重擊時／爆擊後／觸發即死後／變身時／持近戰武器時）<b>只在那個狀態下生效</b>，右側摘要都寫明條件了。',
+      '🏅 <b>精通給的攻速不算裝備</b>，但同樣相乘疊加：劍術／王族劍術 <b>+50%</b>、巨斧／雙斧／奇古獸／魔劍 <b>+30%</b>、切割精通<b>持切割武器常駐 +50%</b>（詳見「職業專精」分頁）。',
+      '⚠️ <b>攻速與施法速度是兩回事</b>：堆攻速<b>不會</b>讓技能放得更快（放技能的快慢只看職業或變身本身的施法速度）。',
+      '🎮 <b>經典模式</b>：切割（重擊時攻速+20%）停用。'
+    ].map(bulletHTML).join('') + '</div>';
     var buckets = {};
     Object.keys(DB.items).forEach(function (id) {
       var d = DB.items[id];
@@ -2136,12 +2171,14 @@
       if (d.type !== 'wpn' && d.type !== 'arm' && d.type !== 'acc') return;
       if (!classCanEquip(d, id, cls)) return;
       var gk = equipGroupKey(id, d);
+      var _hi = null;
       if (slot === RELIC_SLOT) {
         if (!isRelicItem(d)) return;   // 🏺 虛擬部位:跨部位只留遺物(仍照部位分組)
         if (region !== 'all' && _ridx) { var _rr = _ridx.byItem[id]; if (!_rr || _rr.regions.indexOf(region) < 0) return; }   // 🗺️ 選了區域:只留掉落怪出沒該區域的
       }
+      else if (slot === HASTE_SLOT) { _hi = hasteInfo(d); if (!_hi) return; }   // ⚡ 虛擬部位:跨部位只留會影響攻速的
       else if (slot !== 'all' && gk !== slot) return;             // 只看選定部位
-      (buckets[gk] = buckets[gk] || []).push({ id: id, d: d });
+      (buckets[gk] = buckets[gk] || []).push({ id: id, d: d, haste: _hi });
     });
     function card(e) {
       var d = e.d, id = e.id;
@@ -2156,6 +2193,8 @@
         var _rgs = _ridx.byItem[id].regions.slice();
         if (region !== 'all') { var _ri2 = _rgs.indexOf(region); if (_ri2 > 0) { _rgs.splice(_ri2, 1); _rgs.unshift(region); } }   // 選了區域 → 排最前,讓截斷後也一眼對得上目前篩的區域
         compact = '🗺️ ' + (!_rgs.length ? '—' : (_rgs.length <= 2 ? _rgs.join('／') : _rgs.slice(0, 2).join('／') + ' 等' + _rgs.length + '區'));
+      } else if (slot === HASTE_SLOT && e.haste) {
+        compact = '⚡ ' + e.haste.txt;   // ⚡ 攻速檢視:右側直接顯示加多少(篩選維度),一眼比較不必逐件展開
       } else compact = equipCompact(d);
       return '<div class="m-wiki-card m-eq-card">' +
         '<div class="m-eq-head" data-eq="' + esc(id) + '" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
@@ -2165,11 +2204,15 @@
         '<div class="m-eq-detail" style="display:none;border-top:1px solid #1e293b;margin-top:6px;padding-top:6px;">' + equipDetailHTML(id) + '</div>' +
       '</div>';
     }
-    var html = slotRow + clsRow + regionRow + note + relicCard;
+    var html = slotRow + clsRow + regionRow + note + (slot === HASTE_SLOT ? hasteCard : relicCard);   // ⚡ 攻速檢視換成攻速說明(那裡的遺物說明是干擾)
     var total = 0;
     EQUIP_GROUPS.forEach(function (g) {
       var list = buckets[g.k]; if (!list || !list.length) return;
-      list.sort(function (a, b) { return (b.d.p || 0) - (a.d.p || 0) || String(a.d.n).localeCompare(String(b.d.n)); });
+      // ⚡ 攻速檢視:常駐的排在條件觸發的前面(其餘一律照賣價高→低,價高≈強)
+      list.sort(function (a, b) {
+        if (slot === HASTE_SLOT) { var aa = (a.haste && a.haste.always) ? 1 : 0, ba = (b.haste && b.haste.always) ? 1 : 0; if (aa !== ba) return ba - aa; }
+        return (b.d.p || 0) - (a.d.p || 0) || String(a.d.n).localeCompare(String(b.d.n));
+      });
       total += list.length;
       html += '<div class="m-wiki-sub">' + g.n + '（' + list.length + '）</div>' + list.map(card).join('');
     });
