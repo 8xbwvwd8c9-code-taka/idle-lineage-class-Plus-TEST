@@ -71,6 +71,17 @@
         { label: '低迷', emoji: '🥶', mod: -2.6 }
     ];
     var STATE_PICK_W = [1, 2, 3, 2, 1];
+    var TEMP = 3.0;   // 由「戰力」換算勝率的溫度：越大越接近均勢、冷門越容易出
+
+    // 各狗的長期勝率（只看基礎實力、不含當日狀態）。用來把「連幾場沒贏才算異常」
+    // 換算成每隻狗自己的標準——最弱的狗平均 38 場才贏一次，跟最強的用同一個場數門檻，
+    // 它會永遠掛著「很久沒贏」的標記，那個提示就變成壁紙、沒有訊息量。
+    var BASE_PROB = (function () {
+        var w = [], s = 0, i;
+        for (i = 0; i < DOGS.length; i++) { w.push(Math.exp(DOGS[i].baseRating / TEMP)); s += w[i]; }
+        for (i = 0; i < w.length; i++) w[i] /= s;
+        return w;
+    })();
 
     // ---- 跑法劇本（每場抽一種；決定冠軍的加速曲線、二名怎麼追、冠亞終點差多少） ----
     //  wexp/sexp = 冠軍／二名的加速曲線：<1 前段就衝、>1 後段才爆。gap = 冠亞終點差距。
@@ -86,8 +97,9 @@
     // 畫面上像停下來等後面追上(很怪)。混了等速之後速度只在 0.8~1.4 倍之間變化,
     // 「前段衝／後段爆」的相對關係還在,但不會有狗在原地空轉。
     var LINEAR_MIX = 0.45;
-    var DROUGHT_LOOKBACK = 20;            // 「連續幾場沒贏」最多回看幾場
-    var DROUGHT_MIN_SHOW = 8;             // 連敗到這個數才值得標出來
+    var DROUGHT_FACTOR = 2.5;             // 連敗到「自己平均等待場數」的幾倍才算異常（各狗門檻不同）
+    var DROUGHT_MIN_SHOW = 6;             // 再強的狗也要連敗到這個數才值得標
+    var DROUGHT_MAX = 200;                // 回看上限（防呆，不會無止境往回算）
     var UPSET_ODDS = 15;                  // 冠軍賠率高過這個就算大爆冷
 
     // ---- 時鐘（可被 debug 覆寫，供測試強制階段） ----
@@ -130,10 +142,12 @@
         return { raceId: raceId, e: e, phase: phase };
     }
 
-    // ---- 一場的完整資料（memoize） ----
-    var _raceCache = {};
-    function seededRace(raceId) {
-        if (_raceCache[raceId]) return _raceCache[raceId];
+    // ---- 一場的資料 ----
+    // 拆成兩段:raceHead 只算到「誰贏」(狀態、賠率、冠軍),動畫參數留給 seededRace。
+    // 查歷史冠軍(近況、連敗場數、票根結算)一次要翻幾十上百場,只需要冠軍是誰——
+    // 走 head 就不必替每一場產生完整的動畫資料,快取也只留一個整數。
+    var _raceCache = {}, _winnerCache = {};
+    function raceHead(raceId) {
         var rng = mulberry32(hash32(raceId));
         var i, dogs = [];
         for (i = 0; i < N_DOGS; i++) {
@@ -146,14 +160,20 @@
                 stateIdx: st, state: STATES[st].label, stateEmoji: STATES[st].emoji, power: power
             });
         }
-        var TEMP = 3.0, sumW = 0;
+        var sumW = 0;
         for (i = 0; i < N_DOGS; i++) { dogs[i]._w = Math.exp(dogs[i].power / TEMP); sumW += dogs[i]._w; }
         for (i = 0; i < N_DOGS; i++) {
             dogs[i].prob = dogs[i]._w / sumW;
             dogs[i].odds = Math.max(1.2, Math.round((1 / dogs[i].prob) * (1 - HOUSE_EDGE) * 10) / 10);
         }
         var winner = pickWeighted(rng, dogs.map(function (d) { return d._w; }));
-        var rest = [];
+        _winnerCache[raceId] = winner;
+        return { rng: rng, dogs: dogs, winner: winner };
+    }
+    function seededRace(raceId) {
+        if (_raceCache[raceId]) return _raceCache[raceId];
+        var head = raceHead(raceId), rng = head.rng, dogs = head.dogs, winner = head.winner;
+        var i, rest = [];
         for (i = 0; i < N_DOGS; i++) if (i !== winner) rest.push({ idx: i, s: dogs[i].power + (rng() - 0.5) * 3 });
         rest.sort(function (a, b) { return b.s - a.s; });
         var order = [winner].concat(rest.map(function (o) { return o.idx; }));
@@ -225,20 +245,27 @@
         if (g < 0.032) return '一個身位';
         return '好幾個身位';
     }
-    function winnerOf(raceId) { return seededRace(raceId).winner; }
+    function winnerOf(raceId) {
+        var w = _winnerCache[raceId];
+        return (w === undefined) ? raceHead(raceId).winner : w;
+    }
     function recentForm(dogIdx, curRaceId, K) {
         var w = 0, total = 0;
-        for (var r = curRaceId - K; r < curRaceId; r++) { if (r < 0) continue; total++; if (seededRace(r).winner === dogIdx) w++; }
+        for (var r = curRaceId - K; r < curRaceId; r++) { if (r < 0) continue; total++; if (winnerOf(r) === dogIdx) w++; }
         return { w: w, total: total };
     }
     // 連續幾場沒贏（下注頁的「該它了」提示；只回看有限場數，不去翻整個歷史）
     function droughtOf(dogIdx, curRaceId) {
         var n = 0;
-        for (var r = curRaceId - 1; r >= 0 && n < DROUGHT_LOOKBACK; r--) {
-            if (seededRace(r).winner === dogIdx) break;
+        for (var r = curRaceId - 1; r >= 0 && n < DROUGHT_MAX; r--) {
+            if (winnerOf(r) === dogIdx) break;
             n++;
         }
         return n;
+    }
+    // 這隻狗要連敗幾場才算「異常」：以自己的平均等待場數（1/勝率）為基準
+    function droughtThreshold(dogIdx) {
+        return Math.max(DROUGHT_MIN_SHOW, Math.round(DROUGHT_FACTOR / BASE_PROB[dogIdx]));
     }
 
     // ================= 下注 / 紀錄 =================
@@ -827,7 +854,7 @@
             html += '<div class="dograce-dogcard">' +
                 '<span class="dograce-num" style="background:' + d.color + '">' + (i + 1) + '</span>' +
                 '<span class="dograce-name">' + d.name + '<small>' + d.stateEmoji + d.state + '　近' + rf.total + '場' + rf.w + '勝' +
-                (dry >= DROUGHT_MIN_SHOW ? '　<span class="dograce-dry">⚡ 連' + dry + (dry >= DROUGHT_LOOKBACK ? '場以上' : '場') + '沒贏</span>' : '') +
+                (dry >= droughtThreshold(i) ? '　<span class="dograce-dry">⚡ 連' + dry + (dry >= DROUGHT_MAX ? '場以上' : '場') + '沒贏</span>' : '') +
                 (mine ? '　<span class="dograce-mine">已押 ' + fmtShort(cur, mine) + '</span>' : '') + '</small></span>' +
                 '<span class="dograce-odds">×' + d.odds.toFixed(1) + '<small>贏 ' + fmtShort(cur, payoutOf(cur, chip, d.odds)) + '</small></span>' +
                 '<button type="button" class="dograce-betbtn" data-bet="' + i + '">押 ' + fmtShort(cur, chip) + '</button>' +
@@ -872,7 +899,8 @@
         race: function (id) { return seededRace(id == null ? phaseOf(nowMs()).raceId : id); },
         winner: winnerOf, placeBet: placeBet, settle: settleWins, tickets: ensureTickets,
         dia: diaBalance, DOGS: DOGS, CUR: { gold: CUR_GOLD, dia: CUR_DIA },
-        progressAt: progressAt, orderAt: orderAt, rankAt: rankAt, SCRIPTS: SCRIPTS
+        progressAt: progressAt, orderAt: orderAt, rankAt: rankAt, SCRIPTS: SCRIPTS,
+        drought: droughtOf, droughtThreshold: droughtThreshold, baseProb: BASE_PROB
     };
 
     // 入口鈕在自動化分頁,但手機上視窗/縮球只在戰鬥檢視露出(isMobileHidden)——不先切回去,
