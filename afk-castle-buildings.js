@@ -1383,8 +1383,122 @@
 
     // ── 初始化 ───────────────────────────────────────────────
 
+    /**
+     * 確保三個城堡的管家 NPC 存在（防瀏覽器快取舊版核心檔）
+     *
+     * 問題：核心補丁修改了 js/00-data.js（新增 npc_butler 定義）與
+     * js/11-world-map.js（新增 NPC 站位、對話分派），但 index.html 的
+     * ?v= 版本字串未更新，導致瀏覽器可能提供無管家 NPC 的舊版快取。
+     * 此函式在執行時期補上缺失的資料，讓玩家不需 CTRL+F5 即可看到管家。
+     */
+    function ensureCastleButlerNPC() {
+        try {
+            if (typeof DB === 'undefined' || !DB || !DB.towns) return;
+
+            var CASTLE_TOWNS = ['town_kent_castle', 'town_windwood_castle', 'town_heine_castle'];
+            var BUTLER_SPOTS = {
+                town_kent_castle: [58, 48],
+                town_windwood_castle: [50, 52],
+                town_heine_castle: [58, 48]
+            };
+
+            CASTLE_TOWNS.forEach(function (townId) {
+                var town = DB.towns[townId];
+                if (!town || !Array.isArray(town.npcs)) return;
+
+                // 1. 確保 npc_butler 存在於 NPC 清單（管家應為最後一個 NPC）
+                var butlerIdx = -1;
+                for (var i = 0; i < town.npcs.length; i++) {
+                    if (town.npcs[i] && town.npcs[i].id === 'npc_butler') {
+                        butlerIdx = i;
+                        break;
+                    }
+                }
+                if (butlerIdx === -1) {
+                    town.npcs.push({
+                        id: 'npc_butler',
+                        n: '管家',
+                        title: '建築管理',
+                        d: '你好，我是城堡的管家。我可以協助你管理城堡的建築物。'
+                    });
+                    butlerIdx = town.npcs.length - 1;
+                    console.log('[CastleBuildings] 已注入 npc_butler 至 ' + townId);
+                }
+
+                // 2. 確保 TOWN_NPC_SPOTS 有管家站位（陣列長度不足時補足）
+                if (typeof TOWN_NPC_SPOTS !== 'undefined' && TOWN_NPC_SPOTS[townId]) {
+                    var spots = TOWN_NPC_SPOTS[townId];
+                    var spot = BUTLER_SPOTS[townId];
+                    if (spot) {
+                        // 確保 spots 陣列夠長
+                        while (spots.length <= butlerIdx) {
+                            spots.push([50, 50]);  // 預設中間位置
+                        }
+                        spots[butlerIdx] = spot;
+                        console.log('[CastleBuildings] 已更新 ' + townId + ' 管家站位 idx=' + butlerIdx);
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn('[CastleBuildings] ensureCastleButlerNPC error:', e);
+        }
+    }
+
+    /**
+     * 確保 interactNPC 能分派管家對話（防快取舊版 js/11-world-map.js）
+     * 若 window.renderCastleButler 存在但 interactNPC 未處理 npc_butler，
+     * 則包裹原函式：遇到管家時直接由我們處理，其餘委託原始邏輯。
+     */
+    function patchInteractNPCForButler() {
+        try {
+            if (typeof interactNPC !== 'function') return;
+            if (typeof window.renderCastleButler !== 'function') return;
+
+            // 測試目前 interactNPC 是否能處理 npc_butler
+            var src = interactNPC.toString();
+            if (src.indexOf('npc_butler') !== -1) {
+                return;  // 已有處理邏輯，不需修補
+            }
+
+            var _origInteract = interactNPC;
+            window._origInteractNPC = _origInteract;
+            window.interactNPC = function (npcId, townId) {
+                // 管家由我們直接處理（原始函式無此分支，會掉入「系統建置中」）
+                try {
+                    var town = DB.towns[townId];
+                    if (town) {
+                        var npc = town.npcs.find(function (n) { return n.id === npcId; });
+                        if (npc && npc.id === 'npc_butler') {
+                            document.getElementById('town-interaction-container').classList.remove('hidden');
+                            document.getElementById('town-interaction-container').classList.add('flex');
+                            document.getElementById('interaction-npc-name').innerText = npc.n;
+                            document.getElementById('interaction-npc-title').innerText = '[' + (npc.title || '建築管理') + ']';
+                            var contentDiv = document.getElementById('interaction-content');
+                            if (contentDiv) {
+                                contentDiv.innerHTML = '';
+                                window.renderCastleButler(contentDiv);
+                            }
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[CastleBuildings] patchInteractNPC butler error:', e);
+                }
+                // 非管家：委託原始邏輯
+                _origInteract(npcId, townId);
+            };
+            console.log('[CastleBuildings] 已修補 interactNPC 以支援管家對話');
+        } catch (e) {
+            console.warn('[CastleBuildings] patchInteractNPC error:', e);
+        }
+    }
+
     function initCastleBuildings() {
         try {
+            // 確保管家 NPC 資料存在（防快取）
+            ensureCastleButlerNPC();
+            patchInteractNPCForButler();
+
             // 確保血盟資料中有 castleBuildings
             if (typeof _clanReadState === 'function') {
                 var clan = _clanReadState();
