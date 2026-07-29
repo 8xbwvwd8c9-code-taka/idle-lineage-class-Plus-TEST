@@ -24,6 +24,20 @@
     // RESULT [4分30秒,5分) → 結算+等待下一場 30 秒
     var RACE_DUR = RACE_MS - PARADE_MS;   // 比賽動畫時長
 
+    // 🧪 測試用:網址加 ?racepace=30 → 整場壓成 30 秒（下注 10s／入閘 2s／比賽 12s／結果 6s），
+    //    不必等 5 分鐘就能連看好幾場。不帶參數＝完全照上面的正常節奏，玩家不受影響。
+    //    只改節奏,不改勝負——冠軍由 raceId 種子決定,跟每段多長無關。
+    (function () {
+        var m = /[?&]racepace=(\d+)/.exec(location.search); if (!m) return;
+        var sec = Math.max(10, Math.min(600, parseInt(m[1], 10)));
+        CYCLE_MS = sec * 1000;
+        BET_MS = Math.round(CYCLE_MS * 0.34);
+        PARADE_MS = BET_MS + Math.round(CYCLE_MS * 0.06);
+        RACE_MS = PARADE_MS + Math.round(CYCLE_MS * 0.40);
+        RACE_DUR = RACE_MS - PARADE_MS;
+        console.log('[dograce] 快速節奏:一場 ' + sec + ' 秒（下注 ' + (BET_MS / 1000) + 's／比賽 ' + (RACE_DUR / 1000) + 's）');
+    })();
+
     // ---- 經濟常數 ----
     var HOUSE_EDGE = 0.1;               // 莊家抽成（金幣、龍鑽共用同一組賠率）
     var LEGACY_TICKET_PRICE = 10000;    // 舊存檔「一張票」的面額，只用來換算舊紀錄
