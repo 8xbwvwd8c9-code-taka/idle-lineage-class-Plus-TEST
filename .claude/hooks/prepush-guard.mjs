@@ -35,7 +35,8 @@ try { data = JSON.parse(raw); } catch {}
 
 const cmd = data?.tool_input?.command || '';
 // 只攔 git push;其餘指令直接放行
-if (data?.tool_name !== 'Bash' || !/\bgit\s+push\b/.test(cmd)) process.exit(0);
+// ⚠ Bash 與 PowerShell 兩個工具都要收:只收 Bash 的話,同一道 git push 改用 PowerShell 下就整個繞過去,把關等於沒有(實測過)
+if (!/^(Bash|PowerShell)$/.test(data?.tool_name || '') || !/\bgit\s+push\b/.test(cmd)) process.exit(0);
 // 明確標記 #afk-tmp-upload 的 push 放行:分塊上傳暫存分支(HEAD 不在 main、工作樹非交付狀態)會誤觸把關
 if (cmd.includes('#afk-tmp-upload')) process.exit(0);
 
