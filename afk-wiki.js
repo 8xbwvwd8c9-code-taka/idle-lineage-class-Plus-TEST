@@ -2999,7 +2999,7 @@
     var belts = [];
     try { for (var id in DB.items) { var d = DB.items[id]; if (d && d.weightCap) belts.push({ n: d.n, w: d.weightCap, slot: d.slot }); } } catch (e) {}
     belts.sort(function (a, b) { return b.w - a.w; });
-    var extra = '<div class="m-wiki-card"><div class="m-wiki-name">提高上限的額外來源</div><div class="m-wiki-stbl-wrap"><table class="m-wiki-stbl"><thead><tr><th>來源</th><th>負重上限</th></tr></thead><tbody>'
+    var extra = '<div class="m-wiki-card"><div class="m-wiki-name">提高上限的額外來源</div><div class="m-wiki-stbl-wrap"><table class="m-wiki-stbl m-wiki-stbl-longfirst"><thead><tr><th>來源</th><th>負重上限</th></tr></thead><tbody>'
       + '<tr><td>練<b>力量／體質</b>（配點或裝備加屬性）</td><td>↑（依上面公式）</td></tr>'
       + '<tr><td>腰帶<b>強化</b>（每 +1）</td><td>+20（最多 +5＝+100）</td></tr>'
       + '<tr><td><b>負重強化</b>（技能增益，法師／妖精／黑暗妖精可學）</td><td>+50（持續 1800 秒）</td></tr>'
@@ -3953,8 +3953,23 @@
          → 預設 flex-shrink:1 就把整個表格壓成高度 0、內容完全看不見(桌機手機都中,只剩區段標題)。 */
       '.m-wiki-stbl-wrap{overflow-x:auto;margin-top:9px;-webkit-overflow-scrolling:touch;flex:none;}',
       '.m-wiki-tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;flex:none;}',   /* 寬表格(攻速表等)在窄畫面自己捲,不撐破頁面 */
+      /* 📌 固定第一欄:橫捲時列標籤(型態/能力值/血盟等級…)留在原位,不然看到數字認不出是哪一列。
+         背景必須不透明(否則捲過去的內容會透出來疊字),且要與所在容器同色 → 用變數,卡片/說明框內覆寫。
+         (m-wiki-stbl 早就有這個,這裡是把同一套補給 wTbl 產的表。) */
+      '.m-wiki-tblwrap{--wtbl-bg:#0f172a;}',
+      '.m-wiki-card .m-wiki-tblwrap,.m-wiki-note .m-wiki-tblwrap{--wtbl-bg:#111c30;}',
+      '.m-wiki-tblwrap th:first-child,.m-wiki-tblwrap td:first-child{position:sticky;left:0;background:var(--wtbl-bg);}',
+      '.m-wiki-tblwrap th:first-child{z-index:1;}',
+      /* 👉 還能往右捲的提示(NN/g:切邊/陰影最好認,點狀指示沒人看得到)。純 CSS 自動化:
+         陰影層 background-attachment:scroll(固定貼在容器右緣)、遮蓋層 local(跟著內容捲)
+         → 捲到最右邊時遮蓋層剛好蓋掉陰影,不必用 JS 監聽捲動/resize。 */
+      '.m-wiki-tblwrap,.m-wiki-stbl-wrap{background-image:linear-gradient(to left,rgba(2,6,23,.62),rgba(2,6,23,0)),linear-gradient(to left,var(--wtbl-bg,#111c30),var(--wtbl-bg,#111c30));background-position:right center,right center;background-size:18px 100%,18px 100%;background-repeat:no-repeat;background-attachment:scroll,local;}',
       '.m-wiki-stbl{border-collapse:collapse;font-size:12px;width:100%;min-width:max-content;}',
       '.m-wiki-stbl th,.m-wiki-stbl td{border:1px solid #1e293b;padding:3px 8px;text-align:center;white-space:nowrap;}',
+      /* 第一欄是長句的表(負重「提高上限的額外來源」):stbl 預設全表 nowrap,那種表會為了一句話撐出橫捲。
+         給它換行＋最小寬度,橫捲就消失(和「短名稱表要 nowrap」剛好相反,故用獨立 class 標記)。 */
+      '.m-wiki-stbl.m-wiki-stbl-longfirst{min-width:0;}',   /* 不解掉 min-width:max-content 的話,td 就算可換行,表格仍被撐到「不換行的寬度」 */
+      '.m-wiki-stbl.m-wiki-stbl-longfirst td:first-child{white-space:normal;text-align:left;}',
       '.m-wiki-stbl th{background:#0f1d33;color:#fcd34d;font-weight:bold;}',
       '.m-wiki-stbl thead th:first-child,.m-wiki-stbl tbody td:first-child{position:sticky;left:0;color:#86efac;font-weight:bold;background:#111c30;}',
       '.m-wiki-stbl tbody tr:nth-child(even) td{background:#0d1828;}',
