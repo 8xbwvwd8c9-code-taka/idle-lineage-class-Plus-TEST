@@ -308,11 +308,14 @@
 
   // 職業 → [男角外觀, 女角外觀]:速度類資料(ATK_APM / HITSTUN_TICKS / CAST_TICKS)都是以「外觀」為 key,
   //   但玩家認的是職業 → 這份負責橋接,並讓「男女同值就併成一列/一顆鈕、不同才分男女」的呈現全站一致。
-  //   順序為使用者指定(王族→騎士→妖精→法師→黑暗妖精→龍騎士→幻術士→戰士)。
-  var CLASS_AVATARS = [
-    ['王族', '王子', '公主'], ['騎士', '男騎士', '女騎士'], ['妖精', '男妖精', '女妖精'], ['法師', '男法師', '女法師'],
-    ['黑暗妖精', '男黑暗妖精', '女黑暗妖精'], ['龍騎士', '男龍騎士', '女龍騎士'], ['幻術士', '男幻術士', '女幻術士'], ['戰士', '男戰士', '女戰士']
-  ];
+  //   順序直接由 CLASSES 推導(＝遊戲創角順序,與職業魔法/專精/裝備篩選那幾列一致)——
+  //   刻意不自己寫死一份順序,否則哪天 CLASSES 調了、這裡就悄悄不同步。
+  var _AVATARS_BY_CLS = {
+    royal: ['王子', '公主'], knight: ['男騎士', '女騎士'], mage: ['男法師', '女法師'], elf: ['男妖精', '女妖精'],
+    dark: ['男黑暗妖精', '女黑暗妖精'], illusion: ['男幻術士', '女幻術士'], dragon: ['男龍騎士', '女龍騎士'], warrior: ['男戰士', '女戰士']
+  };
+  var CLASS_AVATARS = CLASSES.filter(function (c) { return _AVATARS_BY_CLS[c.k]; })
+    .map(function (c) { return [c.n, _AVATARS_BY_CLS[c.k][0], _AVATARS_BY_CLS[c.k][1]]; });
 
   // ===== 戰鬥機制(本檔維護;白話講清楚傷害怎麼算) ============================
   var COMBAT_SECTIONS = [
@@ -2799,7 +2802,6 @@
     });
     var covered = {}; groups.forEach(function (g) { covered[g.m] = 1; covered[g.f] = 1; });
     avatars.forEach(function (av) { if (!covered[av]) groups.push({ cls: av, m: av, f: av }); });
-    var gkey = function (g) { return JSON.stringify([ATK_APM[g.m], ATK_APM[g.f]]); };
     var cur = state.combatCls;
     if (!cur) {
       cur = groups[0].cls;
@@ -2808,17 +2810,13 @@
     var row = '<div class="m-wiki-mfilter">' + groups.map(function (g) {
       return '<button type="button" class="m-wiki-mfbtn' + (g.cls === cur ? ' on' : '') + '" data-atkcls="' + esc(g.cls) + '">' + esc(g.cls) + '</button>';
     }).join('') + '<button type="button" class="m-wiki-mfbtn' + (cur === 'all' ? ' on' : '') + '" data-atkcls="all">📊 全部角色</button></div>';
-    var tblHTML, sameNote = '';
+    var tblHTML;
     if (cur === 'all') {   // 跨角色比較:原本的大表(桌機夠寬,手機得橫捲);這裡維持「外觀」粒度才看得到男女差異
       tblHTML = wTbl(['角色'].concat(fams), avatars.map(function (av) {
         return [av].concat(fams.map(function (f) { var v = ATK_APM[av][f]; return v != null ? String(v) : '—'; }));
       }));
     } else {
       var g = groups.filter(function (x) { return x.cls === cur; })[0] || groups[0];
-      // 🔁 8 個職業其實只有 5 組數值(王族=戰士、騎士=龍騎士、法師=幻術士)→ 標出同組的,省得一個個點來對
-      var _k = gkey(g);
-      var same = groups.filter(function (x) { return x.cls !== g.cls && gkey(x) === _k; }).map(function (x) { return x.cls; });
-      if (same.length) sameNote = '<div class="m-wiki-desc" style="margin-top:4px;">・這組數值與 <b>' + same.map(esc).join('／') + '</b> 完全相同。</div>';
       var pair = function (vm, vf, fmt) {
         if (vm == null && vf == null) return '—';
         if (vm === vf || vf == null || vm == null) return fmt(vm == null ? vf : vm);
@@ -2835,7 +2833,7 @@
         return ['<span style="white-space:nowrap;">' + esc(x.f) + '</span>', pair(x.vm, x.vf, apmF), pair(x.vm, x.vf, itvF)];
       }));
     }
-    return row + sameNote + tblHTML
+    return row + tblHTML
       + '<div class="m-wiki-desc" style="margin-top:4px;">・同職業<b>男女大多相同</b>，只有少數武器不同（會標成「男 X / 女 Y」）：騎士／龍騎士／黑暗妖精的<b>魔杖・奇古獸</b>，妖精再加上<b>單手矛・雙手矛</b>。</div>'
       + '<div class="m-wiki-desc">・加速類效果（加速術／勇敢藥水／精靈餅乾／切割／劍術精通／龍騎士覺醒…）在這個基礎值上<b>相乘疊加</b>，不是覆蓋。<b>變身</b>會直接<b>取代</b>基礎攻速（有的反而更慢），之後才吃加速類乘算。</div>';
   }
