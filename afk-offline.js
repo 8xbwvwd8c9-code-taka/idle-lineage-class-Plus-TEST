@@ -1411,19 +1411,35 @@
         return _isaVals[k];
       };
     }
-    // 4) pvpEnsureState():每次呼叫都把性向鎖、復仇名單、社交私訊名單(最多 20 人 × 12 則)整理一遍。
+    // 4) pvpEnsureState():每次呼叫都把性向鎖(最多 200 筆)、復仇名單、社交私訊名單(最多 20 人 × 12 則)、
+    //    擊殺密語(最多 20 筆)整包重新正規化一遍,而上游把它掛在「每次出怪」(js/03 spawnMob)與「每次擊殺」
+    //    (pvpOnKillMob)上 → 24 小時結算被呼叫 12~16 萬次。清單全空時幾乎免費,一有內容就是結算的最大熱點。
     //    補跑期間用便宜簽章判斷「有沒有變」,沒變就跳過;非補跑一律照跑(線上行為不動)。
+    //    🚨 簽章只能放 O(1) 又代表「結構真的變了」的東西(清單長度)。
+    //    ⚠ 性向值(alignmentValue)絕對不可放進簽章:每殺一隻普通怪它就 +1(js/03 pvpChangeAlignment(1)),
+    //      放進去等於每殺一隻就 miss 一次,直到性向值撞到 ±32767 上限才會開始命中 —— 也就是清單有內容
+    //      (被追殺過/有復仇名單/殺過白目玩家)時整晚都在重算,快取形同虛設。它在 pvpEnsureState 裡只是
+    //      夾範圍,而每個寫入點自己都夾過了,所以命中時自己補一次即可。pvpOn 同理:靠 npcClanWarActive
+    //      (自帶 2 秒快取)當場問,不靠簽章,否則補跑中途被 NPC 血盟宣戰會漏掉開紅。
     if (typeof pvpEnsureState === 'function') {
       var _pes = pvpEnsureState, _pesSig = null;
       window.pvpEnsureState = function () {
         if (!(typeof state !== 'undefined' && state && state.ff && !state.ffSmall)) { _pesSig = null; return _pes.apply(this, arguments); }
         var sig;
         try {
-          var sc = player.socialNpcContacts, rv = player.pvpRevengeList, tp = player.trollPlayers;
-          sig = (player.alignmentValue || 0) + '|' + (sc ? sc.length : -1) + '|' + (sc && sc[0] ? (sc[0].lastChatAt || 0) : 0)
-              + '|' + (rv ? rv.length : -1) + '|' + (tp ? tp.length : -1) + '|' + (player.pvpOn ? 1 : 0);
+          var sc = player.socialNpcContacts, rv = player.pvpRevengeList,
+              tp = player.trollPlayers, kw = player.pvpKillWhispers;
+          sig = (sc ? sc.length : -1) + '|' + (sc && sc[0] ? (sc[0].lastChatAt || 0) : 0)
+              + '|' + (rv ? rv.length : -1) + '|' + (tp ? tp.length : -1) + '|' + (kw ? kw.length : -1);
         } catch (e) { sig = null; }
-        if (sig != null && sig === _pesSig) return;   // 這幾樣都沒動 → 整理過的結果仍然有效
+        if (sig != null && sig === _pesSig) {
+          try {   // 跳過整包正規化,但「有語意」的兩件事照做
+            if (typeof pvpClampAlignment === 'function') player.alignmentValue = pvpClampAlignment(player.alignmentValue);
+            if (player.pvpOn === undefined) player.pvpOn = false;
+            if (typeof npcClanWarActive === 'function' && npcClanWarActive(player)) player.pvpOn = true;
+          } catch (e) {}
+          return;
+        }
         var r = _pes.apply(this, arguments);
         _pesSig = sig;
         return r;
