@@ -66,7 +66,7 @@
 | `afk-retrial.js` | 試煉批次兌換(試煉道具持續掉落·已完成也照掉;面板自訂數量重複兌換;試煉狀態只讀不寫;包 trialItemActive/trialQHTML/build50TrialHTML) |
 | `afk-traditional.js` | 傳統模式(偽)/自動衝裝(掉落自帶強化值;靠補丁2 的 `__afkTradRollEn` 鉤子) |
 | `afk-warehouse.js` | 倉庫增強(金幣全存/全取、遺物與席琳遺骸分類) |
-| `afk-dograce.js` | 賽狗場迷你遊戲(奇岩城鎮限定;自製) |
+| `afk-dograce.js` | 賽狗場迷你遊戲(自動化分頁入口;押金幣或龍鑽、中獎自動入袋;自製) |
 | `afk-pwa.js` | PWA 安裝 UI+圖桶/程式桶對帳(reconcile 送 SW) |
 | `afk-sw.js` | Service Worker 註冊(sw.js 是我方檔,上游無 PWA) |
 | `afk-syncinfo.js` | 首頁顯示原作者連結+原版同步時間(讀 version.json 的 buildAt) |
