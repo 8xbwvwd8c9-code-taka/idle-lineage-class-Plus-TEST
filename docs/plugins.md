@@ -76,3 +76,62 @@
 ## 獨立頁與跨頁連結(dex↔wiki)
 
 `?view=dex`/`?view=wiki` 鋪滿整頁+頁首導覽;跨頁一律走對方暴露的 mode-aware `goto`(`AFK_DEX_API.goto({q})`/`AFK_WIKI_API.goto({tab,cls,q})`,自動判斷模態連模態/網址連網址);「名字→跳掉落查詢」inline 連結用 `<span class="m-dexlink" data-dexq="名字">`(全域委派);開對方前先 `close()` 來源模態。新增跨頁連結要重用/擴充 `goto`,不要在呼叫端自己判斷。
+
+## 🧠 城堡建築系統開發教訓（寫給下次寫血盟資料相關功能的人）
+
+以下條目是開發 `afk-castle-buildings.js` 過程中踩過的坑，每條都符合「成因仍在、自動檢查擋不掉、下次想不起來」三條件。
+
+### 1. 核心補丁定義後要手動執行 `node scripts/apply-core-patches.mjs`
+
+補丁寫在 `apply-core-patches.mjs` 只算「定義」，不會自動套用到上游鏡像檔。每次新增或修改補丁後都要手動跑一次執行，再用 `--check` 確認所有錨點都命中。
+
+### 2. 新外掛要同時註冊到 `afk-plugin-block.html`
+
+寫完一支新 `afk-*.js` 後，除了確認 `index.html` 有 `<script>` 標籤（上游鏡像），還要在 `scripts/afk-plugin-block.html` 的對應位置補上同一行。前者是開發環境用，後者是正式站注入用。兩邊缺一都會造成外掛沒載入。
+
+### 3. 新 NPC 除了對話分派和座標，還要加入城鎮的 NPC 清單
+
+要讓 NPC 出現在村莊裡，需要三件事：
+- `TOWN_NPC_SPOTS`（位置座標）— `js/11-world-map.js`
+- 對話 `switch` 分派 — `js/11-world-map.js`
+- `DB.towns[...].npcs`（NPC 清單）— `js/00-data.js`
+
+只做前兩項，NPC 不會出現在地圖上。核心補丁要同時涵蓋三處。
+
+### 4. DOM `id` 字串必須與 `getElementById` / `querySelector` 完全一致
+
+手寫 HTML 的 `id` 屬性和 JS 裡查詢用的字串是兩份各自維護的文字，沒有編譯期檢查。改一邊就要同步改另一邊。最佳做法：把 id 字串定義成常數，或至少改完後全文搜尋確認一致。
+
+### 5. `_clanNormalizeState` 的 `_validBld` key 格式必須與外掛的 `BUILDING_IDS` 一致
+
+`_clanNormalizeState` 用 `_validBld` 白名單決定哪些建築 key 要保留，外掛的 `BUILDING_IDS` / `BUILDING_DATA` 決定實際使用的 key。這兩份如果格式不一致（例如一邊 `weapon_shop` 另一邊 `weaponShop`），正規化後所有建築資料都會被丟掉。**兩邊必須用同一組 key，且 `_validBld` 要跟著外掛走，不是反過來。**
+
+### 6. 寫入血盟資料一定要呼叫 `_clanWriteState`
+
+`_clanReadState()` 讀出的是 clone，修改它不會自動寫回 localStorage。修改完血盟狀態（例如 `castleBuildings`）後，一定要呼叫 `_clanWriteState(st)` 才能持久化。只呼叫 `saveGame()` 只存玩家資料，不存血盟資料。
+
+**陷阱**：`_clanWriteState(st)` 內部會呼叫 `_clanNormalizeState(st)`，所以傳入的 `st` 物件中，不在正規化白名單內的欄位會被砍掉。見第 9 條。
+
+### 7. 遊戲內特殊貨幣不要假設有對應的 `item.id`
+
+龍之鑽石在遊戲中由 `js/24-pandora-relic-market.js` 管理，透過 `window.pandoraGetSharedDiamonds()` 讀取、`window.pandoraAdjustSharedDiamonds(delta)` 增減。`dragon_diamond` 不是 `player.inv` 裡的物品，`countItem('dragon_diamond')` 永遠回傳 0。
+
+**判斷流程**：要讀取/消耗某種資源時，先確認它在遊戲中的儲存方式（背包物品？獨立變數？共用函式？），不要直接假設 `countItem` / `consumeItem` 能用。
+
+### 8. 倒數計時不能只靠 render 當下的靜態值
+
+`renderCastleBuildingsPanel()` 在呼叫當下計算 `formatRemaining(end)` 產出「剩餘 XX 分 XX 秒」字串，但這個字串不會自動更新。要讓倒數即時跳動，必須：
+- 在 `initCastleBuildings()` 或 `showCastleBuildingsPanel()` 啟動 `setInterval(fn, 1000)`
+- interval 回呼裡重新查 DOM、重新計算剩餘時間、更新 `textContent`
+- 如果 UI 從 overlay 改成 inline（直接嵌在 NPC 對話框），interval 的條件判斷要跟著調整（不要依賴 overlay 的 `offsetParent`）
+
+### 9. `_clanNormalizeState` 會砍掉不在白名單內的欄位
+
+`_clanNormalizeState` 的設計目的是確保髒資料不會進到 localStorage，但它對 `castleBuildings` 的處理方式是：只保留 `_validBld` 列出的 key，且每個 key 只保留 `lv` / `startAt` / `finishAt` 三個欄位。
+
+如果外掛需要額外欄位（例如 `lastTick`、`accumulated`、`lastHarvestTime`、`targetLevel`），**必須同時修改 `_clanNormalizeState` 的正規化邏輯**，否則 `_clanWriteState` 一寫就把這些欄位清掉了。
+
+**檢查清單**：每當要為建築物件增加新欄位時，問自己：
+1. 這個欄位會經過 `_clanWriteState` 嗎？→ 會
+2. `_clanNormalizeState` 的正規化邏輯有保留它嗎？→ 沒有的話就要加
+3. `_validBld` 白名單有包含這棟建築嗎？→ 沒有的話也要加

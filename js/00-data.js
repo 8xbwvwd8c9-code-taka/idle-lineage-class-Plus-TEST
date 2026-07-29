@@ -2525,7 +2525,8 @@ const DB = {
                 { id: "npc_kent_guard", n: "肯特守衛隊長", title: "城堡護衛", type: "castleguard", d: "肯特守衛隊長統領藍色鯊魚部隊，招募血厚耐打的護衛與你並肩作戰（死亡 30 秒自動復活）。" },
                 { id: "npc_esti", n: "依詩蒂", title: "血盟", type: "pledge", d: "依詩蒂低聲訴說著血盟的古老誓言，為你尋找以血為盟的夥伴。" },
                 { id: "npc_tros", n: "特羅斯", title: "血盟", type: "pledge", d: "特羅斯握劍而立，為你尋找以血為盟的夥伴。" },
-                { id: "npc_obel", n: "奧貝勒", title: "魔物追蹤", type: "exchange", d: "奧貝勒是追蹤魔物的老手，花費金幣追蹤指定地區的特定魔物。" }
+                { id: "npc_obel", n: "奧貝勒", title: "魔物追蹤", type: "exchange", d: "奧貝勒是追蹤魔物的老手，花費金幣追蹤指定地區的特定魔物。" },
+                { id: "npc_butler", n: "管家", title: "城堡管家", type: "butler", d: "管家負責管理城堡建築設施，Royal 王族盟主可在此建造與升級建築。" }   // 🔌 加掛版補丁：城堡建築管家（外掛 afk-castle-buildings 提供 UI）
             ]
         },
         "town_windwood_castle": {
@@ -2536,7 +2537,8 @@ const DB = {
                 { id: "npc_ww_guard", n: "風木傭兵隊長", title: "城堡護衛", type: "castleguard", d: "風木傭兵隊長統領暴風之刃部隊，招募攻速最快、輸出最高的護衛與你並肩作戰（死亡 30 秒自動復活）。" },
                 { id: "npc_esti", n: "依詩蒂", title: "血盟", type: "pledge", d: "依詩蒂低聲訴說著血盟的古老誓言，為你尋找以血為盟的夥伴。" },
                 { id: "npc_tros", n: "特羅斯", title: "血盟", type: "pledge", d: "特羅斯握劍而立，為你尋找以血為盟的夥伴。" },
-                { id: "npc_hert", n: "赫特", title: "魔物追蹤", type: "exchange", d: "赫特循著魔物的氣息而行，花費金幣追蹤指定地區的特定魔物。" }
+                { id: "npc_hert", n: "赫特", title: "魔物追蹤", type: "exchange", d: "赫特循著魔物的氣息而行，花費金幣追蹤指定地區的特定魔物。" },
+                { id: "npc_butler", n: "管家", title: "城堡管家", type: "butler", d: "管家負責管理城堡建築設施，Royal 王族盟主可在此建造與升級建築。" }   // 🔌 加掛版補丁：城堡建築管家（外掛 afk-castle-buildings 提供 UI）
             ]
         },
         "town_heine_castle": {
@@ -2548,7 +2550,8 @@ const DB = {
                 { id: "npc_heine_guard", n: "海音神官隊長", title: "城堡護衛", type: "castleguard", d: "海音神官隊長統領毒蛇之牙部隊，招募攻守均衡的護衛與你並肩作戰（死亡 30 秒自動復活）。" },
                 { id: "npc_esti", n: "依詩蒂", title: "血盟", type: "pledge", d: "依詩蒂低聲訴說著血盟的古老誓言，為你尋找以血為盟的夥伴。" },
                 { id: "npc_tros", n: "特羅斯", title: "血盟", type: "pledge", d: "特羅斯握劍而立，為你尋找以血為盟的夥伴。" },
-                { id: "npc_diren", n: "帝倫", title: "魔物追蹤", type: "exchange", d: "帝倫熟知各地魔物的蹤跡，花費金幣追蹤指定地區的特定魔物。" }
+                { id: "npc_diren", n: "帝倫", title: "魔物追蹤", type: "exchange", d: "帝倫熟知各地魔物的蹤跡，花費金幣追蹤指定地區的特定魔物。" },
+                { id: "npc_butler", n: "管家", title: "城堡管家", type: "butler", d: "管家負責管理城堡建築設施，Royal 王族盟主可在此建造與升級建築。" }   // 🔌 加掛版補丁：城堡建築管家（外掛 afk-castle-buildings 提供 UI）
             ]
         },
         "town_talking": {

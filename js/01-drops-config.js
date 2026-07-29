@@ -2107,6 +2107,21 @@ function enhanceRollOutcome(d, en) {   // 擲一次衝裝骰 → 'ok'成功 | 'b
     let safe = (d && d.safe) || 0;
     en = Number(en) || 0;
     let r = en < safe ? 0 : Math.random();   // 🎲 安定值內不消耗亂數；其餘每次嘗試獨立，可 save/load 重抽
+    // 🔌 加掛版補丁：城堡建築強化成功率加成（武器工坊／防具工坊／飾品店；外掛 afk-castle-buildings）
+    if (typeof siegeVictoryActive === 'function' && siegeVictoryActive()) {
+        if (d && d.type === 'wpn' && typeof window.getCastleEnchantBonus === 'function') {
+            let _wpnMult = 1 + window.getCastleEnchantBonus() / 100;
+            if (_wpnMult > 1) r = r / _wpnMult;
+        }
+        if (d && d.type === 'arm' && typeof window.getCastleArmorEnchantBonus === 'function') {
+            let _armMult = 1 + window.getCastleArmorEnchantBonus() / 100;
+            if (_armMult > 1) r = r / _armMult;
+        }
+        if (d && d.type === 'acc' && typeof window.getCastleAccessoryEnchantBonus === 'function') {
+            let _accMult = 1 + window.getCastleAccessoryEnchantBonus() / 100;
+            if (_accMult > 1) r = r / _accMult;
+        }
+    }
     return enhanceOutcomeFromRoll(d && d.type, safe, en, r);
 }
 // 🌟 祝福卷軸成功時的提升量：+2 以下(含負值) 各 1/3 機率 +1/+2/+3；+3~+5 各 1/2 機率 +1/+2；+6 以上無特殊功能（等同一般卷軸 +1）

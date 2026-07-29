@@ -374,7 +374,7 @@ function killMob(idx) {
     // 🤝 v3.7.62 組隊經驗不再拆分：主玩家、每名未倒地傭兵、每隻未倒地寵物各取得完整經驗；既有組隊加成保留。
     let _expEach = mob.exp * (1 + partyExpBonusPct() / 100);
     let _petExpGain = Math.floor(_expEach * (1 + dollFieldVal('expBonus') / 100));   // 🐾 每隻存活寵物各得完整玩家份額；玩家滿等不影響養寵
-    let _playerExpGain = Math.floor(_petExpGain * getExpGainMult(player.lv) * (window.CUSTOM_CONFIG?.RATES?.EXP ?? 1)
+    let _playerExpGain = Math.floor(_petExpGain * getExpGainMult(player.lv) * (1 + (typeof window.getCastleExpBonus === 'function' ? window.getCastleExpBonus() : 0) / 100) * (window.CUSTOM_CONFIG?.RATES?.EXP ?? 1)   // 🔌 加掛版補丁:城堡建築 EXP 加成(外掛 afk-castle-buildings;未載/未佔領→0%)
      );
 
 player.exp += _playerExpGain;
@@ -401,7 +401,7 @@ player.exp += _playerExpGain;
         let g = _goldRange.min + Math.floor(Math.random() * (_goldRange.max - _goldRange.min + 1));
         g = Math.max(1, Math.floor(g * (0.9 + Math.random() * 0.2)));   // 💰 最終金額額外浮動 −10%～+10%
         // ⚠️v3.0.82 經典模式金幣÷2 已移除（一般＝經典；歷次：×1/10 → ×1/3 → ×1/2 → ×1）
-        g = Math.floor( g * (1 + dollFieldVal('goldBonus') / 100) * partyRewardMult() * (window.CUSTOM_CONFIG?.RATES?.GOLD ?? 1) );   // 🪆 娃娃加成後再乘有效隊伍人數（最高 ×8）
+        g = Math.floor( g * (1 + dollFieldVal('goldBonus') / 100) * (1 + (typeof window.getCastleGoldBonus === 'function' ? window.getCastleGoldBonus() : 0) / 100) * partyRewardMult() * (window.CUSTOM_CONFIG?.RATES?.GOLD ?? 1) );   // 🔌 加掛版補丁:城堡建築金幣加成(外掛 afk-castle-buildings;未載/未佔領→0%) 🪆 娃娃加成後再乘有效隊伍人數（最高 ×8）
         player.gold += g;
         // 🔧 金幣不再逐殺輸出於系統日誌；改由 gameLoop 累積、flushAwaySummary 以「掛機期間獲得總金幣」統一顯示。
 

@@ -13,7 +13,8 @@ const MISC_CATEGORIES = [
     { key: 'scroll',  name: '卷軸' },
     { key: 'skillbk', name: '技能書' },
     { key: 'mat',     name: '材料' },
-    { key: 'special', name: '其他' }
+    { key: 'special', name: '其他' },
+    { key: 'building',name: '建築' }    // 🔌 加掛版補丁：城堡建築收集（外掛 afk-castle-buildings 提供 UI）
 ];
 
 // 已停用且無獲取管道的舊道具：保留物品定義供舊存檔辨識，但永不列入收集冊、完成數或全收集加成。
@@ -31,6 +32,7 @@ function miscCatKey(id, d) {
     if (!d) return null;
     if (MISC_BOOK_EXCLUDED[id]) return null;
     var t = d.type;
+        if (id.indexOf('building_') === 0) return 'building';   // 🔌 加掛版補丁：建築道具 → 建築收集冊
     if (t === 'wpn' || t === 'arm' || t === 'acc') return null;          // 裝備 → 裝備收集冊
     if (d.eff === 'card' || id.indexOf('card_') === 0) return null;       // 怪物卡片 → 怪物收集冊
     if (t === 'pot' || id.indexOf('potion_') === 0) return 'pot';
@@ -100,6 +102,8 @@ function miscCatComplete(ck) { var cc = miscCatCount(ck); return cc.total > 0 &&
 
 // ---- 全收集加成（道具收藏完成能力）：藥水/卷軸→負重+10·技能書→MP自然恢復+3·材料→藥水恢復+3%·其他→藥水恢復+2% ----
 const MISC_CAT_BONUS = {
+    building: { stat: 'weight', val: 5, label: '負重 +5' },   // 🔌 加掛版補丁：建築全收集→負重+5
+
     pot:     { stat: 'weight', val: 10, label: '負重 +10' },
     scroll:  { stat: 'weight', val: 10, label: '負重 +10' },
     skillbk: { stat: 'mpR',    val: 3,  label: 'MP自然恢復量 +3' },

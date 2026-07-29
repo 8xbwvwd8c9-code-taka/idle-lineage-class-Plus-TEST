@@ -137,6 +137,7 @@ function _clanDefaultState() {
         modes:{ normal:null, classic:null },
         members:{},
         npcWorlds:{ normal:null, classic:null },
+        castleBuildings:{},   // 🔌 加掛版補丁：城堡建築資料（血盟層級·外掛 afk-castle-buildings 使用）
         updatedAt:Date.now()
     };
 }
@@ -359,6 +360,25 @@ function _clanNormalizeState(raw) {
         });
     }
     out.npcWorlds.normal = _npcClanNormalizeWorld(raw.npcWorlds && raw.npcWorlds.normal);
+    // 🔌 加掛版補丁：正規化城堡建築資料
+    if (raw.castleBuildings && typeof raw.castleBuildings === "object" && !Array.isArray(raw.castleBuildings)) {
+        out.castleBuildings = {};
+        var _validBld = ["weaponShop","armorShop","accessoryShop","prison","goldVault","treasure","trainingGrounds","shootingRange","library","magicTower","magicPractice","farm","huntingLodge","drillGround","temple"];
+        Object.keys(raw.castleBuildings).forEach(function (k) {
+            if (_validBld.indexOf(k) < 0) return;
+            var b = raw.castleBuildings[k];
+            if (!b || typeof b !== "object") return;
+            out.castleBuildings[k] = {
+                lv: Math.max(0, Math.min(5, Math.floor(Number(b.lv) || 0))),
+                startAt: Math.max(0, Math.floor(Number(b.startAt) || 0)),
+                finishAt: Math.max(0, Math.floor(Number(b.finishAt) || 0)),
+                lastTick: Math.max(0, Math.floor(Number(b.lastTick) || 0)),
+                lastHarvestTime: Math.max(0, Math.floor(Number(b.lastHarvestTime) || 0)),
+                accumulated: Math.max(0, Math.floor(Number(b.accumulated) || 0)),
+                targetLevel: b.targetLevel ? Math.max(0, Math.min(5, Math.floor(Number(b.targetLevel) || 0))) : null
+            };
+        });
+    }
     out.npcWorlds.classic = _npcClanNormalizeWorld(raw.npcWorlds && raw.npcWorlds.classic);
     out.updatedAt = Math.max(0, Math.floor(Number(raw.updatedAt) || Date.now()));
     return out;

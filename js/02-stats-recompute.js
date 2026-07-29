@@ -685,9 +685,44 @@ d.mr += (baseMr + bonusMr);
             d.hpR += _cb.hpR || 0;
             d.mpR += _cb.mpR || 0;
             d.ac += _cb.ac || 0;
+            d.extraMp += _cb.extraMp || 0;
         }
     }
 
+    // 🔌 加掛版補丁：城堡建築效果（射擊場／圖書館／魔法塔／魔法練習場／練兵場／神殿；外掛 afk-castle-buildings）
+    // 注意：huntingLodge（遠距離傷害/命中）和 trainingGrounds（近距離傷害/命中）
+    // 已透過 getClanBuffStats 的 extraDmg/extraHit 標準欄位注入，不在此重複。
+    if (typeof siegeVictoryActive === 'function' && siegeVictoryActive()) {
+        if (typeof window.getCastleRangedCritBonus === 'function') {
+            let _srVal = window.getCastleRangedCritBonus();
+            if (_srVal > 0) { d.rangedCrit += _srVal; d.rangedCritDmg += _srVal; }
+        }
+        // 圖書館：魔法命中+1 per LV（額外魔法點數已由 getClanBuffStats 處理）
+        if (typeof window.getCastleMagicHitBonus === 'function') {
+            let _libVal = window.getCastleMagicHitBonus();
+            if (_libVal > 0) d.magicHit += _libVal;
+        }
+        // 魔法塔：魔法暴擊率+1% per LV（魔法傷害已由 getClanBuffStats 處理）
+        if (typeof window.getCastleMagicCritBonus === 'function') {
+            let _mtVal = window.getCastleMagicCritBonus();
+            if (_mtVal > 0) d.magicCrit += _mtVal;
+        }
+        // 魔法練習場：魔法暴擊傷害+2% per LV（MP恢復已由 getClanBuffStats 處理）
+        if (typeof window.getCastleMagicCritDmgBonus === 'function') {
+            let _mpVal = window.getCastleMagicCritDmgBonus();
+            if (_mpVal > 0) d.magicCritDmg += _mpVal;
+        }
+        // 練兵場：移動速度+2%、迴避率+1% per LV
+        if (typeof window.getCastleSpeedDodgeBonus === 'function') {
+            let _dgVal = window.getCastleSpeedDodgeBonus();
+            if (_dgVal > 0) { d.moveSpeedPct += _dgVal; d.er += _dgVal / 2; }
+        }
+        // 神殿：各屬性防禦力+1 per LV（效果值一半，MR 已由 getClanBuffStats 處理）
+        if (typeof window.getCastleTempleBonus === 'function') {
+            let _templeElem = window.getCastleTempleBonus() / 2;
+            if (_templeElem > 0) { d.resFire += _templeElem; d.resWater += _templeElem; d.resEarth += _templeElem; d.resWind += _templeElem; }
+        }
+    }
     // 🐉 龍騎士 覺醒（安塔瑞斯/法利昂/巴拉卡斯）：d:{} 內的 AC/抗性/屬性/額外命中已由上方 buff 迴圈套用；此處補非標準效果與攻速
     {
         let _awakenOn = false;
