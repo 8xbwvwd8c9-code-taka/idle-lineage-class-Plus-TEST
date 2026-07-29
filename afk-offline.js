@@ -1175,11 +1175,29 @@
     if (_runErr) {   // 結算中途拋例外 → 把死因印出來(見上方 catch);沒這行的話玩家只看得到「離線掛機 0 分鐘」,完全不知道發生什麼事
       var _eEsc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
       var _eMsg = _eEsc((_runErr && _runErr.message) ? _runErr.message : _runErr);
-      var _eAt = (_runErr && _runErr.stack) ? _eEsc((_runErr.stack.split('\n')[1] || '').trim()) : '';
+      var _eStack = (_runErr && _runErr.stack) ? String(_runErr.stack) : '';
+      var _eAt = _eStack.split('\n').slice(1, 4).map(function (s) { return s.trim(); }).filter(Boolean);   // 印 3 層:只印 1 層時看不出是「誰」被改壞的
+      // 🕵️ 第三方腳本判定:遊戲(含全部外掛)都是同源載入的一般 <script>,堆疊不會出現 extension:// 或
+      //   「eval at …」這種來源。出現就代表有瀏覽器擴充／使用者腳本(油猴之類)改寫了遊戲函式——常見手法是
+      //   拿 fn.toString() 重新 eval 一份,那份會**掉光閉包**,於是任何 monkey-patch 的 wrapper 一被呼叫就噴
+      //   「xxx is not defined」。這種只有玩家自己停用得掉,叫他回報給作者只會把他導向錯的地方。
+      //   (2026-07-29 兩名玩家回報:第三方 gmRebindFn 重綁了 afk-training 包住的傭兵受擊函式 → 結算第一拍就中斷。)
+      //   **只認最上面那一層**(＝真正丟出錯誤的那行是誰的),不掃整條堆疊:堆疊底部是「誰呼叫的」,
+      //   那裡出現外來框架很正常(主控台、自動化工具都算),拿它判會把我方的真 bug 說成第三方——
+      //   而那比漏判更糟:玩家就不回報了,我們什麼都不知道。誤判方向要偏向「當成我們的錯」。
+      var _foreign = false;
+      try {
+        var _o = location.origin, _top = _eAt[0] || '';
+        _foreign = /extension:\/\//i.test(_top) || (_top.indexOf('eval at ') >= 0 && _top.indexOf(_o) < 0);
+      } catch (e) {}
       try {
         if (typeof logSys === 'function') logSys('<span class="text-red-400 font-bold">⚠ 離線結算中斷：' + _eMsg + '</span>'
-          + (_eAt ? '<br><span style="color:#94a3b8;font-size:.85em;">' + _eAt + '</span>' : '')
-          + '<br><span style="color:#94a3b8;font-size:.85em;">收益只結算到中斷前。請把這段訊息回報給作者。</span>');
+          + (_eAt.length ? '<br><span style="color:#94a3b8;font-size:.85em;">' + _eAt.map(_eEsc).join('<br>') + '</span>' : '')
+          + '<br><span style="color:#94a3b8;font-size:.85em;">收益只結算到中斷前。'
+          + (_foreign
+            ? '偵測到<b>瀏覽器擴充／使用者腳本</b>（油猴之類）改寫了遊戲函式，是它讓結算中斷的，不是遊戲本身的問題。請先停用那類腳本再重新載入。'
+            : '請把這段訊息回報給作者。')
+          + '</span>');
       } catch (e) {}
     }
     if (_abortCatchup) {   // 玩家長按放棄:標一句「已略過剩餘」(收益只算到放棄當下,剩餘時間不再結算、不會重算)
