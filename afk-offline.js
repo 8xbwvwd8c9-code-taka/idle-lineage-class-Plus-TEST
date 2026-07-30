@@ -1515,7 +1515,18 @@
         return r;
       };
     }
-    console.log('[AFK] ⚡ 補跑熱點快取已掛上(_saveUnwrap/_seedHash/isSiegeArea/pvpEnsureState)');
+    // 5) updateUI():核心那支在補跑期間本來就會早退(state.ff),但上游 js/28 的包裝**在呼叫核心之前**
+    //    先跑 _pvpSyncTravelButtons()——純畫面同步(getElementById＋classList.toggle＋textContent),
+    //    而 killMob 每殺一隻就叫一次 updateUI → 幾萬次全在改「補跑期間根本沒人看」的 DOM。
+    //    CPU profile(6x 限速·8 小時結算)實測:整條 updateUI 鏈占 7.2%,而核心 updateUI 自己只有 0.1%
+    //    ——那 7% 全是包裝層的畫面同步。補跑期間整條跳過。
+    //    ⚠ 只認自家的 catchingUp(不是 state.ff):範圍縮到「離線結算」這一種,背景補跑/小補跑照原樣走。
+    //    落點還原 ff 之後結算尾會再叫一次 updateUI(見 runCatchup 收尾),畫面不會停在舊狀態。
+    if (typeof updateUI === 'function') {
+      var _uui = updateUI;
+      window.updateUI = function () { if (catchingUp) return; return _uui.apply(this, arguments); };
+    }
+    console.log('[AFK] ⚡ 補跑熱點快取已掛上(_saveUnwrap/_seedHash/isSiegeArea/pvpEnsureState/updateUI)');
   }
   installFfPerfHooks();
 
