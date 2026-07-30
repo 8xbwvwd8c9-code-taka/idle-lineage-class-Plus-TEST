@@ -194,7 +194,9 @@
 
   // 「同樣掛一晚,有的跑 30 分鐘、有的 2 分鐘」這類回報的第一現場:結算實際花多久、其中多少是
   //   逐格完整模擬(慢)、多少被快轉掉(快),以及這次為什麼是這樣。資料來自外掛自己的
-  //   afk_hist_<格>(純 JSON,不是玩家存檔),只讀不寫;每格只印最近一筆,更早的請開「📜 離線掛機紀錄」。
+  //   afk_hist_<格>(純 JSON,不是玩家存檔),只讀不寫。
+  //   ⚠ 每格印「全部保留的紀錄」而不是只印最新一筆:玩家不小心多登入一次,那筆想看的就被擠掉了
+  //     (紀錄是 unshift + 只留最近 5 筆)。要回報問題的人通常不會注意到這件事。
   function fmtDur(ms) {
     var m = Math.floor(ms / 60000);
     if (m < 1) return Math.max(0, Math.round(ms / 1000)) + ' 秒';
@@ -207,30 +209,59 @@
     if (!c || !c.savedAt) return '統計快取 無';
     return '統計快取 有(' + fmtDur(Math.max(0, Date.now() - c.savedAt)) + '前 · BOSS ' + Object.keys(c.boss || {}).length + ' 種)';
   }
+  function clock(ms) {
+    var d = new Date(ms);
+    if (isNaN(d.getTime())) return '?';
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  // 一筆紀錄 → 2~3 行。欄位新舊都有,舊紀錄沒有的就不印(不要印出空白或 undefined 誤導判讀)。
+  function settleRec(r) {
+    var L = [];
+    var head = clock(r.loginTs) + ' ' + (r.map || '?') + ' 掛' + fmtDur(r.realMs || 0);
+    if (r.settleMs != null) head += ' → 結算 ' + (r.settleMs / 1000).toFixed(1) + ' 秒';
+    if (r.died) head += ' ⚠️陣亡';
+    if (r.capped) head += ' ·24h上限';
+    if (r.settleSeq) head += ' [本次開啟第 ' + r.settleSeq + ' 次結算]';
+    L.push(head);
+
+    var why = '';
+    try { if (r.fastWhy && window.__afk && __afk.fastWhyText) why = __afk.fastWhyText(r.fastWhy); } catch (e) {}
+    var a = [];
+    if (why) a.push(why);
+    if (r.fastEvents) a.push('事件 ' + r.fastEvents + ' 個·平均 ' + (r.settleMs / r.fastEvents).toFixed(2) + ' ms');
+    if (r.simTicks != null) a.push('真模擬 ' + fmtDur(r.simTicks * 100));
+    if (r.ckptN) a.push('存檔 ' + r.ckptN + ' 次 ' + (r.ckptMs / 1000).toFixed(1) + ' 秒(' + Math.round(r.ckptMs / Math.max(1, r.settleMs) * 100) + '%)');
+    if (a.length) L.push('· ' + a.join(' · '));
+
+    // 「為什麼這台這隻特別慢」的鑑別欄位:平均值分不出「每次貴一點」和「卡了幾次超大的」,
+    //   而背景時間/等畫面時間根本不是在計算——這幾個一起看才知道 156 秒到底是什麼組成的。
+    var b = [];
+    if (r.hiddenMs != null) b.push('背景 ' + (r.hiddenMs / 1000).toFixed(1) + ' 秒');
+    if (r.paceMs != null) b.push('等畫面 ' + (r.paceMs / 1000).toFixed(1) + ' 秒');
+    if (r.sliceN) {
+      var slow = 0, h = r.sliceHist || [];
+      for (var i = 3; i < h.length; i++) slow += h[i] || 0;   // 索引 3 起 = ≥256ms 的切片
+      b.push('切片 ' + r.sliceN + ' 個·最久 ' + r.sliceMax + ' ms' + (slow ? '·≥256ms 有 ' + slow + ' 個' : ''));
+    }
+    if (r.invMax) b.push('背包峰值 ' + r.invMax);
+    if (r.allies >= 0) b.push('傭兵 ' + r.allies);
+    if (r.petsOut >= 0) b.push('出戰寵物 ' + r.petsOut);
+    if (b.length) L.push('· ' + b.join(' · '));
+    return L;
+  }
   function offlineSettle() {
     var out = [];
     for (var s = 1; s <= slotMax(); s++) {
       var arr = null;
       try { arr = JSON.parse(localStorage.getItem('afk_hist_' + s) || 'null'); } catch (e) {}
-      if (!Array.isArray(arr) || !arr[0]) continue;
-      var r = arr[0];   // recordHistory 是 unshift,[0] 就是最近一筆
-      var line = '第' + s + '格: ' + (r.map || '?') + ' / 掛 ' + fmtDur(r.realMs || 0);
-      if (r.settleMs != null) {
-        var simMs = (r.simTicks || 0) * 100;                                // 一拍=100ms 遊戲時間
-        var fastMs = Math.max(0, (r.settledMs || 0) - simMs);
-        line += ' → 結算耗時 ' + (r.settleMs / 1000).toFixed(1) + ' 秒(完整模擬 ' + fmtDur(simMs) + ' · 快轉 ' + fmtDur(fastMs) + ')';
-      }
-      if (r.died) line += ' ⚠️陣亡';
-      if (r.capped) line += ' ·已達24h上限';
-      var why = '';
-      try { if (r.fastWhy && window.__afk && __afk.fastWhyText) why = __afk.fastWhyText(r.fastWhy); } catch (e) {}
-      line += '\n              └ ' + (why || '(這筆是舊版紀錄,沒有快轉原因)') + ' / ' + offStatsNote(s);
-      // 分辨「算太多次」還是「卡在存檔」——兩者要修的地方完全不同,沒有這兩個數字只能用猜的
-      var cost = [];
-      if (r.fastEvents) cost.push('快轉事件 ' + r.fastEvents + ' 個·平均 ' + (r.settleMs / r.fastEvents).toFixed(2) + ' ms');
-      if (r.ckptMs != null && r.ckptN) cost.push('中途存檔 ' + r.ckptN + ' 次共 ' + (r.ckptMs / 1000).toFixed(1) + ' 秒(占 ' + Math.round(r.ckptMs / Math.max(1, r.settleMs) * 100) + '%)');
-      if (cost.length) line += '\n              └ ' + cost.join(' · ');
-      out.push(line);
+      if (!Array.isArray(arr) || !arr.length) continue;
+      var sum = null;
+      try { sum = (typeof slotSummary === 'function') ? slotSummary(s) : null; } catch (e) {}
+      out.push('第' + s + '格' + (sum ? ' ' + sum.cls + ' Lv' + sum.lv : '') + '（' + arr.length + ' 筆）/ ' + offStatsNote(s));
+      arr.forEach(function (r) {
+        if (!r) return;
+        settleRec(r).forEach(function (ln, i) { out.push((i === 0 ? '  ' : '    ') + ln); });
+      });
     }
     return out.length ? '\n          ' + out.join('\n          ') : '(還沒有任何離線結算紀錄)';
   }

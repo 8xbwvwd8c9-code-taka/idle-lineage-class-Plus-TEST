@@ -507,6 +507,7 @@
 
   // ----- 離線補跑(時間切片) ----------------------------------------------
   var catchingUp = false;
+  var _settleSeq = 0;   // 本次頁面開啟後跑過幾次結算(連續切角色會累積,用來檢驗「越後面越慢」)
   var killTally = null;   // 📜 非 null 時(只在補跑中)累計各怪擊殺數 {怪名:次數};線上遊玩為 null → killMob 的計數判斷零開銷
   var gainTally = null;   // ⚡ 非 null 時(只在補跑中)累計各物品獲得數 {物品id:數量};供快速結算把「淨變化」還原成「真實消耗」(消耗=期初+獲得−期末)
   var _forceNoFast = false;   // 🧪 debug:forceCatchup(mins, true) 可強制全模擬(A/B 比對快速結算保真度用)
@@ -524,6 +525,33 @@
     var prevFf0, prevInTick0;   // 先宣告在 try 外:例外時 finally 才有得還原
     var _perfT0 = performance.now(), _realSimTicks = 0, _fastEvents = 0;   // ⏱ 診斷:結算耗時與組成(玩家回報「結算慢」時看這行就知道卡在哪段)
     var _ckptMs = 0, _ckptN = 0;   // ⏱ 其中有多少真實時間是花在檢查點存檔(見 doCheckpoint)
+    // ⏱ 2026-07-30 追查「同一台裝置、同一晚,一隻角色結算 3.9 秒、另一隻 156.7 秒」時補的量測。
+    //   平均值分不出「每次都貴一點」和「大部分很快但卡了幾次超大的」,而後者(記憶體壓力/垃圾回收/
+    //   分頁被切到背景)在桌機上模擬不出來,只能在玩家那台記。全部都是讀一個變數或加一個計數器。
+    var _hiddenMs = 0, _hiddenAt = 0;      // 結算期間分頁處於背景的累計時間(背景時瀏覽器會停掉畫面更新→每個切片都要等更久)
+    var _paceMs = 0;                       // 讓出等畫面更新的累計時間(這段不是在計算)
+    var _sliceMax = 0, _sliceN = 0;        // 單一切片最久花了多久 / 切片總數
+    var _sliceHist = [0, 0, 0, 0, 0, 0, 0];   // 切片耗時分佈:<32 / <64 / <128 / <256 / <512 / <1024 / >=1024 ms
+    var _simSliceMs = 0, _fastSliceMs = 0; // 切片層級的歸屬:整片都在真模擬 vs 有跑到快轉事件
+    var _invMax = 0;                       // 結算期間背包最大長度(gainItem 成本與它成正比,而結束前會被自動賣出清掉→事後看不出來)
+    _settleSeq++;                          // 本次頁面開啟後的第幾次結算(連續切角色時,後面幾次是在前面留下的記憶體上跑)
+    var _seqThis = _settleSeq;
+    // 出戰寵物數:名冊是模式共用的,只有 petsOutList() 知道「掛在這隻角色身上的」是哪幾隻。開頭讀一次就好。
+    var _petsOut = -1;
+    try { if (typeof petsOutList === 'function') _petsOut = petsOutList().length; } catch (e) {}
+    function _visHandler() {
+      if (document.visibilityState === 'hidden') _hiddenAt = performance.now();
+      else if (_hiddenAt) { _hiddenMs += performance.now() - _hiddenAt; _hiddenAt = 0; }
+    }
+    try { document.addEventListener('visibilitychange', _visHandler); if (document.visibilityState === 'hidden') _hiddenAt = performance.now(); } catch (e) {}
+    function _sliceDone(ms, hadFastEvent) {
+      _sliceN++;
+      if (ms > _sliceMax) _sliceMax = ms;
+      var b = ms < 32 ? 0 : ms < 64 ? 1 : ms < 128 ? 2 : ms < 256 ? 3 : ms < 512 ? 4 : ms < 1024 ? 5 : 6;
+      _sliceHist[b]++;
+      if (hadFastEvent) _fastSliceMs += ms; else _simSliceMs += ms;
+      try { var n = (player.inv || []).length; if (n > _invMax) _invMax = n; } catch (e) {}
+    }
     // ⚡ 結算期間 gainItem 一律帶 deferUi=true(上游 v3.6.97 為批次發獎新增的第 6 參):
     //   跳過每次獲得的 autoSortInventory——它以 state.ticks 節流(每 100 拍),快速段一個事件就跳幾十拍
     //   → 幾乎每殺必觸發全背包排序,24h 累計近萬次。結算尾統一排一次(見落點後)。renderTabs 本就被 ff 擋,無差。
@@ -1004,7 +1032,19 @@
         fastEvents: _fastEvents,
         fastWhy: fastWhy,                   // 為什麼快／為什麼慢(代碼;中文對照見 FAST_WHY_TEXT)
         ckptMs: Math.round(_ckptMs),        // settleMs 裡有多少是花在檢查點存檔(壓縮慢的裝置上可能是大宗)
-        ckptN: _ckptN
+        ckptN: _ckptN,
+        // ⏱ 「為什麼這台這隻特別慢」的鑑別資料(見上方宣告處的說明)
+        hiddenMs: Math.round(_hiddenMs + (_hiddenAt ? performance.now() - _hiddenAt : 0)),   // 結算期間分頁在背景多久
+        paceMs: Math.round(_paceMs),        // 其中有多少是在等畫面更新(不是計算)
+        sliceN: _sliceN,                    // 切片數
+        sliceMax: Math.round(_sliceMax),    // 最久的一個切片(卡頓的指紋:均勻慢→接近平均,卡住→遠大於平均)
+        sliceHist: _sliceHist.slice(),      // 切片耗時分佈 <32/<64/<128/<256/<512/<1024/>=1024 ms
+        simMs: Math.round(_simSliceMs),     // 切片層級歸屬:純真模擬的切片共花多久
+        fastMs: Math.round(_fastSliceMs),   // 有跑到快轉事件的切片共花多久
+        invMax: _invMax,                    // 結算期間背包峰值
+        allies: (function () { try { return (player.allies || []).length; } catch (e) { return -1; } })(),
+        petsOut: _petsOut,                  // 出戰寵物數(名冊是模式共用的,診斷檔只印得出全域總數→這裡記「這隻角色的」)
+        settleSeq: _seqThis                 // 本次頁面開啟後的第幾次結算
       };
     }
     // 切到背景 / 關掉 App 前主動存一次:iOS 在背景更容易被系統直接丟掉整個分頁,
@@ -1036,7 +1076,7 @@
     try {
       while (done < totalTicks && !_abortCatchup) {
         if (player.dead || !state.running) { died = !!player.dead; break; }
-        var t0 = performance.now();
+        var t0 = performance.now(), _evBefore = _fastEvents;
         while (done < totalTicks && !player.dead && state.running && !_abortCatchup &&
                (performance.now() - t0) < (_holdStart ? HOLD_SLICE_MS : sliceMs)) {   // 按住放棄時切片縮小,讓 1.5 秒一到就立刻停
           if (fastMode) {
@@ -1131,6 +1171,7 @@
             }
           }
         }
+        _sliceDone(performance.now() - t0, _fastEvents > _evBefore);   // ⏱ 切片耗時分佈(卡頓的指紋)＋背包峰值
         if (withOverlay) updateOverlay(done / totalTicks, done, totalTicks);
         // 💾 分段檢查點(見上方宣告):間隔依結算長短動態;壓縮 Worker 還沒消化完就先跳過(背壓,
         //    避免多份數 MB 存檔字串同時堆在記憶體),但拖過 CKPT_MAX_MS 一定補存一次。
@@ -1138,7 +1179,9 @@
           var sinceCkpt = performance.now() - _ckptLastMs;
           if (sinceCkpt >= CKPT_MAX_MS || (sinceCkpt >= CKPT_MS && !lzBacklog())) doCheckpoint();
         }
+        var _pt0 = performance.now();
         await pace(sliceMs);   // 前景 rAF / 背景 Worker 溫和節拍(切走也續算)
+        _paceMs += performance.now() - _pt0;   // ⏱ 這段是「等畫面更新」不是計算;分頁切到背景時會暴增
         // 「長按放棄剩餘收益」按滿 HOLD_MS → 設旗標跳出(已算到的收益本就累積保留,等同撞死即停)
         if (_holdStart && (performance.now() - _holdStart) >= HOLD_MS) _abortCatchup = true;
       }
@@ -1151,6 +1194,9 @@
       _saveSquelch = false;   // ⚡ 迴圈結束(完成/死亡/例外)即解除擋板:落點/結算尾的 saveGame 要照常運作
       killTicker();   // 補跑結束(完成/死亡/例外)→ 關掉背景節拍器 Worker,不殘留
       _ckptNow = null;   // 解除「切到背景先存一次」的鉤子(閉包已失效)
+      // ⏱ 解除本輪的背景計時監聽:不解的話每結算一次就疊一個,而且會把之後的背景時間算到舊那筆頭上
+      try { document.removeEventListener('visibilitychange', _visHandler); } catch (e) {}
+      if (_hiddenAt) { _hiddenMs += performance.now() - _hiddenAt; _hiddenAt = 0; }
       settleDeadMobs();
     }
 
