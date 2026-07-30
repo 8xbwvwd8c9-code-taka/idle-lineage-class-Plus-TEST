@@ -655,6 +655,8 @@
     <!-- 傳統模式(偽)/自動衝裝：需搭配 scripts/apply-core-patches.mjs 的 gainItem _tEn 鉤子 -->
     <script src="afk-traditional.js?v=a367c9c073"></script>
     <script src="afk-warehouse.js?v=9dd793fce9"></script>
+    <!-- 倉庫批次存取:勾選/全選一次搬完(核心是一件一件搬、每件都 saveGame,幾千格搬不動);排在 afk-warehouse 之後 → afterRender 在它的注入之後才跑 -->
+    <script src="afk-whbatch.js"></script>
     <!-- 迷你遊戲（我方自製） -->
     <script src="afk-dograce.js?v=6e83ec4926"></script>
     <!-- PWA / SW / 統計 / 品牌（skin 固定排最後） -->
