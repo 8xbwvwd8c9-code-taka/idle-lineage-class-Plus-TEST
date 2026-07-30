@@ -1064,7 +1064,7 @@
     { k: 'mode', n: '遊戲模式' },
     { k: 'npc', n: 'NPC總覽' }
   ];
-  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, equipCls: 'all', equipSlot: 'all', equipRegion: 'all', relicRegion: 'all', combatCls: '', polyRange: 'all', polySort: 'lv', polySortDesc: false };   // 預設分頁=分頁列第一個(收藏-裝備)。equipSlot 必須是 EQUIP_GROUPS 的 key 或 'all'(舊值 'wpn' 已無此分組→整頁空白)
+  var state = { tab: 'equipbook', cls: 'knight', q: '', magicCls: 'all', magicChar: '', collMode: null, relicRegion: 'all', combatCls: '', polyRange: 'all', polySort: 'lv', polySortDesc: false };   // 預設分頁=分頁列第一個(收藏-裝備)。裝備頁的篩選/排序條件由列表篩選引擎(EQ_LF.state)自己保管,不放這裡
   // 搜尋打字防抖:每次按鍵只重設計時器,停手這麼久才真的過濾+重渲染(降低逐字輸入的 INP)。
   var SEARCH_DEBOUNCE_MS = 150;
   var _searchTimer = null;
@@ -1136,22 +1136,21 @@
         render();
         return;
       }
-      // 裝備分頁:點裝備名展開/收合詳情
+      // 裝備分頁:點裝備名展開/收合詳情。詳情是「點開才建」(整頁預建 900+ 份＝2.4MB HTML,手機每次重畫都要重新解析),
+      //   並記住展開狀態 → 切篩選重畫清單後,原本展開的那幾件還是展開的。
       var eqHead = e.target.closest ? e.target.closest('[data-eq]') : null;
       if (eqHead) {
         var det = eqHead.parentNode ? eqHead.parentNode.querySelector('.m-eq-detail') : null;
-        if (det) det.style.display = (det.style.display === 'none') ? '' : 'none';
+        if (det) {
+          var _eid = eqHead.getAttribute('data-eq'), willOpen = (det.style.display === 'none');
+          if (willOpen && !det.innerHTML) det.innerHTML = equipDetailHTML(_eid);
+          det.style.display = willOpen ? '' : 'none';
+          if (willOpen) _eqOpen[_eid] = 1; else delete _eqOpen[_eid];
+        }
         return;
       }
-      // 裝備分頁的「部位篩選」
-      var eqslot = e.target.closest ? e.target.closest('[data-equipslot]') : null;
-      if (eqslot) { state.equipSlot = eqslot.getAttribute('data-equipslot'); render(); return; }
-      // 裝備分頁的「職業篩選」
-      var eqcls = e.target.closest ? e.target.closest('[data-equipcls]') : null;
-      if (eqcls) { state.equipCls = eqcls.getAttribute('data-equipcls'); render(); return; }
-      // 🗺️ 遺物檢視的「掉落區域篩選」
-      var eqrg = e.target.closest ? e.target.closest('[data-equipregion]') : null;
-      if (eqrg) { state.equipRegion = eqrg.getAttribute('data-equipregion'); render(); return; }
+      // 裝備頁的篩選/排序/顯示更多(清單在 body 內;篩選面板掛在外層、自己收事件)
+      if (EQ_LF && EQ_LF.onClick(e)) return;
       // 🗺️ 收藏-遺物的「掉落區域篩選」(按區域看收集進度/缺哪些)
       var rlrg = e.target.closest ? e.target.closest('[data-relicregion]') : null;
       if (rlrg) { state.relicRegion = rlrg.getAttribute('data-relicregion'); render(); return; }
@@ -1179,11 +1178,20 @@
     });
     // 職業魔法分頁「選擇角色」下拉(body innerHTML 重繪後仍有效)
     document.getElementById('m-wiki-body').addEventListener('change', function (e) {
+      if (EQ_LF && EQ_LF.onChange(e)) return;   // 裝備頁的排序下拉
       var sel = e.target.closest ? e.target.closest('[data-magicchar]') : null;
       if (!sel) return;
       state.magicChar = sel.value;
       render();
     });
+    // 裝備頁的頁內搜尋框與數值條件:input 事件要自己收一個(click/change 委派收不到逐字輸入)
+    document.getElementById('m-wiki-body').addEventListener('input', function (e) {
+      if (EQ_LF) EQ_LF.onInput(e);
+    });
+    // 裝備頁:捲到接近底就自動追加下一批,不必一直點「顯示更多」
+    document.getElementById('m-wiki-body').addEventListener('scroll', function () {
+      if (EQ_LF && state.tab === 'equip' && !(state.q || '').trim()) EQ_LF.onScroll(this);
+    }, { passive: true });
     document.getElementById('m-wiki-close').addEventListener('click', userCloseTop);
     m.addEventListener('click', function (e) { if (e.target === m) userCloseTop(); });
   }
@@ -1218,6 +1226,7 @@
     if (h && window.AFK_NAV) AFK_NAV.pop(h); else _hideModal();
   }
   document.addEventListener('keydown', function (e) {
+    if (e.defaultPrevented) return;   // AFK_NAV 已吃掉這次 ESC(例:先關裝備頁的篩選面板)→ 不要連小百科一起關掉
     if (e.key === 'Escape' && _isModalClosable()) { e.preventDefault(); userCloseTop(); }
   });
 
@@ -1289,7 +1298,7 @@
     { key: 'relicbook', cls: false, label: '收藏-遺物' },
     { key: 'magic', cls: false, label: '職業魔法' },
     { key: 'mastery', cls: true, label: '職業專精' },
-    { key: 'equip', cls: false, label: '裝備' },
+    { key: 'equip', cls: false, label: '裝備', search: eqSearchBlocks },   // 詳情改成點開才建 → 掃 DOM 找不到內容,走專用搜尋器掃索引
     { key: 'enhance', cls: false, label: '強化' },
     { key: 'set', cls: false, label: '套裝' },
     { key: 'craft', cls: false, label: '製作' },
@@ -1446,6 +1455,10 @@
     try {
       SEARCH_SOURCES.forEach(function (s) {
         if (out.length >= max) return;
+        if (s.search) {   // 自訂搜尋器(裝備:掃索引)
+          s.search(terms, max - out.length).forEach(function (h) { if (out.length < max) out.push({ tab: s.key, cls: null, label: s.label, title: String(h.title).slice(0, 28) }); });
+          return;
+        }
         var clsList = s.cls ? (s.key === 'quest' ? [{ k: 'all', n: '全職業共通' }].concat(CLASSES) : CLASSES) : [null];
         clsList.forEach(function (c) {
           if (out.length >= max) return;
@@ -1465,11 +1478,20 @@
     return out;
   }
 
+  var SEARCH_CARD_CAP = 60;   // 單一來源最多列幾張卡(裝備那種「一個字命中 500 件」的查詢會把手機畫爆)
   function renderSearch(q) {
     var parts = [];
     var terms = q.split(/\s+/).filter(Boolean);   // 空白分詞=AND:每個詞都要出現(玩家常打「娃娃 兌換」這種多詞,整串當一個字面值會全空)
     if (!terms.length) terms = [q];
     SEARCH_SOURCES.forEach(function (s) {
+      if (s.search) {   // 自訂搜尋器(裝備:掃索引;命中的列直接展開,因為關鍵字常在詳情裡)
+        var hits = s.search(terms, SEARCH_CARD_CAP + 1), over = hits.length > SEARCH_CARD_CAP;
+        if (over) hits = hits.slice(0, SEARCH_CARD_CAP);
+        if (hits.length) parts.push('<div class="m-wiki-sub">' + esc(s.label) + ' <span class="m-wiki-cnt">' + hits.length + (over ? '+' : '') + '</span></div>' +
+          hits.map(function (h) { return h.html; }).join('') +
+          (over ? '<div class="m-wiki-hint">符合的太多，只列前 ' + SEARCH_CARD_CAP + ' 件；要看全部請到「裝備」分頁用篩選器縮範圍。</div>' : ''));
+        return;
+      }
       // cls 分頁逐職業各搜一次;任務分頁另含「全職業共通」桶(QUEST_COMMON：雷德/希米哲等只在 cls='all' 渲染,否則搜不到)
       var clsList = s.cls ? (s.key === 'quest' ? [{ k: 'all', n: '全職業共通' }].concat(CLASSES) : CLASSES) : [null];
       clsList.forEach(function (c) {
@@ -1508,6 +1530,7 @@
     var tabsEl = document.getElementById('m-wiki-tabs');
     var clsRow = document.getElementById('m-wiki-cls');
     var q = (state.q || '').trim().toLowerCase();
+    if (EQ_LF && EQ_LF.sheetOpen()) EQ_LF.closeSheet();   // 篩選面板掛在小百科面板上、不隨 body 重畫消失 → 換分頁/進搜尋模式要主動收掉(順便退掉它那格歷史)
     body.scrollTop = 0;
     if (q) {   // 搜尋模式:收起分頁/職業列,顯示跨全部分頁與職業的結果
       tabsEl.style.display = 'none';
@@ -1523,7 +1546,7 @@
     clsRow.style.display = showCls ? 'flex' : 'none';
     var _allBtn = clsRow.querySelector('.m-wiki-clsbtn-all'); if (_allBtn) _allBtn.style.display = (state.tab === 'quest') ? '' : 'none';   // 全職業鈕只在任務分頁
     document.querySelectorAll('#m-wiki-cls .m-wiki-clsbtn').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-cls') === state.cls); });
-    body.innerHTML = linkifyTabs((state.tab === 'magic') ? renderMagic(state.magicCls) : (state.tab === 'equip') ? renderEquip(state.equipCls, state.equipSlot, state.equipRegion) : tabHTML(state.tab, state.cls), state.tab);
+    body.innerHTML = linkifyTabs((state.tab === 'magic') ? renderMagic(state.magicCls) : tabHTML(state.tab, state.cls), state.tab);
   }
 
   // 📐 各專精「實際數據」——逐條從 js/ 原始碼查證(2026-07-05,含未精通基準值對照與描述沒講的細節);
@@ -1977,13 +2000,14 @@
     if (state.collMode !== null) {
       var b = collBuckets();
       // 🗺️ 掉落區域篩選(選了模式才出現):選某區域 → 只看「掉落怪在該區域出沒」的遺物之收集進度,
-      //   讓玩家按活動範圍確認「這區還缺哪幾件」。重用裝備頁那份 relicDropIndex(遺物→區域)索引。
-      var _ridx = relicDropIndex();
+      //   讓玩家按活動範圍確認「這區還缺哪幾件」。重用裝備頁那份 dropRegionIndex(裝備→掉落區域)索引,
+      //   區域按鈕只列 relicRegions(有遺物掉的區域);byItem 是全部裝備共用的。
+      var _ridx = dropRegionIndex();
       var catItems = RELIC_CAT_ITEMS, regionRow = '';
-      if (_ridx && _ridx.regions.length) {
+      if (_ridx && _ridx.relicRegions.length) {
         var rr = state.relicRegion || 'all';
         regionRow = '<div class="m-wiki-mfilter"><button type="button" class="m-wiki-mfbtn' + (rr === 'all' ? ' on' : '') + '" data-relicregion="all">全部區域</button>' +
-          _ridx.regions.map(function (rg) { return '<button type="button" class="m-wiki-mfbtn' + (rg === rr ? ' on' : '') + '" data-relicregion="' + esc(rg) + '">' + esc(rg) + '</button>'; }).join('') + '</div>';
+          _ridx.relicRegions.map(function (rg) { return '<button type="button" class="m-wiki-mfbtn' + (rg === rr ? ' on' : '') + '" data-relicregion="' + esc(rg) + '">' + esc(rg) + '</button>'; }).join('') + '</div>';
         if (rr !== 'all') {   // 依區域過濾各部位的遺物清單(進度顯示照樣按部位分組)
           catItems = {};
           EQUIP_CATEGORIES.forEach(function (c) {
@@ -2002,13 +2026,310 @@
     return out;
   }
 
-  // 裝備總覽:直接讀遊戲 DB.items 依部位分組。數值用遊戲自己的 buildItemDescHTML(永遠與遊戲一致、作者新增自動跟上),
-  // 取得方式接掉落查詢的 AFK_DEX_API.acquireHTML。每件「詳情」常駐 DOM(display:none)→ 連完整數值/特效都進統一搜尋;
-  // 詳情與整頁 HTML 都建一次就快取(_equipDetail/_equipHtml)→ 搜尋每次重渲染 441 件也不卡。
-  var EQUIP_FILTERS = [['all', '全部'], ['royal', '王族'], ['knight', '騎士'], ['mage', '法師'], ['elf', '妖精'], ['dark', '黑暗妖精'], ['illusion', '幻術士'], ['dragon', '龍騎士'], ['warrior', '戰士']];   // 順序＝全部＋創角職業序(同 CLASSES)
-  // 武器部位依「裝備圖鑑」細分(作者 EQUIP_CATEGORIES,分類用 equipCatKey/EQUIP_ITEM_CAT);防具/飾品維持原本粗分。
-  var RELIC_SLOT = '__relic';   // 「遺物」虛擬部位的 key:刻意用 __ 開頭,不可能撞到真實 slot
-  var HASTE_SLOT = '__haste';   // 「加攻速」虛擬部位(同 RELIC_SLOT 機制:跨部位只留符合的,仍照部位分組)
+  // ===== 🧰 列表篩選引擎(通用) =============================================
+  // 為什麼要有這一層:裝備頁原本「每個篩選組合各建一份整頁 HTML 字串」→ 多一個維度就組合爆炸;
+  //   而且一次畫 900+ 列、詳情全部預先建好藏著(≈2.4MB HTML／44k 節點),每切一次篩選都要重新
+  //   解析整頁(中階手機實測 400~650ms),展開狀態與捲動位置也一起丟掉。
+  //   改成「索引 → 純函式篩選 → 只畫前 N 列、詳情點開才建」,切篩選只換清單那一段 DOM。
+  // 目前只有裝備頁在用(照專案守則:1 個 caller 先不抽檔)。第二頁要用時整段搬進獨立外掛即可,
+  //   但那支**不可以有開關**——小百科的頁面不能依賴玩家關得掉的東西(見 CLAUDE.md 基礎設施那條)。
+  // spec 契約:
+  //   id          容器 id 前綴(一頁一個實例)
+  //   items()     索引陣列;每筆 { id, name, f:{facet鍵:[值…]}, v:{數值鍵:數字|null} }
+  //   facets()    [{k,n,type:'chips'|'min',mode:'or'|'and',groups:[{label,opts:[[值,標籤,件數]]}],unit,hint}]
+  //   sorts       [{k,n,val(it),text,desc}];第一個=預設
+  //   groupKey(it)/groupLabel(k)/groupOrder   分組(玩家可關)
+  //   row(it,ctx) 一列 HTML;hay(it) 頁內搜尋用「已轉小寫」字串(呼叫端自行快取,引擎不再存一份)
+  //   help()      [{t,html,open}] 摺疊說明卡;emptyHint 沒結果時顯示的字
+  var LF_PAGE = 40;            // 一次畫幾列(捲到接近底自動追加)
+  var LF_NEAR_BOTTOM = 500;    // 離底多少 px 就預先追加下一批
+  var _lfInst = null;          // 目前掛在畫面上的實例(捲動/ESC/離開分頁時要找得到它)
+
+  function makeListFilter(spec) {
+    var P = spec.id;
+    var st = { sel: {}, num: {}, q: '', sort: spec.sorts[0].k, desc: spec.sorts[0].desc !== false, group: true, shown: LF_PAGE };
+    var _res = null, _hSheet = null, _qTimer = null;
+
+    function sel(k) { return st.sel[k] || (st.sel[k] = []); }
+    function sortDef() { var r = spec.sorts[0]; spec.sorts.forEach(function (s) { if (s.k === st.sort) r = s; }); return r; }
+    function el(sfx) { return document.getElementById(P + '-' + sfx); }
+    function activeCount() {
+      var n = 0;
+      spec.facets().forEach(function (f) {
+        if (f.type === 'min') { if (st.num[f.k] != null && st.num[f.k] !== '') n++; }
+        else n += sel(f.k).length;
+      });
+      return n;
+    }
+    function matches(it, fs) {   // fs 由呼叫端傳進來:facets() 每次都要重算選項與件數,不能在 1000 件的迴圈裡逐件呼叫
+      for (var i = 0; i < fs.length; i++) {
+        var f = fs[i], j;
+        if (f.type === 'min') {
+          var lim = st.num[f.k];
+          if (lim == null || lim === '') continue;
+          var v = it.v[f.k];
+          if (v == null || v < lim) return false;
+          continue;
+        }
+        var s = sel(f.k); if (!s.length) continue;
+        var have = it.f[f.k] || [];
+        if (f.mode === 'and') { for (j = 0; j < s.length; j++) if (have.indexOf(s[j]) < 0) return false; }
+        else { var ok = false; for (j = 0; j < s.length; j++) if (have.indexOf(s[j]) >= 0) { ok = true; break; } if (!ok) return false; }
+      }
+      return !st.q || spec.hay(it).indexOf(st.q) >= 0;
+    }
+    function results() {
+      if (_res) return _res;
+      var srt = sortDef(), dir = st.desc ? -1 : 1, gord = {}, fs = spec.facets();
+      if (spec.groupOrder) spec.groupOrder.forEach(function (k, i) { gord[k] = i; });
+      var arr = spec.items().filter(function (it) { return matches(it, fs); });
+      arr.sort(function (a, b) {
+        if (st.group && spec.groupKey) {   // 分組模式:先照部位順序,組內才照排序欄位
+          var ga = gord[spec.groupKey(a)], gb = gord[spec.groupKey(b)];
+          if (ga == null) ga = 9999;
+          if (gb == null) gb = 9999;
+          if (ga !== gb) return ga - gb;
+        }
+        if (srt.text) return String(a.name).localeCompare(String(b.name)) * dir;
+        var av = srt.val(a), bv = srt.val(b);
+        if (av == null && bv != null) return 1;    // 沒有這個數值的一律排最後(不然升冪時開頭全是「—」)
+        if (bv == null && av != null) return -1;
+        if (av != null && av !== bv) return (av < bv ? -1 : 1) * dir;
+        return String(a.name).localeCompare(String(b.name));
+      });
+      _res = arr;
+      return arr;
+    }
+    function invalidate() { _res = null; st.shown = LF_PAGE; }
+
+    // ---- HTML ----
+    function cntHTML() { return '共 <b>' + results().length + '</b> 件'; }
+    function sheetBtnHTML() { var n = activeCount(); return '⚙ 篩選' + (n ? ' <b>' + n + '</b>' : ''); }
+    function barHTML() {
+      return '<div class="m-lf-bar" id="' + P + '-bar">' +
+        '<span class="m-lf-inwrap"><input class="m-lf-q" id="' + P + '-q" type="search" placeholder="' + esc(spec.qPlaceholder || '在這頁搜尋…') + '" value="' + esc(st.q) + '" autocomplete="off"></span>' +
+        '<button type="button" class="m-lf-btn' + (activeCount() ? ' on' : '') + '" data-lfsheet="1">' + sheetBtnHTML() + '</button>' +
+        '<span class="m-lf-sortgrp"><select class="m-lf-sort" data-lfsort="1" title="排序">' + spec.sorts.map(function (o) {
+          return '<option value="' + esc(o.k) + '"' + (o.k === st.sort ? ' selected' : '') + '>' + esc(o.n) + '</option>';
+        }).join('') + '</select>' +
+        '<button type="button" class="m-lf-btn m-lf-dir" data-lfdir="1" title="高→低／低→高">' + (st.desc ? '▼' : '▲') + '</button></span>' +
+        '<span class="m-lf-cnt" id="' + P + '-cnt">' + cntHTML() + '</span>' +
+      '</div>';
+    }
+    function pillsInner() {
+      var out = [];
+      spec.facets().forEach(function (f) {
+        if (f.type === 'min') {
+          var v = st.num[f.k];
+          if (v != null && v !== '') out.push('<button type="button" class="m-lf-pill" data-lfpill="' + esc(f.k) + '" data-lfv="">' + esc(f.n + ' ≥ ' + v) + ' ✕</button>');
+          return;
+        }
+        var lab = {};
+        (f.groups || []).forEach(function (g) { g.opts.forEach(function (o) { lab[o[0]] = o[1]; }); });
+        sel(f.k).forEach(function (v) {
+          out.push('<button type="button" class="m-lf-pill" data-lfpill="' + esc(f.k) + '" data-lfv="' + esc(v) + '">' + esc(lab[v] || v) + ' ✕</button>');
+        });
+      });
+      if (!out.length) return '';
+      return out.join('') + '<button type="button" class="m-lf-clear" data-lfreset="1">清除全部</button>';
+    }
+    function helpInner() {
+      return (spec.help ? spec.help(st) : []).map(function (h) {
+        return '<details class="m-lf-help"' + (h.open ? ' open' : '') + '><summary>' + esc(h.t) + '</summary><div>' + h.html + '</div></details>';
+      }).join('');
+    }
+    function rowsHTML(arr, from, to) {
+      var out = '', prev = (st.group && spec.groupKey && from > 0) ? spec.groupKey(arr[from - 1]) : null;
+      var ctx = { st: st, sort: st.sort };
+      for (var i = from; i < to; i++) {
+        var it = arr[i];
+        if (st.group && spec.groupKey) {
+          var g = spec.groupKey(it);
+          if (g !== prev) {
+            prev = g;
+            var n = 0; for (var j = i; j < arr.length && spec.groupKey(arr[j]) === g; j++) n++;   // 分組後同組必相鄰 → 往後數到不同組即止
+            out += '<div class="m-wiki-sub">' + spec.groupLabel(g) + '（' + n + '）</div>';
+          }
+        }
+        out += spec.row(it, ctx);
+      }
+      return out;
+    }
+    function moreBtnHTML(arr) {
+      var left = arr.length - st.shown;
+      return left > 0 ? '<button type="button" class="m-lf-more" data-lfmore="1">顯示更多（還有 ' + left + ' 件）</button>' : '';
+    }
+    function listInner() {
+      var arr = results();
+      if (!arr.length) return '<div class="m-wiki-hint">' + esc(spec.emptyHint || '沒有符合的項目。') + '</div>';
+      return rowsHTML(arr, 0, Math.min(arr.length, st.shown)) + moreBtnHTML(arr);
+    }
+    function shellHTML() {
+      invalidate();
+      _lfInst = inst;
+      return barHTML() +
+        '<div class="m-lf-pills" id="' + P + '-pills">' + pillsInner() + '</div>' +
+        '<div class="m-lf-helps" id="' + P + '-help">' + helpInner() + '</div>' +
+        '<div id="' + P + '-list">' + listInner() + '</div>';
+    }
+
+    // ---- 局部重畫(不動整頁 → 捲動位置、搜尋框焦點都留著) ----
+    function repaint() {
+      var list = el('list'); if (!list) return;
+      list.innerHTML = listInner();
+      var pl = el('pills'); if (pl) pl.innerHTML = pillsInner();
+      var hp = el('help'); if (hp) hp.innerHTML = helpInner();
+      var cn = el('cnt'); if (cn) cn.innerHTML = cntHTML();
+      var bar = el('bar');
+      if (bar) {
+        var sb = bar.querySelector('[data-lfsheet]');
+        if (sb) { sb.innerHTML = sheetBtnHTML(); sb.classList.toggle('on', !!activeCount()); }
+        var dr = bar.querySelector('[data-lfdir]'); if (dr) dr.textContent = st.desc ? '▼' : '▲';
+        var so = bar.querySelector('[data-lfsort]'); if (so && so.value !== st.sort) so.value = st.sort;
+        var qi = el('q'); if (qi && qi.value !== st.q) qi.value = st.q;
+      }
+      if (sheetOpen()) renderSheet();
+    }
+    function appendMore() {
+      var arr = results(); if (st.shown >= arr.length) return;
+      var list = el('list'); if (!list) return;
+      var from = st.shown;
+      st.shown = Math.min(arr.length, st.shown + LF_PAGE);
+      var html = rowsHTML(arr, from, st.shown);
+      var btn = list.querySelector('[data-lfmore]');
+      if (btn) {
+        btn.insertAdjacentHTML('beforebegin', html);
+        if (arr.length > st.shown) btn.textContent = '顯示更多（還有 ' + (arr.length - st.shown) + ' 件）';
+        else btn.parentNode.removeChild(btn);
+      } else list.insertAdjacentHTML('beforeend', html);
+    }
+
+    // ---- 篩選面板(掛在 #m-wiki-wrap 底部:那層 overflow:hidden → 面板剛好被裁在小百科面板內,手機像底部抽屜、桌機像面板內抽屜) ----
+    function sheetEl() { return el('sheet'); }
+    function sheetOpen() { var s = sheetEl(); return !!(s && s.classList.contains('open')); }
+    function ensureSheet() {
+      var s = sheetEl(); if (s) return s;
+      var wrap = document.getElementById('m-wiki-wrap'); if (!wrap) return null;
+      var bd = document.createElement('div'); bd.className = 'm-lf-bd'; bd.id = P + '-bd';
+      s = document.createElement('div'); s.className = 'm-lf-sheet'; s.id = P + '-sheet';
+      wrap.appendChild(bd); wrap.appendChild(s);
+      bd.addEventListener('click', closeSheet);
+      s.addEventListener('click', onClick);
+      s.addEventListener('change', onChange);
+      s.addEventListener('input', onInput);
+      return s;
+    }
+    function renderSheet() {
+      var s = sheetEl(); if (!s) return;
+      var body = spec.facets().map(function (f) {
+        var h = '<div class="m-lf-fname">' + esc(f.n) + '</div>' + (f.hint ? '<div class="m-lf-fhint">' + esc(f.hint) + '</div>' : '');
+        if (f.type === 'min') {
+          h += '<div class="m-lf-nums"><label class="m-lf-num">≥ <input type="number" inputmode="numeric" data-lfnum="' + esc(f.k) + '" value="' + esc(st.num[f.k] == null ? '' : st.num[f.k]) + '"></label></div>';
+          return h;
+        }
+        var cur = sel(f.k);
+        (f.groups || []).forEach(function (g) {
+          if (!g.opts.length) return;
+          if (g.label) h += '<div class="m-lf-fgrp">' + esc(g.label) + '<button type="button" class="m-lf-mini" data-lfgrp="' + esc(f.k) + '" data-lfvs="' + esc(g.opts.map(function (o) { return o[0]; }).join(',')) + '">全選／清除</button></div>';
+          h += '<div class="m-lf-chips">' + g.opts.map(function (o) {
+            return '<button type="button" class="m-lf-chip' + (cur.indexOf(o[0]) >= 0 ? ' on' : '') + '" data-lfchip="' + esc(f.k) + '" data-lfv="' + esc(o[0]) + '">' + o[1] + (o[2] != null ? '<i>' + o[2] + '</i>' : '') + '</button>';
+          }).join('') + '</div>';
+        });
+        return h;
+      }).join('');
+      body += '<div class="m-lf-fname">分組</div><div class="m-lf-chips">' +
+        '<button type="button" class="m-lf-chip' + (st.group ? ' on' : '') + '" data-lfgroup="1">依部位分組</button>' +
+        '<button type="button" class="m-lf-chip' + (st.group ? '' : ' on') + '" data-lfgroup="0">不分組（純照排序）</button></div>';
+      s.innerHTML = '<div class="m-lf-sheet-h"><span>⚙ 篩選條件</span><button type="button" class="m-lf-x" data-lfclose="1">✕</button></div>' +
+        '<div class="m-lf-sheet-b">' + body + '</div>' +
+        '<div class="m-lf-sheet-f"><button type="button" class="m-lf-reset" data-lfreset="1">重設</button>' +
+        '<button type="button" class="m-lf-done" data-lfclose="1">看結果（' + results().length + ' 件）</button></div>';
+    }
+    function openSheet() {
+      if (!ensureSheet()) return;
+      renderSheet();
+      sheetEl().classList.add('open');
+      var bd = el('bd'); if (bd) bd.classList.add('open');
+      if (window.AFK_NAV && !_hSheet) _hSheet = AFK_NAV.push(hideSheet);   // 手機返回鍵先關面板,不會一下就退出小百科
+    }
+    function hideSheet() {
+      var s = sheetEl(); if (s) s.classList.remove('open');
+      var bd = el('bd'); if (bd) bd.classList.remove('open');
+      _hSheet = null;
+    }
+    function closeSheet() { var h = _hSheet; _hSheet = null; if (h && window.AFK_NAV) AFK_NAV.pop(h); else hideSheet(); }
+
+    // ---- 事件(面板自己收;清單那邊由 #m-wiki-body 的委派轉進來) ----
+    function toggle(arr, v) { var i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); }
+    function onClick(e) {
+      var t = e.target.closest ? e.target : null; if (!t) return false;
+      var b;
+      if ((b = t.closest('[data-lfchip]'))) { toggle(sel(b.getAttribute('data-lfchip')), b.getAttribute('data-lfv')); invalidate(); repaint(); return true; }
+      if ((b = t.closest('[data-lfgrp]'))) {
+        var k = b.getAttribute('data-lfgrp'), vs = b.getAttribute('data-lfvs').split(','), cur = sel(k);
+        var allOn = vs.every(function (v) { return cur.indexOf(v) >= 0; });
+        vs.forEach(function (v) { var i = cur.indexOf(v); if (allOn) { if (i >= 0) cur.splice(i, 1); } else if (i < 0) cur.push(v); });
+        invalidate(); repaint(); return true;
+      }
+      if ((b = t.closest('[data-lfpill]'))) {
+        var pk = b.getAttribute('data-lfpill'), pv = b.getAttribute('data-lfv');
+        if (pv === '') st.num[pk] = '';
+        else { var s2 = sel(pk), i2 = s2.indexOf(pv); if (i2 >= 0) s2.splice(i2, 1); }
+        invalidate(); repaint(); return true;
+      }
+      if ((b = t.closest('[data-lfgroup]'))) { st.group = b.getAttribute('data-lfgroup') === '1'; invalidate(); repaint(); return true; }
+      if ((b = t.closest('[data-lfreset]'))) { st.sel = {}; st.num = {}; st.group = true; invalidate(); repaint(); return true; }   // 只清面板裡的條件與分組;控制列上的搜尋字/排序看得見,不替玩家動
+      if ((b = t.closest('[data-lfdir]'))) { st.desc = !st.desc; invalidate(); repaint(); return true; }
+      if ((b = t.closest('[data-lfmore]'))) { appendMore(); return true; }
+      if ((b = t.closest('[data-lfsheet]'))) { sheetOpen() ? closeSheet() : openSheet(); return true; }
+      if ((b = t.closest('[data-lfclose]'))) { closeSheet(); return true; }
+      return false;
+    }
+    function onChange(e) {
+      var s = e.target.closest ? e.target.closest('[data-lfsort]') : null;
+      if (!s) return false;
+      st.sort = s.value;
+      var d = sortDef(); st.desc = d.desc !== false;   // 換排序欄位時回到該欄位的預設方向(名稱預設 A→Z、數值預設高→低)
+      invalidate(); repaint(); return true;
+    }
+    function onInput(e) {
+      var n = e.target.closest ? e.target.closest('[data-lfnum]') : null;
+      if (n) {
+        var raw = n.value.trim();
+        st.num[n.getAttribute('data-lfnum')] = (raw === '' || isNaN(Number(raw))) ? '' : Number(raw);
+        invalidate(); if (_qTimer) clearTimeout(_qTimer);
+        _qTimer = setTimeout(function () { _qTimer = null; repaint(); }, LF_Q_DEBOUNCE);
+        return true;
+      }
+      var q = e.target.closest ? e.target.closest('.m-lf-q') : null;
+      if (!q) return false;
+      st.q = q.value.trim().toLowerCase();
+      invalidate();
+      if (_qTimer) clearTimeout(_qTimer);
+      _qTimer = setTimeout(function () { _qTimer = null; repaint(); }, LF_Q_DEBOUNCE);
+      return true;
+    }
+    function onScroll(box) {
+      if (st.shown >= results().length) return;
+      if (box.scrollTop + box.clientHeight >= box.scrollHeight - LF_NEAR_BOTTOM) appendMore();
+    }
+
+    var inst = {
+      state: st,
+      shellHTML: shellHTML,
+      onClick: onClick, onChange: onChange, onInput: onInput, onScroll: onScroll,
+      sheetOpen: sheetOpen, closeSheet: closeSheet, hideSheet: hideSheet,
+      repaint: repaint
+    };
+    return inst;
+  }
+  var LF_Q_DEBOUNCE = 200;   // 頁內搜尋/數值框的防抖(打字每個鍵都重篩會卡)
+
+  // ===== 裝備總覽 =========================================================
+  // 直接讀遊戲 DB.items:數值一律走遊戲自己的 buildItemDescHTML(永遠與遊戲一致、作者新增自動跟上),
+  // 取得方式接掉落查詢的 AFK_DEX_API.itemDetailHTML。頁面本身走上面那套列表篩選引擎:
+  //   索引(eqIndex)建一次 → 篩選/排序是純函式 → 只畫前 40 列、詳情點開才建。
+  var EQUIP_FILTERS = [['royal', '王族'], ['knight', '騎士'], ['mage', '法師'], ['elf', '妖精'], ['dark', '黑暗妖精'], ['illusion', '幻術士'], ['dragon', '龍騎士'], ['warrior', '戰士']];   // 順序＝遊戲創角順序(同 CLASSES)
   // 判斷遺物一律走遊戲的 isRelic()(單一事實來源;讀不到才退回自己看旗標,不讓小百科整頁壞掉)
   function isRelicItem(d) { try { return (typeof isRelic === 'function') ? isRelic(d) : !!(d && d.relic); } catch (e) { return !!(d && d.relic); } }
 
@@ -2018,31 +2339,32 @@
   //   也會漏掉沒寫成「+N%」的(魔力凝聚的法陣「每 5 點體質增加 1% 攻擊速度」)。
   //   ⚠ 條件觸發的也收(玩家要找齊所有能變快的手段),但摘要一律寫明條件,不會被誤看成常駐;
   //     負值(鎧甲守衛的笨重巨劍 -50%)照樣列出,不然玩家會踩到變慢的雷。
-  //   套裝才有的攻速(真‧冥皇 5 件 +30%)寫在頁首說明卡,單件欄位查不到。
-  //   回傳 { txt:摘要, always:是否穿上就吃得到 };always 用來把常駐的排在條件觸發的前面
-  //   (光雙手劍就有 25 件「重擊時 +20%」,不排前面會把真正常駐的那幾件洗掉)。
+  //   套裝才有的攻速(真‧冥皇 5 件 +30%)寫在說明卡,單件欄位查不到。
+  //   回傳 { txt:摘要, always:是否穿上就吃得到, pct:數字(排序用) }
   function hasteInfo(d) {
-    var p = [], always = false;
-    if (d.atkSpdPct) { p.push('攻速' + (d.atkSpdPct > 0 ? '+' : '') + d.atkSpdPct + '%'); always = true; }
-    if (d.equipHaste || d.eff === 'haste') { p.push('常駐加速 +33%'); always = true; }
-    if (d.meleeHaste) { p.push('持近戰武器時 +' + d.meleeHaste + '%'); always = true; }
+    var p = [], always = false, pct = null;
+    if (d.atkSpdPct) { p.push('攻速' + (d.atkSpdPct > 0 ? '+' : '') + d.atkSpdPct + '%'); always = true; pct = d.atkSpdPct; }
+    if (d.equipHaste || d.eff === 'haste') { p.push('常駐加速 +33%'); always = true; if (pct == null) pct = 33; }
+    if (d.meleeHaste) { p.push('持近戰武器時 +' + d.meleeHaste + '%'); always = true; if (pct == null) pct = d.meleeHaste; }
     if (d.statArray) { p.push('體質每 5 點 +1%'); always = true; }
     if (d.eff === 'cleave') p.push('重擊時 +20%（2 秒）');
     if (d.critFuryHaste) p.push('爆擊後 +' + (d.critFuryHaste.pct || 30) + '%（' + (d.critFuryHaste.sec || 5) + ' 秒）');
     if (d.polyAtkSpdPct) p.push('變身時 +' + d.polyAtkSpdPct + '%');
     if (d.procInstakill && d.procInstakill.hasteSec) p.push('觸發即死後 +20%（' + d.procInstakill.hasteSec + ' 秒）');
-    return p.length ? { txt: p.join('、'), always: always } : null;
+    return p.length ? { txt: p.join('、'), always: always, pct: pct } : null;
   }
 
-  // 🗺️ 遺物 → 掉落來源(怪+區域)索引:供「裝備→遺物」檢視按掉落區域篩選(玩家提議·A 方案)。
-  //   運行時算一次;讀「與掉落查詢同一組」5 張掉落表(漏讀會少算怪→少算區域)。三段鏈全自動、零手動維護:
-  //   遺物→掉它的怪(掉落表反查) → 怪→出沒地圖(DB.maps 反查) → 地圖→區域(AFK_EXTRA.mapRegion)。
-  //   ⚠ 遺物多掉自遍布多區域的雜魚(妖魔等)→ 一件常對應多個區域,這是刻意保留(那些區域你都刷得到)。
-  //   任何依賴的全域缺 → 回 null,遺物檢視退回純部位分類(不顯示區域列、不過濾),優雅降級。
-  var _relicDropCache;
-  function relicDropIndex() {
-    if (_relicDropCache !== undefined) return _relicDropCache;
-    _relicDropCache = null;
+  // 🗺️ 裝備 → 掉落來源(怪+區域)索引:供「掉落區域」篩選。運行時算一次;讀「與掉落查詢同一組」5 張掉落表
+  //   (漏讀會少算怪→少算區域)。三段鏈全自動、零手動維護:
+  //   裝備→掉它的怪(掉落表反查) → 怪→出沒地圖(DB.maps 反查) → 地圖→區域(AFK_EXTRA.mapRegion)。
+  //   ⚠ 同一件常掉自遍布多區域的雜魚(妖魔等)→ 一件對應多個區域,這是刻意保留(那些區域你都刷得到)。
+  //   商店/製作/兌換來的裝備沒有掉落怪 → 區域為空,選了區域就不會出現(篩選標籤已寫明「怪物掉落」)。
+  //   任何依賴的全域缺 → 回 null,篩選列自動不出現(優雅降級)。
+  //   regions=全部裝備用得到的區域;relicRegions=只有遺物掉的區域(遺物收集冊那頁按這份列)。
+  var _dropRgCache;
+  function dropRegionIndex() {
+    if (_dropRgCache !== undefined) return _dropRgCache;
+    _dropRgCache = null;
     try {
       if (typeof DB === 'undefined' || !DB.items || !DB.mobs || !DB.maps || typeof MOB_DROPS === 'undefined') return null;
       var tables = [MOB_DROPS];
@@ -2051,41 +2373,54 @@
       });
       var nameToId = {}; for (var mid in DB.mobs) nameToId[DB.mobs[mid].n] = mid;   // 掉落表用怪「名」、DB.maps 用怪「id」→ 要橋接
       var mobToMaps = {}; for (var mapId in DB.maps) (DB.maps[mapId] || []).forEach(function (mi) { (mobToMaps[mi] = mobToMaps[mi] || []).push(mapId); });
-      var regionOf = function (mapId) { try { return (window.AFK_EXTRA && AFK_EXTRA.mapRegion) ? (AFK_EXTRA.mapRegion(mapId) || '') : ''; } catch (e) { return ''; } };
+      var regionOf = function (mp) { try { return (window.AFK_EXTRA && AFK_EXTRA.mapRegion) ? (AFK_EXTRA.mapRegion(mp) || '') : ''; } catch (e) { return ''; } };
       var byItem = {};
       tables.forEach(function (tb) {
         for (var mob in tb) tb[mob].forEach(function (dp) {
-          var id = dp[0]; if (!DB.items[id] || !isRelicItem(DB.items[id])) return;
+          var id = dp[0], d = DB.items[id];
+          if (!d || (d.type !== 'wpn' && d.type !== 'arm' && d.type !== 'acc')) return;
           var rec = byItem[id] || (byItem[id] = { mobs: {}, regions: {} });
           rec.mobs[mob] = 1;
           (mobToMaps[nameToId[mob]] || []).forEach(function (mp) { var rg = regionOf(mp); if (rg) rec.regions[rg] = 1; });
         });
       });
-      var order = [], seen = {};   // 區域按鈕順序照 MAP_REGIONS(與遊戲地圖選單一致)
+      var order = [], seen = {};   // 區域順序照 MAP_REGIONS(與遊戲地圖選單一致)
       if (typeof MAP_REGIONS !== 'undefined') MAP_REGIONS.forEach(function (r) { if (r.label && !seen[r.label]) { seen[r.label] = 1; order.push(r.label); } });
-      var used = {}; for (var iid in byItem) for (var rg in byItem[iid].regions) used[rg] = 1;
+      var used = {}, usedRelic = {};
+      for (var iid in byItem) for (var rg2 in byItem[iid].regions) { used[rg2] = 1; if (isRelicItem(DB.items[iid])) usedRelic[rg2] = 1; }
       for (var k in byItem) byItem[k] = { mobs: Object.keys(byItem[k].mobs), regions: order.filter(function (r) { return byItem[k].regions[r]; }) };
-      _relicDropCache = { byItem: byItem, regions: order.filter(function (r) { return used[r]; }) };
-    } catch (e) { _relicDropCache = null; }
-    return _relicDropCache;
+      _dropRgCache = {
+        byItem: byItem,
+        regions: order.filter(function (r) { return used[r]; }),
+        relicRegions: order.filter(function (r) { return usedRelic[r]; })
+      };
+    } catch (e) { _dropRgCache = null; }
+    return _dropRgCache;
   }
 
+  // 部位分組:武器依「裝備圖鑑」細分(作者 EQUIP_CATEGORIES);防具/飾品維持粗分;
+  //   最後兩個桶是安全網——slot 對不上任何桶的裝備會整組安靜消失(踩過:魔法娃娃 50 件、地龍之魔眼 1 件查不到)。
   var EQUIP_GROUPS = (typeof EQUIP_CATEGORIES !== 'undefined' ? EQUIP_CATEGORIES.filter(function (c) { return c.group === '武器'; }).map(function (c) { return { k: c.key, n: '⚔️ ' + c.name }; }) : [{ k: 'wpn', n: '⚔️ 武器' }]).concat([
     { k: 'helm', n: '🪖 頭部' }, { k: 'armor', n: '🛡 身體' }, { k: 'shin', n: '🦵 脛甲' },
     { k: 'shield', n: '🔰 盾牌／副手' }, { k: 'cloak', n: '🧥 斗篷' }, { k: 'gloves', n: '🧤 手套' },
     { k: 'boots', n: '🥾 鞋子' }, { k: 'belt', n: '🎗️ 腰帶' }, { k: 'ring', n: '💍 戒指' },
     { k: 'amulet', n: '📿 項鍊' }, { k: 'ear', n: '👂 耳環' }, { k: 'tshirt', n: '👕 內衣' }, { k: 'pet', n: '🐾 寵物裝備' },
-    { k: 'remains', n: '🦴 席琳遺骸' }   // 8 種遺骸的 slot 各自不同(rem_claw…),equipGroupKey 統一歸到這一組
+    { k: 'remains', n: '🦴 席琳遺骸' },   // 8 種遺骸的 slot 各自不同(rem_claw…),equipGroupKey 統一歸到這一組
+    { k: 'doll', n: '🎎 魔法娃娃' },      // 娃娃另有「娃娃」分頁講合成,但它本身是裝備、數值要在這裡查得到
+    { k: 'other', n: '❓ 其他部位' }
   ]);
+  var _eqSlotKnown = null;
   var EQUIP_REQ_CN = { knight: '騎士', mage: '法師', elf: '妖精', dark: '黑暗妖精', illusion: '幻術士', dragon: '龍騎士', warrior: '戰士', royal: '王族' };
   function equipGroupKey(id, d) {
-    if (d.remains) return 'remains';   // 🦴 席琳遺骸 8 件的 slot 各自不同,歸成同一組
-    if (d.slot === 'petwpn' || d.slot === 'petarm') return 'pet';   // 🐾 寵物裝備(之牙=acc/petwpn、寵物防具=arm/petarm)兩種 slot 統一歸「寵物裝備」組,否則對不上 EQUIP_GROUPS 的 k:'pet' → 整組看不到
-    if (d.type !== 'wpn') return d.slot || 'other';
+    if (!_eqSlotKnown) { _eqSlotKnown = {}; EQUIP_GROUPS.forEach(function (g) { _eqSlotKnown[g.k] = 1; }); }
+    var k;
+    if (d.remains) k = 'remains';                                        // 🦴 席琳遺骸 8 件的 slot 各自不同,歸成同一組
+    else if (d.slot === 'petwpn' || d.slot === 'petarm') k = 'pet';       // 🐾 之牙=acc/petwpn、寵物防具=arm/petarm,兩種 slot 歸「寵物裝備」
+    else if (d.type !== 'wpn') k = d.slot || 'other';
     // 武器分類走遊戲自己的 equipCatKey(js/16)——不要用 EQUIP_ITEM_CAT 查表:那張表只收「裝備收集冊」的一般裝備,
-    // 遺物走獨立收集冊(RELIC_ITEM_CAT)不在其中 → 查表會讓 100+ 件遺物武器全落進「其他武器」,弓/十字弓等分類一件遺物都看不到。
-    var k = (typeof equipCatKey === 'function') ? equipCatKey(id, d) : (typeof EQUIP_ITEM_CAT !== 'undefined' ? EQUIP_ITEM_CAT[id] : null);
-    return k || 'wpn_other';
+    // 遺物走獨立收集冊(RELIC_ITEM_CAT)不在其中 → 查表會讓 100+ 件遺物武器全落進「其他武器」。
+    else k = ((typeof equipCatKey === 'function') ? equipCatKey(id, d) : (typeof EQUIP_ITEM_CAT !== 'undefined' ? EQUIP_ITEM_CAT[id] : null)) || 'wpn_other';
+    return _eqSlotKnown[k] ? k : 'other';   // 對不上桶的一律進「其他部位」,不讓它從頁面上消失
   }
   // 某職業能否裝備:用遊戲真實規則(與遊戲顯示一致),非單看 req
   function classCanEquip(d, id, cls) {
@@ -2120,117 +2455,309 @@
     _equipDetail[id] = html;
     return html;
   }
-  // 列表精簡行(一眼看重點);詳情常駐隱藏故搜尋仍涵蓋全部內容
+  // 列表精簡行(一眼看重點);完整數值/特效/取得方式在詳情裡,點名稱才展開
   function equipCompact(d) {
     var bits = [];
     if (d.type === 'wpn') { bits.push((typeof isTwoHandedWpn === 'function' && isTwoHandedWpn(d)) ? '雙手' : '單手'); if (d.dmgS != null) bits.push('攻擊 ' + d.dmgS + '/' + d.dmgL); if (d.hit) bits.push('命中 ' + (d.hit > 0 ? '+' : '') + d.hit); }
     else if (d.ac != null) bits.push('防禦(AC) ' + ((-d.ac) >= 0 ? '+' : '') + (-d.ac));
-    if (d.req && d.req !== 'all') bits.push(String(d.req).split(',').map(function (x) { return EQUIP_REQ_CN[x] || x; }).join('／') + '專用');   // 多職業 req(如 knight,elf,dark)逐一轉中文
+    if (d.req && d.req !== 'all') {   // 多職業 req(如 knight,elf,dark)逐一轉中文;三個以上只寫數量——列滿五個職業名會把裝備名擠成三行(完整清單在詳情裡,也搜得到)
+      var rq = String(d.req).split(',');
+      bits.push(rq.length <= 2 ? (rq.map(function (x) { return EQUIP_REQ_CN[x] || x; }).join('／') + '專用') : ('限 ' + rq.length + ' 職業'));
+    }
     return bits.join('　');
   }
-  var _equipHtml = {};
-  function renderEquip(cls, slot, region) {
-    cls = cls || 'all'; slot = slot || 'all'; region = region || 'all';
-    if (slot !== RELIC_SLOT) region = 'all';   // 區域篩選只在遺物檢視有意義;其餘部位固定 all,避免生出一堆同內容的快取
-    var ckey = cls + '|' + slot + '|' + region;
-    if (_equipHtml[ckey] !== undefined) return _equipHtml[ckey];
-    var _ridx = (slot === RELIC_SLOT) ? relicDropIndex() : null;   // 遺物→掉落區域索引(見 relicDropIndex);null=降級成純部位分類
-    // 部位 tag 列(全部＋各部位):一次只看一個部位,避免整頁太長
-    //   「🏺 遺物」是虛擬部位(不是真的 slot):跨所有部位只留遺物,但仍照部位分組 → 一頁看完、又不會亂成一坨。
-    //   玩家找遺物組合時,原本得逐部位翻、名稱又看不出是不是遺物;走這裡可直接沿用裝備頁的折疊式效果顯示
-    //   (「收藏-遺物」那本要多點一次才看得到效果)。
-    var slotRow = '<div class="m-wiki-mfilter"><button type="button" class="m-wiki-mfbtn' + (slot === 'all' ? ' on' : '') + '" data-equipslot="all">全部</button>' +
-      '<button type="button" class="m-wiki-mfbtn' + (slot === RELIC_SLOT ? ' on' : '') + '" data-equipslot="' + RELIC_SLOT + '">🏺 遺物</button>' +
-      '<button type="button" class="m-wiki-mfbtn' + (slot === HASTE_SLOT ? ' on' : '') + '" data-equipslot="' + HASTE_SLOT + '">⚡ 加攻速</button>' +
-      EQUIP_GROUPS.map(function (g) { return '<button type="button" class="m-wiki-mfbtn' + (g.k === slot ? ' on' : '') + '" data-equipslot="' + g.k + '">' + g.n + '</button>'; }).join('') + '</div>';
-    // 職業 tag 列
-    var clsRow = '<div class="m-wiki-mfilter">' + EQUIP_FILTERS.map(function (f) {
-      return '<button type="button" class="m-wiki-mfbtn' + (f[0] === cls ? ' on' : '') + '" data-equipcls="' + f[0] + '">' + f[1] + '</button>';
-    }).join('') + '</div>';
-    // 🗺️ 掉落區域列:只在遺物檢視、且索引可用時出現。選某區域 → 只留「掉落怪會出沒該區域」的遺物(仍照部位分組)。
-    var regionRow = '';
-    if (slot === RELIC_SLOT && _ridx && _ridx.regions.length) {
-      regionRow = '<div class="m-wiki-mfilter"><button type="button" class="m-wiki-mfbtn' + (region === 'all' ? ' on' : '') + '" data-equipregion="all">全部區域</button>' +
-        _ridx.regions.map(function (rg) { return '<button type="button" class="m-wiki-mfbtn' + (rg === region ? ' on' : '') + '" data-equipregion="' + esc(rg) + '">' + esc(rg) + '</button>'; }).join('') + '</div>';
+
+  // 套裝 id → 中文名:先自動從 DB.sets 反查(舊 14 組),名字只在各件裝備 set 欄位上的較新幾組補在這裡。
+  //   上游新增套裝而這裡沒補時,退回「套裝：<第一件的名字>」——不會露出英文 key。
+  var EQ_SET_CN_EXTRA = { orin: '歐林西瑪套裝', icequeen_charm: '冰之女王魅力套裝', frost: '寒冰套裝', bluepirate: '藍海賊套裝', emperor: '真．冥皇套裝', priest: '司祭苦行套裝' };
+  var _setCn = null;
+  function eqSetName(sid) {
+    if (!_setCn) {
+      _setCn = {};
+      try {
+        if (typeof DB !== 'undefined' && DB.sets) {
+          for (var k in DB.sets) {
+            var s = DB.sets[k]; if (!s || !s.items) continue;
+            s.items.forEach(function (iid) { var d = DB.items[iid]; if (d && d.set && !_setCn[d.set]) _setCn[d.set] = s.n; });
+          }
+        }
+      } catch (e) {}
+      for (var e2 in EQ_SET_CN_EXTRA) if (!_setCn[e2]) _setCn[e2] = EQ_SET_CN_EXTRA[e2];
     }
-    var note = '<div class="m-wiki-note">選<b>部位</b>與<b>職業</b>篩選;<b>點任一件展開完整數值與取得方式</b>。搜尋會跨全部裝備、連展開內容一起命中。'
-      + '<br>💍 <b>飾品欄會隨等級解鎖</b>：戒指一開始 2 個，<b>Lv76 開第 3 個、Lv81 開第 4 個</b>；耳環一開始 1 個，<b>Lv59 開第 2 個</b>。'
-      + '<br>🔒 <b>把裝備穿上身會自動取消它的「廢品」標記</b>（穿上＝你要留著），不會再被自動賣出賣掉。</div>';
-    // 🏺 遺物總說明(手動維護;規則對應 js/01 掉落表、js/08 裝備/強化守衛、js/14 gachaWeight=0、js/21 收集冊)
-    var relicCard = '<div class="m-wiki-card"><div class="m-wiki-name">🏺 遺物（各怪專屬的極稀有裝備）</div>' + [
+    if (_setCn[sid]) return _setCn[sid];
+    var first = null;
+    eqIndex().some(function (it) { if (it.d.set === sid) { first = it.name; return true; } return false; });
+    return first ? ('套裝：' + first) : sid;
+  }
+
+  // 特性標籤:玩家會拿來找裝備的「這件有沒有 X」。值由索引時算好(純欄位判斷,不掃說明文字)。
+  var EQ_TAGS = [
+    ['2h', '雙手武器'], ['1h', '單手武器'], ['ranged', '遠距離'], ['ele', '武器帶屬性'],
+    ['haste', '⚡ 加攻速'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
+    ['stat', '加能力值'], ['regen', '回 HP／MP'], ['res', '元素抗性'], ['imm', '免疫／抗異常'],
+    ['block', '有格擋'], ['wcap', '提高負重上限']
+  ];
+  var EQ_RARITY = [['relic', '🏺 遺物'], ['legend', '✦ 傳說'], ['normal', '一般']];
+  function eqHasProc(d) {
+    for (var k in d) if (k.indexOf('proc') === 0) return true;
+    return !!(d.spellProc || d.grantSkills || d.eff || d.onHitCastSkill || d.onHitEleDmg || d.skillDmgMult);
+  }
+  function eqHasImm(d) {
+    for (var k in d) if (k.indexOf('imm') === 0 || /Resist$/.test(k)) return true;
+    return !!(d.abnormalResist || d.noBleed);
+  }
+
+  // 索引:每件裝備算一次「篩選要用的值」。900+ 件 × 8 職業的可裝備判定也在這裡一次算完,
+  //   之後切篩選只是陣列 filter(不再每次重跑遊戲的 xxxEquipOk)。
+  var _eqIdx = null, _eqCnt = null;
+  function eqIndex() {
+    if (_eqIdx) return _eqIdx;
+    var ridx = dropRegionIndex();
+    _eqIdx = []; _eqCnt = { slot: {}, cls: {}, rar: {}, tag: {}, set: {}, region: {} };
+    var bump = function (f, v) { _eqCnt[f][v] = (_eqCnt[f][v] || 0) + 1; };
+    Object.keys(DB.items).forEach(function (id) {
+      var d = DB.items[id];
+      if (!d || !d.n) return;
+      if (d.type !== 'wpn' && d.type !== 'arm' && d.type !== 'acc') return;
+      var gk = equipGroupKey(id, d), hi = hasteInfo(d), tags = [];
+      var clsList = []; EQUIP_FILTERS.forEach(function (c) { if (classCanEquip(d, id, c[0])) clsList.push(c[0]); });
+      if (d.type === 'wpn') tags.push((typeof isTwoHandedWpn === 'function' && isTwoHandedWpn(d)) ? '2h' : '1h');
+      if (d.ranged || d.isBow) tags.push('ranged');
+      if (d.ele) tags.push('ele');
+      if (hi) tags.push('haste');
+      if (eqHasProc(d)) tags.push('proc');
+      if (d.set) tags.push('set');
+      if (!d.noEnhance) tags.push('enh');
+      if (d.str || d.dex || d.con || d.int || d.wis || d.cha) tags.push('stat');
+      if (d.hpR || d.mpR || d.mhp || d.mmp) tags.push('regen');
+      if (d.resFire || d.resWater || d.resEarth || d.resWind || d.resNone) tags.push('res');
+      if (eqHasImm(d)) tags.push('imm');
+      if (d.block) tags.push('block');
+      if (d.weightCap) tags.push('wcap');
+      var rar = isRelicItem(d) ? 'relic' : (d.legend ? 'legend' : 'normal');
+      var regions = (ridx && ridx.byItem[id]) ? ridx.byItem[id].regions : [];
+      var it = {
+        id: id, d: d, name: d.n, haste: hi,
+        f: { slot: [gk], cls: clsList, rar: [rar], tag: tags, set: d.set ? [d.set] : [], region: regions },
+        v: {
+          dmgS: (d.dmgS != null ? d.dmgS : null), dmgL: (d.dmgL != null ? d.dmgL : null),
+          ac: (d.ac != null ? -d.ac : null),        // 照遊戲顯示:數字越大越強(AC 本身越負越好)
+          hit: (d.hit != null ? d.hit : null),
+          block: (d.block || null), p: (d.p || 0),
+          spd: (hi ? hi.pct : null)
+        }
+      };
+      _eqIdx.push(it);
+      bump('slot', gk); bump('rar', rar);
+      clsList.forEach(function (c) { bump('cls', c); });
+      tags.forEach(function (t) { bump('tag', t); });
+      if (d.set) bump('set', d.set);
+      regions.forEach(function (r) { bump('region', r); });
+    });
+    return _eqIdx;
+  }
+  function eqCount(f, v) { if (!_eqCnt) eqIndex(); return _eqCnt[f][v] || 0; }
+
+  // 頁內搜尋用字串:名稱＋精簡行＋完整詳情(數值/特效/取得方式)的純文字,已轉小寫、建一次快取。
+  //   刻意用「渲染後的詳情文字」而不是自己組欄位:數值格式與說明文字都必須和遊戲一致(單一事實來源),
+  //   自己另寫一份遲早跟 buildItemDescHTML 分岔。
+  var _eqHay = {};
+  function eqHay(it) {
+    var h = _eqHay[it.id];
+    if (h === undefined) {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = equipDetailHTML(it.id);
+      var reqCn = (it.d.req && it.d.req !== 'all') ? String(it.d.req).split(',').map(function (x) { return EQUIP_REQ_CN[x] || x; }).join(' ') : '';
+      h = _eqHay[it.id] = (it.name + ' ' + equipCompact(it.d) + ' ' + reqCn + ' ' + (tmp.textContent || '')).toLowerCase();
+    }
+    return h;
+  }
+
+  // 閒置預熱:分批把 eqHay 建好。一片最多做 EQ_WARM_CHUNK 件、且 timeRemaining 不足就讓出去,
+  //   不跟遊戲的 tick／畫面更新搶 CPU(小百科在遊戲中是疊在遊戲上的模態,背後仍在跑)。
+  var EQ_WARM_CHUNK = 24;
+  var _eqWarmAt = -1;
+  function eqWarmHay() {
+    if (_eqWarmAt === -2) return;                                  // 已全部建好
+    var idle = window.requestIdleCallback || function (fn) { return setTimeout(function () { fn({ timeRemaining: function () { return 6; } }); }, 60); };
+    if (_eqWarmAt < 0) _eqWarmAt = 0;
+    idle(function (dl) {
+      var idx = eqIndex(), done = 0;
+      while (_eqWarmAt < idx.length && done < EQ_WARM_CHUNK && (!dl || dl.timeRemaining() > 4)) { eqHay(idx[_eqWarmAt++]); done++; }
+      if (_eqWarmAt >= idx.length) { _eqWarmAt = -2; return; }
+      eqWarmHay();
+    });
+  }
+
+  // 摺疊說明卡:預設收起(第一屏留給裝備本身),篩到相關條件時自動展開。
+  //   ⚠ 這幾張也要進統一搜尋(eqSearchBlocks 會掃它們的文字),不然把說明收起來等於讓搜尋少一票結果。
+  var _eqHelpCache = null;
+  function eqHelpCards() {
+    if (_eqHelpCache) return _eqHelpCache;
+    var tips = [
+      '選<b>部位</b>、<b>職業</b>、<b>稀有度</b>、<b>特性</b>等條件篩選（可多選）；上面的框只在<b>這一頁</b>裡搜（含展開後的數值與取得方式），最上面那個搜尋框才是<b>跨全部分頁</b>搜。',
+      '<b>點任一件展開完整數值與取得方式</b>；排序可切「賣價／攻擊／防禦／命中／攻速／名稱」，▼▲ 切高低。',
+      '💍 <b>飾品欄會隨等級解鎖</b>：戒指一開始 2 個，<b>Lv76 開第 3 個、Lv81 開第 4 個</b>；耳環一開始 1 個，<b>Lv59 開第 2 個</b>。',
+      '🔒 <b>把裝備穿上身會自動取消它的「廢品」標記</b>（穿上＝你要留著），不會再被自動賣出賣掉。',
+      '🗺️ <b>掉落區域</b>只算「怪物會掉」的：商店／製作／兌換取得的裝備沒有區域，選了區域就不會列出來。'
+    ];
+    var relic = [
       '<b>每隻怪物各有一件專屬遺物</b>（名稱藍字、說明帶【遺物】），擊殺時 <b>0.0001%</b>（百萬分之一）機率掉落；機率會吃掉落倍率：席琳的世界 <b>×3</b>、瘋狂的席琳世界 <b>×5</b>、恩賜怪 <b>×10</b>。想查哪隻怪掉哪件，到「掉落查詢」搜怪物名。',
       '<b>無法強化</b>，也<b>不會</b>帶祝福／詛咒、屬性／遠古詞綴或席琳套裝效果——撿到什麼樣就永遠什麼樣。',
       '不會出現在潘朵拉黑市的陳列商品裡（但可以用黑市的「遺物布告欄」指定兌換，見「遺物市場」分頁）。能給哪些職業用，以每件裝備標示的職業為準。',
       '有專屬新部位「<b>脛甲</b>」（盔甲之下的額外防具格，目前只有遺物）。',
       '取得任何遺物會登錄「<b>遺物收集冊</b>」（遊戲內「收藏」面板第 4 本；進度依一般／經典兩種模式各自一份、與倉庫同規則；只記錄進度、無全收集加成）。',
       '自動賣出<b>預設保護遺物</b>不賣（可在自動賣出設定關閉；對單件設「永遠販賣」則照賣）。'
-    ].map(bulletHTML).join('') + '</div>';
-    // ⚡ 攻速說明卡(手動維護;疊法對應 js/02-stats-recompute 的 spdMult 段落,改動上游時一起核對)
-    var hasteCard = '<div class="m-wiki-card"><div class="m-wiki-name">⚡ 攻速怎麼疊（挑裝備前先看）</div>' + [
+    ];
+    var haste = [
       '<b>加速術／自我加速藥水／裝備常駐加速</b>（惡魔雙刀・鋼爪・十字弓、惡魔之劍、伊娃之盾）三者<b>共用同一格 +33%、不會互相疊加</b>——已經有其中一個，另外兩個等於白拿。',
       '其他來源都是<b>相乘疊加</b>：勇敢藥水 +33%、精靈餅乾 +15%、行走加速 +15%、切割 +20%、裝備上的攻速%、各職業精通。',
       '⚠️ <b>「攻速 −N%」是變慢</b>（鎧甲守衛的笨重巨劍 −50% ＝攻擊間隔加倍），別只看傷害就穿。',
       '🌑 <b>真‧冥皇套裝湊滿 5 件</b>另有攻速 <b>+30%</b>（與加速、勇敢藥水相乘疊加）——這是套裝效果，單件上看不到。',
-      '條件觸發的（重擊時／爆擊後／觸發即死後／變身時／持近戰武器時）<b>只在那個狀態下生效</b>，右側摘要都寫明條件了。',
+      '條件觸發的（重擊時／爆擊後／觸發即死後／變身時／持近戰武器時）<b>只在那個狀態下生效</b>，用「⚡ 加攻速」篩出來後，右側摘要都寫明條件了。',
       '🏅 <b>精通給的攻速不算裝備</b>，但同樣相乘疊加：劍術／王族劍術 <b>+50%</b>、巨斧／雙斧／奇古獸／魔劍 <b>+30%</b>、切割精通<b>持切割武器常駐 +50%</b>（詳見「職業專精」分頁）。',
       '⚠️ <b>攻速與施法速度是兩回事</b>：堆攻速<b>不會</b>讓技能放得更快（放技能的快慢只看職業或變身本身的施法速度）。',
       '🎮 <b>經典模式</b>：切割（重擊時攻速+20%）停用。'
-    ].map(bulletHTML).join('') + '</div>';
-    var buckets = {};
-    Object.keys(DB.items).forEach(function (id) {
-      var d = DB.items[id];
-      if (!d || !d.n) return;
-      if (d.type !== 'wpn' && d.type !== 'arm' && d.type !== 'acc') return;
-      if (!classCanEquip(d, id, cls)) return;
-      var gk = equipGroupKey(id, d);
-      var _hi = null;
-      if (slot === RELIC_SLOT) {
-        if (!isRelicItem(d)) return;   // 🏺 虛擬部位:跨部位只留遺物(仍照部位分組)
-        if (region !== 'all' && _ridx) { var _rr = _ridx.byItem[id]; if (!_rr || _rr.regions.indexOf(region) < 0) return; }   // 🗺️ 選了區域:只留掉落怪出沒該區域的
-      }
-      else if (slot === HASTE_SLOT) { _hi = hasteInfo(d); if (!_hi) return; }   // ⚡ 虛擬部位:跨部位只留會影響攻速的
-      else if (slot !== 'all' && gk !== slot) return;             // 只看選定部位
-      (buckets[gk] = buckets[gk] || []).push({ id: id, d: d, haste: _hi });
-    });
-    function card(e) {
-      var d = e.d, id = e.id;
-      // 名稱配色比照遊戲內(getItemColor 的優先序:遺物 > 傳說 > 一般);字級小、只靠顏色不夠明確 → 各配一個尾標(遺物 🏺／傳說 ✦)
-      var isRelic_ = isRelicItem(d);
-      var nameCls = isRelic_ ? 'c-relic' : (d.legend ? 'c-legend' : 'text-slate-100');
-      var ic = ''; try { ic = (typeof getIconUrl === 'function') ? getIconUrl(d) : ''; } catch (eIc) {}
-      var icImg = ic ? '<img src="' + esc(ic) + '" alt="" style="width:26px;height:26px;object-fit:contain;flex:none;border-radius:4px;" onerror="this.style.display=\'none\'">' : '';
-      // 遺物檢視:右側摘要改顯示「掉落區域」(篩選維度,一眼看到掉哪);多區域截前 2 個 +「等 N 區」。展開詳情仍有完整取得方式(哪隻怪)。
-      var compact;
-      if (slot === RELIC_SLOT && _ridx && _ridx.byItem[id]) {
-        var _rgs = _ridx.byItem[id].regions.slice();
-        if (region !== 'all') { var _ri2 = _rgs.indexOf(region); if (_ri2 > 0) { _rgs.splice(_ri2, 1); _rgs.unshift(region); } }   // 選了區域 → 排最前,讓截斷後也一眼對得上目前篩的區域
-        compact = '🗺️ ' + (!_rgs.length ? '—' : (_rgs.length <= 2 ? _rgs.join('／') : _rgs.slice(0, 2).join('／') + ' 等' + _rgs.length + '區'));
-      } else if (slot === HASTE_SLOT && e.haste) {
-        compact = '⚡ ' + e.haste.txt;   // ⚡ 攻速檢視:右側直接顯示加多少(篩選維度),一眼比較不必逐件展開
-      } else compact = equipCompact(d);
-      return '<div class="m-wiki-card m-eq-card">' +
-        '<div class="m-eq-head" data-eq="' + esc(id) + '" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">' +
-          '<span style="display:flex;align-items:center;gap:7px;min-width:0;">' + icImg + '<span class="' + nameCls + ' font-bold">' + esc(d.n) + (isRelic_ ? ' 🏺' : (d.legend ? ' ✦' : '')) + '</span></span>' +
-          '<span class="m-eq-compact" style="color:#94a3b8;font-size:12px;text-align:right;flex-shrink:1;min-width:0;">' + esc(compact) + '</span>' +
-        '</div>' +
-        '<div class="m-eq-detail" style="display:none;border-top:1px solid #1e293b;margin-top:6px;padding-top:6px;">' + equipDetailHTML(id) + '</div>' +
-      '</div>';
-    }
-    var html = slotRow + clsRow + regionRow + note + (slot === HASTE_SLOT ? hasteCard : relicCard);   // ⚡ 攻速檢視換成攻速說明(那裡的遺物說明是干擾)
-    var total = 0;
-    EQUIP_GROUPS.forEach(function (g) {
-      var list = buckets[g.k]; if (!list || !list.length) return;
-      // ⚡ 攻速檢視:常駐的排在條件觸發的前面(其餘一律照賣價高→低,價高≈強)
-      list.sort(function (a, b) {
-        if (slot === HASTE_SLOT) { var aa = (a.haste && a.haste.always) ? 1 : 0, ba = (b.haste && b.haste.always) ? 1 : 0; if (aa !== ba) return ba - aa; }
-        return (b.d.p || 0) - (a.d.p || 0) || String(a.d.n).localeCompare(String(b.d.n));
+    ];
+    var mk = function (t, lines) {
+      var html = lines.map(bulletHTML).join('');
+      var tmp = document.createElement('div'); tmp.innerHTML = html;
+      return { t: t, html: html, text: t + ' ' + (tmp.textContent || '') };
+    };
+    _eqHelpCache = [
+      mk('📖 這一頁怎麼用／裝備小知識', tips),
+      mk('🏺 遺物（各怪專屬的極稀有裝備）', relic),
+      mk('⚡ 攻速怎麼疊（挑裝備前先看）', haste)
+    ];
+    return _eqHelpCache;
+  }
+
+  var _eqOpen = {};   // 展開中的列(裝備 id → 1):重畫清單後照樣是展開的
+  function eqRowHTML(it, ctx) {
+    var d = it.d, id = it.id, sortK = ctx && ctx.sort, stt = ctx && ctx.st;
+    // 名稱配色比照遊戲內(getItemColor 的優先序:遺物 > 傳說 > 一般);字級小、只靠顏色不夠明確 → 各配一個尾標(遺物 🏺／傳說 ✦)
+    var isRelic_ = isRelicItem(d);
+    var nameCls = isRelic_ ? 'c-relic' : (d.legend ? 'c-legend' : 'text-slate-100');
+    var ic = ''; try { ic = (typeof getIconUrl === 'function') ? getIconUrl(d) : ''; } catch (eIc) {}
+    var icImg = ic ? '<img src="' + esc(ic) + '" alt="" style="width:26px;height:26px;object-fit:contain;flex:none;border-radius:4px;" onerror="this.style.display=\'none\'">' : '';
+    // 右側摘要=基本數值,再依「目前在篩什麼／照什麼排」補一句(篩攻速就看攻速、篩區域就看區域),
+    //   免得玩家得逐件展開才知道「為什麼這件符合」。
+    var extra = '';
+    if (it.haste && (sortK === 'spd' || (stt && (stt.sel.tag || []).indexOf('haste') >= 0))) extra = '⚡ ' + it.haste.txt;
+    else if (stt && (stt.sel.region || []).length && it.f.region.length) {
+      var rgs = it.f.region.slice(), pick = stt.sel.region[0], pi = rgs.indexOf(pick);
+      if (pi > 0) { rgs.splice(pi, 1); rgs.unshift(pick); }   // 選了區域 → 排最前,截斷後也一眼對得上
+      extra = '🗺️ ' + (rgs.length <= 2 ? rgs.join('／') : rgs.slice(0, 2).join('／') + ' 等' + rgs.length + '區');
+    } else if (sortK === 'p') extra = (d.p ? '賣店價 ' + Math.floor(d.p * 0.3).toLocaleString() + ' 金' : '');
+    var compact = equipCompact(d);
+    var open = !!(_eqOpen[id] || (ctx && ctx.open));
+    return '<div class="m-wiki-card m-eq-card">' +
+      '<div class="m-eq-head" data-eq="' + esc(id) + '">' +
+        '<span class="m-eq-nm">' + icImg + '<span class="' + nameCls + ' font-bold">' + esc(d.n) + (isRelic_ ? ' 🏺' : (d.legend ? ' ✦' : '')) + '</span></span>' +
+        '<span class="m-eq-compact">' + esc(compact) + (extra ? '<span class="m-eq-x">' + esc(extra) + '</span>' : '') + '</span>' +
+      '</div>' +
+      '<div class="m-eq-detail"' + (open ? '' : ' style="display:none;"') + '>' + (open ? equipDetailHTML(id) : '') + '</div>' +
+    '</div>';
+  }
+
+  var EQ_LF = null;
+  // 篩選面板的選項清單:選項與件數都是索引算出來的,不會變 → 建一次快取(每次重畫都重建的話,
+  //   1000 件的篩選迴圈外雖只呼叫一次,但一次重畫仍會叫上五六次,白算五六遍)。
+  //   唯一會變的是「★我的職業」那顆的位置 → 記住當時的職業,換角色進來就重建。
+  var _eqFacets = null, _eqFacetsCls = null;
+  function eqFacets() {
+    eqIndex();
+    var nowCls = null;
+    try { if (typeof player !== 'undefined' && player && player.cls) nowCls = player.cls; } catch (e0) {}
+    if (_eqFacets && _eqFacetsCls === nowCls) return _eqFacets;
+    _eqFacetsCls = nowCls;
+    _eqFacets = eqBuildFacets();
+    return _eqFacets;
+  }
+  function eqBuildFacets() {
+    var ridx = dropRegionIndex();
+    var myCls = null;
+    try { if (typeof player !== 'undefined' && player && player.cls) myCls = player.cls; } catch (e) {}
+    var clsOpts = EQUIP_FILTERS.map(function (c) { return [c[0], (c[0] === myCls ? '★ ' : '') + c[1], eqCount('cls', c[0])]; });
+    if (myCls) clsOpts.sort(function (a, b) { return (b[0] === myCls ? 1 : 0) - (a[0] === myCls ? 1 : 0); });   // 自己的職業排第一顆(一鍵「只看我能穿的」)
+    var wpnKeys = {}, armKeys = { helm: 1, armor: 1, shin: 1, shield: 1, cloak: 1, gloves: 1, boots: 1, belt: 1, tshirt: 1 }, accKeys = { ring: 1, amulet: 1, ear: 1 };
+    if (typeof EQUIP_CATEGORIES !== 'undefined') EQUIP_CATEGORIES.forEach(function (c) { if (c.group === '武器') wpnKeys[c.key] = 1; });
+    var pick = function (test) {
+      return EQUIP_GROUPS.filter(test).map(function (g) { return [g.k, g.n, eqCount('slot', g.k)]; }).filter(function (o) { return o[2] > 0; });
+    };
+    var facets = [
+      { k: 'slot', n: '部位', mode: 'or', groups: [
+        { label: '⚔️ 武器', opts: pick(function (g) { return wpnKeys[g.k]; }) },
+        { label: '🛡 防具', opts: pick(function (g) { return armKeys[g.k]; }) },
+        { label: '💍 飾品', opts: pick(function (g) { return accKeys[g.k]; }) },
+        { label: '✨ 特殊', opts: pick(function (g) { return !wpnKeys[g.k] && !armKeys[g.k] && !accKeys[g.k]; }) }
+      ] },
+      { k: 'cls', n: '職業（誰穿得上）', mode: 'or', hint: '多選＝任一職業穿得上就列出', groups: [{ label: '', opts: clsOpts }] },
+      { k: 'rar', n: '稀有度', mode: 'or', groups: [{ label: '', opts: EQ_RARITY.map(function (r) { return [r[0], r[1], eqCount('rar', r[0])]; }) }] },
+      { k: 'tag', n: '特性', mode: 'and', hint: '多選＝要「全部都符合」', groups: [{ label: '', opts: EQ_TAGS.map(function (t) { return [t[0], t[1], eqCount('tag', t[0])]; }).filter(function (o) { return o[2] > 0; }) }] },
+      { k: 'set', n: '套裝', mode: 'or', groups: [{ label: '', opts: Object.keys(_eqCnt.set).sort(function (a, b) { return _eqCnt.set[b] - _eqCnt.set[a]; }).map(function (s) { return [s, eqSetName(s), _eqCnt.set[s]]; }) }] },
+      { k: 'dmgS', n: '攻擊（小型）', type: 'min' },
+      { k: 'dmgL', n: '攻擊（大型）', type: 'min' },
+      { k: 'ac', n: '防禦（AC）', type: 'min' },
+      { k: 'hit', n: '命中', type: 'min' }
+    ];
+    if (ridx && ridx.regions.length) facets.push({ k: 'region', n: '掉落區域（怪物掉落）', mode: 'or', groups: [{ label: '', opts: ridx.regions.map(function (r) { return [r, r, eqCount('region', r)]; }) }] });
+    return facets;
+  }
+  function renderEquip() {
+    if (typeof DB === 'undefined' || !DB.items) return '<div class="m-wiki-note">讀不到裝備資料。</div>';
+    if (!EQ_LF) {
+      eqIndex();
+      EQ_LF = makeListFilter({
+        id: 'm-eq',
+        qPlaceholder: '在裝備中搜尋（名稱／效果）…',
+        emptyHint: '沒有符合的裝備——試著少選幾個條件，或用「清除全部」。',
+        items: eqIndex,
+        facets: eqFacets,
+        hay: eqHay,
+        // 說明收成一張摺疊卡:第一屏要留給裝備本身(三張各自一張會吃掉手機 300px)。
+        //   內容一字不減,只是收起來;統一搜尋仍逐段命中(eqSearchBlocks 掃的是 eqHelpCards 那三段)。
+        help: function () {
+          return [{ t: '📖 說明：這頁怎麼用・遺物・攻速怎麼疊', html: eqHelpCards().map(function (h) {
+            return '<div class="m-eq-helpsec">' + esc(h.t) + '</div>' + h.html;
+          }).join('') }];
+        },
+        sorts: [
+          { k: 'p', n: '賣價', val: function (it) { return it.v.p; } },
+          { k: 'dmgS', n: '攻擊（小）', val: function (it) { return it.v.dmgS; } },
+          { k: 'dmgL', n: '攻擊（大）', val: function (it) { return it.v.dmgL; } },
+          { k: 'ac', n: '防禦（AC）', val: function (it) { return it.v.ac; } },
+          { k: 'hit', n: '命中', val: function (it) { return it.v.hit; } },
+          { k: 'spd', n: '攻速%', val: function (it) { return it.v.spd; } },
+          { k: 'name', n: '名稱', text: true, desc: false }
+        ],
+        groupOrder: EQUIP_GROUPS.map(function (g) { return g.k; }),
+        groupKey: function (it) { return it.f.slot[0]; },
+        groupLabel: function (k) { var r = k; EQUIP_GROUPS.forEach(function (g) { if (g.k === k) r = g.n; }); return r; },
+        row: eqRowHTML
       });
-      total += list.length;
-      html += '<div class="m-wiki-sub">' + g.n + '（' + list.length + '）</div>' + list.map(card).join('');
-    });
-    if (!total) html += '<div class="m-wiki-hint">沒有符合的裝備。</div>';
-    _equipHtml[ckey] = html;
-    return html;
+    }
+    eqWarmHay();   // 頁內搜尋要用的詳情文字索引:趁閒置先建好,別等玩家打第一個字才卡一下
+    return EQ_LF.shellHTML();
+  }
+  // 統一搜尋用:裝備頁的詳情改成「點開才建」之後,不能再靠掃頁面 DOM 找命中 → 這裡直接掃索引。
+  //   說明卡也要一起掃(它們是摺疊的,但內容仍是小百科的一部分)。
+  function eqSearchBlocks(terms, max) {
+    var out = [];
+    var hit = function (t) { for (var i = 0; i < terms.length; i++) if (t.indexOf(terms[i]) < 0) return false; return true; };
+    try {
+      eqHelpCards().forEach(function (h) {
+        if (max && out.length >= max) return;
+        if (hit(h.text.toLowerCase())) out.push({ title: h.t, html: '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(h.t) + '</div>' + h.html + '</div>' });
+      });
+      var idx = eqIndex();
+      for (var i = 0; i < idx.length; i++) {
+        if (max && out.length >= max) break;
+        if (!hit(eqHay(idx[i]))) continue;
+        out.push({ title: idx[i].name, html: eqRowHTML(idx[i], { open: true }) });   // 搜尋結果直接展開:命中的字常在詳情裡,收起來看不到
+      }
+    } catch (e) {}
+    return out;
   }
 
   function renderEnhance() {
@@ -4124,7 +4651,63 @@
       '.m-merc-sec-b{display:block;margin-top:2px;}',
       '.m-wiki-mfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}',
       '.m-wiki-mfbtn{flex:1 1 auto;min-width:52px;padding:6px 4px;border:1px solid #334155;background:#111c30;color:#cbd5e1;border-radius:7px;font-size:13px;font-weight:bold;cursor:pointer;font-family:inherit;}',
-      '.m-wiki-mfbtn.on{background:#0e7490;border-color:#22d3ee;color:#fff;}'
+      '.m-wiki-mfbtn.on{background:#0e7490;border-color:#22d3ee;color:#fff;}',
+      /* ===== 列表篩選引擎(裝備頁) ===== */
+      '#m-wiki-wrap{position:relative;}',   /* 篩選面板是它的絕對定位子元素:wrap 有 overflow:hidden → 面板剛好被裁在小百科面板內(手機像底部抽屜、桌機像面板內抽屜) */
+      '.m-lf-bar{position:sticky;top:0;z-index:6;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#0f172a;padding:10px 0 8px;border-bottom:1px solid #1e293b;}',
+      '.m-lf-inwrap{flex:1 1 46%;min-width:140px;display:flex;}',
+      '.m-lf-q{flex:1 1 auto;min-width:0;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:8px 10px;font-size:16px;outline:none;font-family:inherit;}',   /* 📱 ≥16px:iOS 聚焦小輸入框會自動放大整頁且縮不回來 */
+      '.m-lf-q:focus{border-color:#6366f1;}',
+      '.m-lf-btn{flex:0 0 auto;padding:8px 10px;border:1px solid #334155;background:#111c30;color:#cbd5e1;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;font-family:inherit;white-space:nowrap;}',
+      '.m-lf-btn.on{background:#0e7490;border-color:#22d3ee;color:#fff;}',
+      '.m-lf-btn b{color:#fde047;}',
+      '.m-lf-sort{flex:0 0 auto;max-width:120px;background:#111c30;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:8px 4px;font-size:13px;font-weight:bold;font-family:inherit;cursor:pointer;}',
+      '.m-lf-dir{min-width:36px;text-align:center;}',
+      '.m-lf-sortgrp{flex:0 0 auto;display:flex;gap:5px;align-items:center;}',   /* 排序下拉＋升降鈕綁一組:窄畫面斷行時一起走,不會只剩 ▼ 孤零零一行 */
+      '.m-lf-cnt{font-size:12.5px;color:#94a3b8;margin-left:auto;white-space:nowrap;}',
+      '.m-lf-cnt b{color:#7dd3fc;}',
+      '.m-lf-pills{display:flex;flex-wrap:wrap;gap:5px;}',
+      '.m-lf-pills:empty,.m-lf-helps:empty{display:none;}',
+      '.m-lf-helps{display:flex;flex-direction:column;gap:6px;}',
+      '.m-lf-pill{padding:4px 9px;border:1px solid #22d3ee;background:#0e7490;color:#fff;border-radius:999px;font-size:12px;font-weight:bold;cursor:pointer;font-family:inherit;}',
+      '.m-lf-clear{padding:4px 9px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;border-radius:999px;font-size:12px;cursor:pointer;font-family:inherit;}',
+      '.m-lf-help{background:#111c30;border:1px solid #1e293b;border-radius:8px;}',
+      '.m-lf-help>summary{cursor:pointer;padding:8px 11px;font-size:13px;font-weight:bold;color:#fcd34d;}',
+      '.m-lf-help[open]>summary{border-bottom:1px solid #1e293b;}',
+      '.m-lf-help>div{padding:8px 11px;}',
+      '.m-lf-more{width:100%;padding:11px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;border-radius:9px;font-size:14px;font-weight:bold;cursor:pointer;font-family:inherit;margin-top:6px;}',
+      '.m-lf-bd{display:none;position:absolute;inset:0;background:rgba(2,6,23,.62);z-index:20;}',
+      '.m-lf-bd.open{display:block;}',
+      '.m-lf-sheet{display:none;position:absolute;left:0;right:0;bottom:0;z-index:21;max-height:84%;background:#0b1220;border-top:1px solid #334155;border-radius:14px 14px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.55);flex-direction:column;}',
+      '.m-lf-sheet.open{display:flex;}',
+      '.m-lf-sheet-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;border-bottom:1px solid #1e293b;font-size:14px;font-weight:bold;color:#fcd34d;flex:0 0 auto;}',
+      '.m-lf-x{width:34px;height:30px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;border-radius:7px;font-size:14px;cursor:pointer;font-family:inherit;}',
+      '.m-lf-sheet-b{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 13px 14px;flex:1 1 auto;}',
+      '.m-lf-sheet-f{display:flex;gap:8px;padding:10px 13px;border-top:1px solid #1e293b;background:#0b1220;flex:0 0 auto;}',
+      '.m-lf-reset{flex:0 0 auto;padding:11px 16px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;border-radius:9px;font-size:14px;font-weight:bold;cursor:pointer;font-family:inherit;}',
+      '.m-lf-done{flex:1 1 auto;padding:11px;border:1px solid #22d3ee;background:#0e7490;color:#fff;border-radius:9px;font-size:14px;font-weight:bold;cursor:pointer;font-family:inherit;}',
+      '.m-lf-fname{font-size:13px;font-weight:bold;color:#e2e8f0;margin:12px 0 5px;}',
+      '.m-lf-fhint{font-size:11.5px;color:#94a3b8;margin:-3px 0 5px;}',
+      '.m-lf-fgrp{font-size:12px;color:#7dd3fc;margin:7px 0 4px;display:flex;align-items:center;gap:8px;}',
+      '.m-lf-mini{padding:2px 7px;border:1px solid #334155;background:#111c30;color:#94a3b8;border-radius:999px;font-size:11px;cursor:pointer;font-family:inherit;}',
+      '.m-lf-chips{display:flex;flex-wrap:wrap;gap:5px;}',
+      '.m-lf-chip{padding:6px 10px;border:1px solid #334155;background:#111c30;color:#cbd5e1;border-radius:999px;font-size:12.5px;cursor:pointer;font-family:inherit;}',
+      '.m-lf-chip.on{background:#0e7490;border-color:#22d3ee;color:#fff;font-weight:bold;}',
+      '.m-lf-chip i{font-style:normal;color:#64748b;font-size:11px;margin-left:4px;}',
+      '.m-lf-chip.on i{color:#a5f3fc;}',
+      '.m-lf-nums{display:flex;flex-wrap:wrap;gap:8px;}',
+      '.m-lf-num{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#cbd5e1;}',
+      '.m-lf-num input{width:74px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:7px;padding:6px 8px;font-size:16px;font-family:inherit;}',
+      '.m-eq-helpsec{font-size:13px;font-weight:bold;color:#7dd3fc;margin:10px 0 4px;}',
+      '.m-eq-helpsec:first-child{margin-top:0;}',
+      '.m-eq-card{padding:9px 11px;}',
+      /* 一列=名稱＋右側摘要。用 flex-wrap 而不是 media query:小百科面板寬度是 min(680px,96vw),
+         寬的時候摘要排在右邊、窄的時候自己換到名稱下面整行 —— 由容器寬度決定,不必猜裝置。 */
+      '.m-eq-head{cursor:pointer;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;}',
+      '.m-eq-nm{flex:1 1 58%;min-width:0;display:flex;align-items:center;gap:7px;}',
+      '.m-eq-compact{flex:1 1 auto;min-width:0;color:#94a3b8;font-size:12px;text-align:right;}',
+      '.m-eq-x{display:block;color:#7dd3fc;}',
+      '.m-eq-detail{border-top:1px solid #1e293b;margin-top:6px;padding-top:6px;}'
     ].join('\n');
     var s = document.createElement('style');
     s.id = 'm-wiki-style';
