@@ -902,8 +902,6 @@
     // 🎯 入口：自動化分頁「🔌 外掛」列（木人場旁）加「🐕 賽狗場」鈕；視窗/縮球一旦開啟即跨畫面常駐（可拖曳/縮球）。
     function injectAutoNav() {
         var panel = document.getElementById('tab-automation');
-        var scroll = panel;
-        if (!panel) { panel = document.getElementById('automation-panel'); scroll = panel && (panel.querySelector('.overflow-y-auto') || panel); }
         if (!panel) return false;
         if (document.getElementById('m-afk-nav-dograce')) return true;
         var row = document.getElementById('m-afk-navrow');
@@ -913,7 +911,7 @@
             row.className = 'bg-slate-800 p-3 rounded-lg border border-slate-700';
             row.innerHTML = '<div class="text-sm text-amber-400 mb-2 border-b border-slate-700 pb-1 font-bold">🔌 外掛</div>' +
                 '<div id="m-afk-navrow-btns" style="display:flex;gap:8px;flex-wrap:wrap;"></div>';
-            scroll.appendChild(row);
+            panel.appendChild(row);
         }
         var b = document.createElement('button');
         b.id = 'm-afk-nav-dograce'; b.type = 'button';

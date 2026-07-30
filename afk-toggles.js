@@ -207,6 +207,10 @@
         return true;
     }
     injectEntry();
+    // 🏠 小百科／掉落查詢的獨立分頁（?view=…）也要藏：那裡頁首有自己的導覽列（首頁／小百科／掉落查詢），
+    //    這顆固定按鈕的位置正好蓋住第一顆「🏠 首頁」讓人點不到（玩家回報）。獨立分頁只看 location.search，
+    //    不碰任何外掛設的變數／class（逃生門不可依賴可被關掉的東西）；回到首頁就看得到這顆鈕，逃生門仍在。
+    function inStandaloneView() { try { return !!new URLSearchParams(location.search).get('view'); } catch (e) { return false; } }
     // 只在首頁顯示：進遊戲（#game-screen 顯示 / #main-menu 隱藏）就把左上角開關鈕藏起來。
     function syncEntryVisibility() {
         var btn = document.getElementById('afk-toggles-entry');
@@ -214,7 +218,7 @@
         // 以「遊戲畫面是否顯示」為準（最可靠）：game-screen 沒隱藏＝在遊戲中→藏開關鈕；否則(首頁/選角/創角)顯示。
         var gs = document.getElementById('game-screen');
         var inGame = gs && !gs.classList.contains('hidden');
-        btn.style.display = inGame ? 'none' : '';
+        btn.style.display = (inGame || inStandaloneView()) ? 'none' : '';
         syncEntryTop();   // 橫幅由遊戲 loop 晚注入、高度也會變（換行）→ 每秒跟著校正一次
     }
     syncEntryVisibility();

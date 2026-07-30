@@ -60,6 +60,13 @@ disable-model-invocation: true
 4. **補內容(分自動 / 手動)**
    - **自動同步的**(`MASTERY_DATA`、`DB.skills`、`DB.items`、掉落表、`buildItemDescHTML`)通常不用改。
    - **手動維護的**才要補:`WEAPON_TRAITS`/`SETS`/`ENHANCE_SECTIONS`/`LOAD_SECTIONS`/`SHERINE_SECTIONS`/`PLEDGE_SECTIONS`/`TOWER_SECTIONS`/`QUEST_BY_CLASS`/`QUEST_COMMON`/`MAGIC_FACT`(職業魔法「實際數據」金框,在 `afk-wiki.js`)。
+   - **⭐ 裝備頁篩選器的手動維護清單**(全在 `afk-wiki.js`,漏補不會報錯、只會安靜少東西):
+     ① 上游**新增套裝** → 若名稱只寫在各件裝備的 `set` 欄位(沒進 `DB.sets`),補 `EQ_SET_CN_EXTRA`,否則 chip 會顯示「套裝：<第一件的名字>」。
+     ② 上游**新增影響攻速的欄位** → 補 `hasteInfo`(靠欄位判斷、刻意不掃說明文字),否則「⚡ 影響攻速」篩不到那件。**套裝給的攻速**(真‧冥皇 5/5、席琳麗人 5/5)單件查不到,只能寫進攻速說明卡。
+     ③ 上游**新增部位(slot)** → 補 `EQUIP_GROUPS` 一個桶;沒補的會落進「❓ 其他部位」(不會消失,但分類不對)。順手看 `afk-dex.js` 的 `IT_SLOT` 有沒有該 slot 的中文名(缺就會露出英文 key)。
+     ④ 上游**新增觸發式效果欄位** → 命名含 `proc`(任何位置)會自動收進「觸發特效」;不含的要補 `EQ_PROC_FIELDS`。同理免疫類補 `EQ_IMM_EXTRA`(⚠ 名字含 `Dmg` 的是「打免疫該狀態的目標時加傷」,不是抗性,已排除)。
+     驗法:`AFK_WIKI_API.goto({tab:'equip'})` 後開篩選面板,確認新套裝/新部位的 chip 名稱是中文、件數對得上;新效果用該標籤篩得到。
+   - **⚠️ 讀遊戲全域一律用裸名 + `typeof X !== 'undefined'`**:掉落表那幾張(`DARK_WEAPON_DROPS` 等)在 `js/01-drops-config.js` 是**頂層 `const`**,**不會掛到 `window`** → 寫 `window['DARK_WEAPON_DROPS']` 永遠是 undefined,而且完全不報錯(只會少算怪、少算區域)。範本看 `afk-dex.js` 的 `_allTables`。
    - **⭐ 全域條件式掉落**(`if(條件) gainItem`,不在任一怪 MOB_DROPS)→ 補進 `afk-dex.js` 的 `SPECIAL_BLOCKS`(否則掉落查詢搜不到,聖地遺物踩過)。
    - **⭐ 新掉落表 / 客製製作 / 純兌換成品** → 比對原作 `_auditMobDrops` 讀哪些表照抄進 `buildIndexes`(表數以它為權威,別信文件裡的張數);客製製作(如 `DEMONKING_RECIPES`/`LUMIEL_RECIPES`)補進 `buildCraftIndex`+`renderCraft`;純兌換補 `afk-extradata.js` 的 `AFK_EXTRA.itemAcquire[id].short`。
    - **⭐ 翻譯**:渲染結果出現連續英文(HP/MP/BOSS/Lv 除外)就是漏翻 → 補對應表(`STATUS_LABEL`/`STAT_LABEL`/`AFK_EXTRA.mapName`;地圖漏翻 smoke 會擋)。

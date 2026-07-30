@@ -17,7 +17,7 @@
 | 7 | js/10 | 「立即賣出」總開關關閉時不強制套規則(免誤賣沒標記的裝備) |
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 
-## 外掛(51 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(53 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -36,7 +36,7 @@
 | `afk-slotinfo.js` | 選角卡片疊「掛哪張圖/掛多久」(讀 afk-offline 的 afk_map_/afk_ts_,唯讀) |
 | `afk-loadslots.js` | 卡片式選角擴到 16 格(搭配補丁3) |
 | `afk-dex.js` | 掉落查詢(五張掉落表+特殊掉落 SPECIAL_BLOCKS;`?view=dex` 獨立頁) |
-| `afk-wiki.js` | 小百科(多分頁+統一搜尋;`?view=wiki` 獨立頁;改內容跑 `/update-wiki`) |
+| `afk-wiki.js` | 小百科(多分頁+統一搜尋;`?view=wiki` 獨立頁;改內容跑 `/update-wiki`。裝備頁走檔內的**列表篩選引擎** `makeListFilter`:索引→純函式篩選→只畫前 40 列、詳情點開才建;要把它給第二個頁面用再抽成獨立外掛,且那支**不可有開關**) |
 | `afk-storage.js` | 首頁「⚙ 設定」選單(MENU_ITEMS 可擴充)+檢查存檔大小 |
 | `afk-notice.js` | 首頁公告卡(通用框架;檔頭 `NOTICE=null` 就不顯示,要發公告填一組設定即可) |
 | `afk-quotawarn.js` | 存檔空間警告(localStorage >80% 時首頁紅卡提醒刪角;唯讀;估算與 afk-storage 同套) |
@@ -52,7 +52,7 @@
 | `afk-mercguard.js` | 傭兵招募被擋下時跳彈窗(收核心自己吐的紅字原文,不重刻擋下條件;核心只寫系統日誌→玩家看不到) |
 | `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5) |
 | `afk-itemsearch.js` | 背包名稱搜尋(包 renderTabs 重注入;純顯示層過濾) |
-| `afk-invlist.js` | 背包條列式(桌機手機通用) |
+| `afk-invlist.js` | 背包條列式(桌機手機通用;**本檔整片鋪底的 `background:...!important` 會蓋掉核心給的狀態底色**——「無法裝備/無法學習」的 `bg-red-950/40` 就這樣被吃掉過,已補回紅底＋左紅條,`.bg-red-950\/40` 與 `:has(.text-red-500)` 兩種選法各寫一條、不可併成 selector list) |
 | `afk-eqlist.js` | 裝備分頁條列式(隱藏 12 格圖形窗,露出原生部位條列) |
 | `afk-npclist.js` | 村莊 NPC 條列式(鏡射地圖 NPC 成列表) |
 | `afk-mobname.js` | 怪物名稱顯示模式三選一(純 CSS+body data 驅動) |
@@ -63,9 +63,11 @@
 | `afk-battlebuffs.js` | 手機戰鬥框下方鏡射整條狀態欄(必須排在 afk-trackinfo 之後才含追蹤格) |
 | `afk-relicguard.js` | 快速廢品的「全選」跳過遺物(包 quickJunkSelectAll/buildQuickHeader) |
 | `afk-enhtarget.js` | 快速強化目標上限 +12→+15(包 buildQuickEnhanceHeader 補下拉;執行端本就鉗各裝備 enhanceCap) |
+| `afk-attrbatch.js` | 碧恩「賦予屬性」一鍵衝到指定階段/星數(包 renderBianAttr 加面板;把 doBianAttr 的副作用暫時靜音後迴圈呼叫→規則單一真相仍在核心;「這輪卷軸沒被扣」＝核心擋下,拿它的訊息當停止原因) |
+| `afk-cursebatch.js` | 詛咒卷軸一鍵弱化(包 openModal 掛入口;**不看 `isMaxEnhanced`**——上游滿強化就整顆強化鈕消失,連帶讓詛咒卷軸沒入口。批次同樣靠靜音副作用迴圈呼叫 executeCurseDeEnhance;背包堆疊要**自己先拆一件**,否則核心每次呼叫各拆一件變成 N 件各 -1) |
 | `afk-retrial.js` | 試煉批次兌換(試煉道具持續掉落·已完成也照掉;面板自訂數量重複兌換;試煉狀態只讀不寫;包 trialItemActive/trialQHTML/build50TrialHTML) |
 | `afk-traditional.js` | 傳統模式(偽)/自動衝裝(掉落自帶強化值;靠補丁2 的 `__afkTradRollEn` 鉤子) |
-| `afk-warehouse.js` | 倉庫增強(金幣全存/全取、遺物與席琳遺骸分類) |
+| `afk-warehouse.js` | 倉庫增強(金幣全存/全取、遺物與席琳遺骸分類、**只列可穿＋不可穿標紅**;可穿判定一律呼叫核心 `checkCanEquip`,過濾包在 `whMatchFilter`＋`whMatchSearch` 兩支上(搜尋不走 filter),核心的「沒有物品」空訊息才會正確) |
 | `afk-dograce.js` | 賽狗場迷你遊戲(自動化分頁入口;押金幣或龍鑽、中獎自動入袋;自製) |
 | `afk-pwa.js` | PWA 安裝 UI+圖桶/程式桶對帳(reconcile 送 SW) |
 | `afk-sw.js` | Service Worker 註冊(sw.js 是我方檔,上游無 PWA) |
