@@ -231,7 +231,8 @@
             //   重複 class 把權重墊高一級,先後順序就不影響結果。
             '#wh-inv-list .afk-wh-noeq.afk-wh-noeq,#wh-store-list .afk-wh-noeq.afk-wh-noeq{background:rgba(80,12,22,.55) !important;border-color:#9f1239 !important;border-left-width:4px !important;}',
             '#wh-inv-list .afk-wh-noeq.afk-wh-noeq:hover,#wh-store-list .afk-wh-noeq.afk-wh-noeq:hover{background:rgba(110,18,30,.7) !important;}',
-            '#wh-inv-list .afk-wh-noeq::after,#wh-store-list .afk-wh-noeq::after{content:"　✕ 不可穿";font-size:11px;font-weight:bold;color:#fca5a5;}'
+            // 字樣與顏色跟背包那邊對齊(核心 js/10 是 text-red-500 text-[10px] font-bold 的 [無法裝備])
+            '#wh-inv-list .afk-wh-noeq::after,#wh-store-list .afk-wh-noeq::after{content:"　[無法裝備]";font-size:10px;font-weight:bold;color:#ef4444;}'
         ].join('\n');
         (document.head || document.documentElement).appendChild(s);
     }
