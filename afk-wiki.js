@@ -69,18 +69,32 @@
   var _tabSet = null, _clsSet = null;
   function _validTab(k) { if (!_tabSet) { _tabSet = {}; TABS.forEach(function (t) { _tabSet[t.k] = 1; }); } return !!(k && _tabSet[k]); }
   function _validCls(k) { if (!_clsSet) { _clsSet = {}; CLASSES.forEach(function (c) { _clsSet[c.k] = 1; }); } return !!(k && _clsSet[k]); }
+  // 篩選條件 ←→ 網址:值本身不編碼(全是 ASCII key 或中文區域名),只在放進網址時整串 encode,
+  //   再把三個分隔符還原成可讀的 : | , —— 網址看得懂、URLSearchParams.get 又能原樣還原(它會自己 decode %XX)。
+  function eqfEnc(s) { return encodeURIComponent(s).replace(/%3A/g, ':').replace(/%7C/g, '|').replace(/%2C/g, ','); }
   function syncUrl() {
     if (!isStandalone()) return;
     try {
       var u = location.pathname + '?view=' + VIEW;
       if (state.q && state.q.trim()) u += '&q=' + encodeURIComponent(state.q.trim());   // 搜尋優先
-      else { u += '&tab=' + state.tab; if (state.tab === 'mastery' || state.tab === 'quest') u += '&cls=' + state.cls; }   // 否則記分頁(職業相關再帶職業)
+      else {
+        u += '&tab=' + state.tab;
+        if (state.tab === 'mastery' || state.tab === 'quest') u += '&cls=' + state.cls;   // 職業相關分頁再帶職業
+        if (state.tab === 'equip' && EQ_LF) { var _eqf = EQ_LF.serialize(); if (_eqf) u += '&eqf=' + eqfEnc(_eqf); }   // 裝備分頁帶篩選條件(複製網址就能分享這組結果)
+      }
       history.replaceState(null, '', u);
     } catch (e) {}
   }
+  // ⚠ 篩選面板會佔一格歷史(返回鍵先關面板),而 replaceState 寫的網址是綁在「當前那格歷史」上的
+  //   → 面板一關(退掉那格)網址就跳回開面板前的樣子,剛在面板裡選的條件從網址上消失(踩過:分享連結少了條件)。
+  //   故歷史位置一變動就把網址重寫成「畫面上真正的狀態」。這裡只做 replaceState、不碰任何層級計數,
+  //   與「不要自己聽 popstate」那條不衝突(那條講的是別自己管層級與抑制旗標,見 afk-ui 的 AFK_NAV)。
+  window.addEventListener('popstate', function () { try { syncUrl(); } catch (e) {} });
+
   function applyUrlState(saved) {   // 載入時依網址還原(分享連結打開就是該畫面);saved 為先擷取的參數(openModal 的 render 會先把網址覆寫掉)
-    var p = saved || { q: _wikiParam('q'), tab: _wikiParam('tab'), cls: _wikiParam('cls') };
+    var p = saved || { q: _wikiParam('q'), tab: _wikiParam('tab'), cls: _wikiParam('cls'), eqf: _wikiParam('eqf') };
     var q = p.q, tab = p.tab, cls = p.cls;
+    if (p.eqf) eqSetUrlFilters(p.eqf);   // 裝備頁的篩選條件(網址亂填的值會在 deserialize 裡被丟掉,不會弄壞畫面)
     if (q) {
       state.q = q;
       var inp = document.getElementById('m-wiki-input'); if (inp) inp.value = q;
@@ -117,7 +131,7 @@
     }
     buildStandaloneNav('wiki');
     // 先擷取網址參數:openModal() 的 render 會用 replaceState 覆寫網址,晚讀就拿不到原本的 ?tab= 等
-    var _u = { q: _wikiParam('q'), tab: _wikiParam('tab'), cls: _wikiParam('cls') };
+    var _u = { q: _wikiParam('q'), tab: _wikiParam('tab'), cls: _wikiParam('cls'), eqf: _wikiParam('eqf') };
     openModal();
     applyUrlState(_u);   // 依網址 ?q= / ?tab= / ?cls= 還原(分享連結用)
   }
@@ -2043,7 +2057,6 @@
   //   help()      [{t,html,open}] 摺疊說明卡;emptyHint 沒結果時顯示的字
   var LF_PAGE = 40;            // 一次畫幾列(捲到接近底自動追加)
   var LF_NEAR_BOTTOM = 500;    // 離底多少 px 就預先追加下一批
-  var _lfInst = null;          // 目前掛在畫面上的實例(捲動/ESC/離開分頁時要找得到它)
 
   function makeListFilter(spec) {
     var P = spec.id;
@@ -2102,6 +2115,53 @@
     }
     function invalidate() { _res = null; st.shown = LF_PAGE; }
 
+    // 條件 ←→ 字串(給網址用)。格式:facet:值,值|facet:值|sort:鍵|dir:asc|group:0|q:字
+    //   只寫「與預設不同」的部分,網址才不會一長串。
+    function serialize() {
+      var out = [];
+      spec.facets().forEach(function (f) {
+        if (f.type === 'min') { var v = st.num[f.k]; if (v != null && v !== '') out.push(f.k + ':' + v); return; }
+        var s = sel(f.k); if (s.length) out.push(f.k + ':' + s.join(','));
+      });
+      if (st.sort !== spec.sorts[0].k) out.push('sort:' + st.sort);
+      if (st.desc !== (sortDef().desc !== false)) out.push('dir:' + (st.desc ? 'desc' : 'asc'));
+      if (!st.group) out.push('group:0');
+      if (st.q) out.push('q:' + st.q.replace(/[|:,]/g, ' '));   // 三個分隔符不能出現在值裡;搜尋字含它們沒有意義,換成空白(空白分詞本來就是 AND)
+      return out.join('|');
+    }
+    // 還原:網址是外面來的,一律驗過才收 —— 未知的 facet／不存在的值／非數字／不認識的排序鍵全部丟掉,
+    //   不讓一條亂改的連結把頁面變成空白或壞掉。
+    function deserialize(str) {
+      if (!str) return false;
+      try {
+        var fs = spec.facets(), byKey = {}, okSort = {};
+        fs.forEach(function (f) { byKey[f.k] = f; });
+        spec.sorts.forEach(function (s) { okSort[s.k] = 1; });
+        var nsel = {}, nnum = {}, nsort = null, ndesc = null, ngroup = null, nq = '';
+        String(str).split('|').forEach(function (part) {
+          var i = part.indexOf(':'); if (i < 0) return;
+          var k = part.slice(0, i), v = part.slice(i + 1);
+          if (k === 'sort') { if (okSort[v]) nsort = v; return; }
+          if (k === 'dir') { if (v === 'asc' || v === 'desc') ndesc = (v === 'desc'); return; }
+          if (k === 'group') { ngroup = (v !== '0'); return; }
+          if (k === 'q') { nq = v.trim().toLowerCase().slice(0, 40); return; }
+          var f = byKey[k]; if (!f) return;
+          if (f.type === 'min') { var num = Number(v); if (v !== '' && isFinite(num)) nnum[k] = num; return; }
+          var okv = {};
+          (f.groups || []).forEach(function (g) { g.opts.forEach(function (o) { okv[o[0]] = 1; }); });
+          var keep = [];
+          v.split(',').forEach(function (x) { if (okv[x] && keep.indexOf(x) < 0) keep.push(x); });
+          if (keep.length) nsel[k] = keep;
+        });
+        st.sel = nsel; st.num = nnum; st.q = nq;
+        if (nsort) st.sort = nsort;
+        st.desc = (ndesc == null) ? (sortDef().desc !== false) : ndesc;
+        if (ngroup != null) st.group = ngroup;
+        invalidate();
+        return true;
+      } catch (e) { return false; }
+    }
+
     // ---- HTML ----
     function cntHTML() { return '共 <b>' + results().length + '</b> 件'; }
     function sheetBtnHTML() { var n = activeCount(); return '⚙ 篩選' + (n ? ' <b>' + n + '</b>' : ''); }
@@ -2113,6 +2173,7 @@
           return '<option value="' + esc(o.k) + '"' + (o.k === st.sort ? ' selected' : '') + '>' + esc(o.n) + '</option>';
         }).join('') + '</select>' +
         '<button type="button" class="m-lf-btn m-lf-dir" data-lfdir="1" title="高→低／低→高">' + (st.desc ? '▼' : '▲') + '</button></span>' +
+        (spec.shareUrl ? '<button type="button" class="m-lf-btn m-lf-share" data-lfshare="1" title="複製這組篩選的連結">🔗</button>' : '') +
         '<span class="m-lf-cnt" id="' + P + '-cnt">' + cntHTML() + '</span>' +
       '</div>';
     }
@@ -2166,7 +2227,6 @@
     }
     function shellHTML() {
       invalidate();
-      _lfInst = inst;
       return barHTML() +
         '<div class="m-lf-pills" id="' + P + '-pills">' + pillsInner() + '</div>' +
         '<div class="m-lf-helps" id="' + P + '-help">' + helpInner() + '</div>' +
@@ -2189,6 +2249,7 @@
         var qi = el('q'); if (qi && qi.value !== st.q) qi.value = st.q;
       }
       if (sheetOpen()) renderSheet();
+      if (spec.onState) spec.onState(st);   // 條件變了通知呼叫端(裝備頁用來把條件同步進網址)
     }
     function appendMore() {
       var arr = results(); if (st.shown >= arr.length) return;
@@ -2281,6 +2342,7 @@
       if ((b = t.closest('[data-lfreset]'))) { st.sel = {}; st.num = {}; st.group = true; invalidate(); repaint(); return true; }   // 只清面板裡的條件與分組;控制列上的搜尋字/排序看得見,不替玩家動
       if ((b = t.closest('[data-lfdir]'))) { st.desc = !st.desc; invalidate(); repaint(); return true; }
       if ((b = t.closest('[data-lfmore]'))) { appendMore(); return true; }
+      if ((b = t.closest('[data-lfshare]'))) { copyShare(b); return true; }
       if ((b = t.closest('[data-lfsheet]'))) { sheetOpen() ? closeSheet() : openSheet(); return true; }
       if ((b = t.closest('[data-lfclose]'))) { closeSheet(); return true; }
       return false;
@@ -2309,6 +2371,31 @@
       _qTimer = setTimeout(function () { _qTimer = null; repaint(); }, LF_Q_DEBOUNCE);
       return true;
     }
+    // 🔗 複製連結:手機裝成 App(PWA)時看不到網址列,沒有這顆就沒辦法把這組結果分享出去。
+    //   clipboard API 需要安全來源(https/localhost);不給用就退回 execCommand,兩條都失敗才顯示失敗。
+    function copyShare(btn) {
+      var url = '';
+      try { url = spec.shareUrl(); } catch (e) {}
+      if (!url) return;
+      var old = btn.innerHTML;
+      var flash = function (txt) {
+        btn.innerHTML = txt;
+        setTimeout(function () { btn.innerHTML = old; }, 1600);
+      };
+      var fallback = function () {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = url; ta.setAttribute('readonly', '');
+          ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+          document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, url.length);
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          flash(ok ? '✔ 已複製' : '複製失敗');
+        } catch (e) { flash('複製失敗'); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function () { flash('✔ 已複製'); }, fallback);
+      else fallback();
+    }
     function onScroll(box) {
       if (st.shown >= results().length) return;
       if (box.scrollTop + box.clientHeight >= box.scrollHeight - LF_NEAR_BOTTOM) appendMore();
@@ -2316,6 +2403,7 @@
 
     var inst = {
       state: st,
+      serialize: serialize, deserialize: deserialize,
       shellHTML: shellHTML,
       onClick: onClick, onChange: onChange, onInput: onInput, onScroll: onScroll,
       sheetOpen: sheetOpen, closeSheet: closeSheet, hideSheet: hideSheet,
@@ -2599,7 +2687,8 @@
       '<b>點任一件展開完整數值與取得方式</b>；排序可切「賣價／攻擊／防禦／命中／攻速／名稱」，▼▲ 切高低。',
       '💍 <b>飾品欄會隨等級解鎖</b>：戒指一開始 2 個，<b>Lv76 開第 3 個、Lv81 開第 4 個</b>；耳環一開始 1 個，<b>Lv59 開第 2 個</b>。',
       '🔒 <b>把裝備穿上身會自動取消它的「廢品」標記</b>（穿上＝你要留著），不會再被自動賣出賣掉。',
-      '🗺️ <b>掉落區域</b>只算「怪物會掉」的：商店／製作／兌換取得的裝備沒有區域，選了區域就不會列出來。'
+      '🗺️ <b>掉落區域</b>只算「怪物會掉」的：商店／製作／兌換取得的裝備沒有區域，選了區域就不會列出來。',
+      '🔗 <b>複製連結</b>：把目前這組篩選＋排序做成一條網址（貼給別人打開就是同一份結果）。'
     ];
     var relic = [
       '<b>每隻怪物各有一件專屬遺物</b>（名稱藍字、說明帶【遺物】），擊殺時 <b>0.0001%</b>（百萬分之一）機率掉落；機率會吃掉落倍率：席琳的世界 <b>×3</b>、瘋狂的席琳世界 <b>×5</b>、恩賜怪 <b>×10</b>。想查哪隻怪掉哪件，到「掉落查詢」搜怪物名。',
@@ -2660,7 +2749,10 @@
     '</div>';
   }
 
-  var EQ_LF = null;
+  var EQ_LF = null, _eqUrlPending = null;
+  function eqSetUrlFilters(str) {   // 網址帶了 eqf:引擎還沒建就先記著,renderEquip 建好後立刻套用
+    if (EQ_LF) EQ_LF.deserialize(str); else _eqUrlPending = str;
+  }
   // 篩選面板的選項清單:選項與件數都是索引算出來的,不會變 → 建一次快取(每次重畫都重建的話,
   //   1000 件的篩選迴圈外雖只呼叫一次,但一次重畫仍會叫上五六次,白算五六遍)。
   //   唯一會變的是「★我的職業」那顆的位置 → 記住當時的職業,換角色進來就重建。
@@ -2731,12 +2823,18 @@
           { k: 'spd', n: '攻速%', val: function (it) { return it.v.spd; } },
           { k: 'name', n: '名稱', text: true, desc: false }
         ],
+        onState: syncUrl,                                          // 條件一變就同步進網址(獨立頁才會動;模態下 syncUrl 自己會 return)
+        shareUrl: function () {                                      // 🔗 鈕:一律產出「獨立頁」網址,貼給別人打開就是這組結果
+          var f = EQ_LF ? EQ_LF.serialize() : '';
+          return standaloneUrl() + '&tab=equip' + (f ? '&eqf=' + eqfEnc(f) : '');
+        },
         groupOrder: EQUIP_GROUPS.map(function (g) { return g.k; }),
         groupKey: function (it) { return it.f.slot[0]; },
         groupLabel: function (k) { var r = k; EQUIP_GROUPS.forEach(function (g) { if (g.k === k) r = g.n; }); return r; },
         row: eqRowHTML
       });
     }
+    if (_eqUrlPending != null) { EQ_LF.deserialize(_eqUrlPending); _eqUrlPending = null; }   // 套用網址帶進來的條件
     eqWarmHay();   // 頁內搜尋要用的詳情文字索引:趁閒置先建好,別等玩家打第一個字才卡一下
     return EQ_LF.shellHTML();
   }
@@ -4663,7 +4761,8 @@
       '.m-lf-btn b{color:#fde047;}',
       '.m-lf-sort{flex:0 0 auto;max-width:120px;background:#111c30;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:8px 4px;font-size:13px;font-weight:bold;font-family:inherit;cursor:pointer;}',
       '.m-lf-dir{min-width:36px;text-align:center;}',
-      '.m-lf-sortgrp{flex:0 0 auto;display:flex;gap:5px;align-items:center;}',   /* 排序下拉＋升降鈕綁一組:窄畫面斷行時一起走,不會只剩 ▼ 孤零零一行 */
+      '.m-lf-sortgrp{flex:0 0 auto;display:flex;gap:5px;align-items:center;}',
+      '.m-lf-share{min-width:38px;text-align:center;}',   /* 排序下拉＋升降鈕綁一組:窄畫面斷行時一起走,不會只剩 ▼ 孤零零一行 */
       '.m-lf-cnt{font-size:12.5px;color:#94a3b8;margin-left:auto;white-space:nowrap;}',
       '.m-lf-cnt b{color:#7dd3fc;}',
       '.m-lf-pills{display:flex;flex-wrap:wrap;gap:5px;}',
