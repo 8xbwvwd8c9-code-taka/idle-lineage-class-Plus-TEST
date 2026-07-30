@@ -68,7 +68,7 @@
 | `afk-retrial.js` | 試煉批次兌換(試煉道具持續掉落·已完成也照掉;面板自訂數量重複兌換;試煉狀態只讀不寫;包 trialItemActive/trialQHTML/build50TrialHTML) |
 | `afk-traditional.js` | 傳統模式(偽)/自動衝裝(掉落自帶強化值;靠補丁2 的 `__afkTradRollEn` 鉤子) |
 | `afk-warehouse.js` | 倉庫增強(金幣全存/全取、遺物與席琳遺骸分類、**只列可穿＋不可穿標紅**;可穿判定一律呼叫核心 `checkCanEquip`,過濾包在 `whMatchFilter`＋`whMatchSearch` 兩支上(搜尋不走 filter),核心的「沒有物品」空訊息才會正確) |
-| `afk-whbatch.js` | 倉庫批次存取(「🗂️ 批次」鈕→點清單=勾選、全選、一次搬完;整批共用一次 `whTxnSnapshot`/`whTxnCommit`＝核心 `whOneClickDeposit` 的既有模式,實測 4998 格倉庫由 145ms/件 → 0.1ms/格。搬移規則逐條比照核心 whDeposit/whWithdraw,唯一差別是一律整疊。⚠️ **不可用 uid 當索引**:玩家倉庫真的存在「兩格共用同一 uid」(4998 格裡 17 組),uid→物品的 map 只留最後一格,另一格會被連同數量一起刪掉＝真實遺失(踩過,少 35 件);一律掃來源陣列比對勾選集合。同 sig 查找改 Map(核心 `_whStackFind` 是線性 find,N 筆就 O(N²)、幾千格會卡住)) |
+| `afk-whbatch.js` | 倉庫批次存取(**預設關**——會改掉「點清單」原本的意思;包核心函式型:照樣安裝 wrapper、每次重繪問 `enabled()`,關掉就收乾淨注入的 UI 並透明放行,故開關即時生效且仍印 hooks OK。⚠️ `register` 必須早於第一次 `enabled()`:找不到登錄項時預設值一律回 true(afk-toggles.js:39),先問就把 def:false 問成 true。「🗂️ 批次」鈕→點清單=勾選、全選、一次搬完;整批共用一次 `whTxnSnapshot`/`whTxnCommit`＝核心 `whOneClickDeposit` 的既有模式,實測 4998 格倉庫由 145ms/件 → 0.1ms/格。搬移規則逐條比照核心 whDeposit/whWithdraw,唯一差別是一律整疊。⚠️ **不可用 uid 當索引**:玩家倉庫真的存在「兩格共用同一 uid」(4998 格裡 17 組),uid→物品的 map 只留最後一格,另一格會被連同數量一起刪掉＝真實遺失(踩過,少 35 件);一律掃來源陣列比對勾選集合。同 sig 查找改 Map(核心 `_whStackFind` 是線性 find,N 筆就 O(N²)、幾千格會卡住)) |
 | `afk-dograce.js` | 賽狗場迷你遊戲(自動化分頁入口;押金幣或龍鑽、中獎自動入袋;自製) |
 | `afk-pwa.js` | PWA 安裝 UI+圖桶/程式桶對帳(reconcile 送 SW) |
 | `afk-sw.js` | Service Worker 註冊(sw.js 是我方檔,上游無 PWA) |

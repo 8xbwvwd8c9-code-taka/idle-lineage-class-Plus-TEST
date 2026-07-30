@@ -18,11 +18,25 @@
  *   3477 格會做上百萬次 itemSig 字串組裝(實測會卡住幾秒)。這裡改「一次建 Map、邊搬邊更新」,
  *   查找結果與 _whStackFind 完全一致(同 sig 取最先出現的那格·排除 gw)。
  *
+ * 🎚️ 預設「關」:它會改掉「點清單」原本的意思(原版點一下就直接搬走),不該在沒人要求時
+ *   悄悄變更既有操作手感 → 要用的人自己到「🎚️ 外掛」打開。
+ *   ⚠️ 寫法是「包核心函式型」(見 CLAUDE.md 契約):照樣安裝 wrapper、每次重繪才問 enabled(),
+ *   關掉時把注入的 UI 收乾淨並透明放行原函式。所以開關即時生效、不必重新整理,
+ *   smoke 也照樣看得到 hooks OK。
+ *   ⚠️ register 必須排在第一次 enabled() 之前:AFK_TOGGLES.enabled() 找不到登錄項時
+ *   預設值一律回 true(afk-toggles.js:39),先問就會把 def:false 問成 true。
+ *
  * 優雅降級:缺任何核心倉庫函式就 console.warn 後安靜停用,不影響遊戲。
  * ========================================================================== */
 (function () {
     'use strict';
-    if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('whbatch')) return;   // 🎚️ 外掛開關
+
+    if (window.AFK_TOGGLES) AFK_TOGGLES.register({
+        id: 'whbatch', name: '倉庫批次存取', group: '遊戲介面', def: false,
+        desc: '倉庫多一顆「🗂️ 批次」:點清單改成勾選,可全選、一次搬完(核心是一件一件搬、每件都存檔一次,幾千格搬不動)。會改變「點一下」的意思,所以預設關。'
+    });
+    // 讀不到開關中樞 → 不啟用:預設關的偏好不可在讀不到設定時自作主張開啟(同 afk-notip)
+    function on() { try { return !!window.AFK_TOGGLES && AFK_TOGGLES.enabled('whbatch'); } catch (e) { return false; } }
 
     // const 宣告的核心常數不掛 window(WH_MAX/WH_NO_STORE),只能以裸名取;取不到才用已知值兜底
     function core(name, fallback) { try { return eval(name); } catch (e) { return fallback; } }   // eslint-disable-line no-eval
@@ -303,8 +317,21 @@
         anchor.parentNode.insertBefore(b, anchor.nextSibling);
     }
 
+    // 開關關掉(或玩家在面板上關掉)→ 收乾淨注入的 UI,讓倉庫回到原版:點一下就直接搬
+    function teardown() {
+        _batch = false; clear(selInv); clear(selWh);
+        var t = document.getElementById('afk-whb-toggle'); if (t) t.remove();
+        ['afk-whb-bar-inv', 'afk-whb-bar-wh'].forEach(function (id) { var b = document.getElementById(id); if (b) b.remove(); });
+        ['wh-inv-list', 'wh-store-list'].forEach(function (id) {
+            var h = document.getElementById(id); if (!h) return;
+            h.classList.remove('afk-whb-mode');
+            eachRow(h, function (row) { row.classList.remove('afk-whb-on'); row.classList.remove('afk-whb-no'); });
+        });
+    }
+
     function afterRender() {
         if (!document.getElementById('wh-inv-list')) return;   // 倉庫面板不在畫面上
+        if (!on()) { teardown(); return; }                     // 🎚️ 關掉＝透明放行原版行為
         css();
         injectToggle();
         bindList(document.getElementById('wh-inv-list'));
@@ -320,11 +347,6 @@
         return r;
     };
 
-    if (window.AFK_TOGGLES) {
-        AFK_TOGGLES.register({
-            id: 'whbatch', name: '倉庫批次存取', group: '遊戲介面', def: true,
-            desc: '倉庫可勾選多筆＋全選，一次搬完（核心是一件一件搬、每件都存檔一次，幾千格根本搬不動）'
-        });
-    }
-    try { console.log('[AFK-whbatch] hooks OK — 倉庫批次存取(勾選/全選/一次搬完)已啟用。'); } catch (e) {}
+    // 已在檔頭 register(必須早於第一次 enabled(),見檔頭說明)
+    try { console.log('[AFK-whbatch] hooks OK — 倉庫批次存取已掛上（預設關，於「🎚️ 外掛」開啟）。'); } catch (e) {}
 })();
