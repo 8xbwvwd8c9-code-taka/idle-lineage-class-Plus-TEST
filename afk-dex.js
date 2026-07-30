@@ -779,8 +779,6 @@
   // 標題統一「🔌 外掛」(這列不只查詢,還有木人場)→ 三支建列字串一致,不靠事後改名。
   function injectAutoNav(btnId, label, onClick) {
     var panel = document.getElementById('tab-automation');   // v2.6.74 起自動化設定改為遊戲分頁(靜態 DOM,不會被重繪洗掉)
-    var scroll = panel;
-    if (!panel) { panel = document.getElementById('automation-panel'); scroll = panel && (panel.querySelector('.overflow-y-auto') || panel); }   // 舊版面後備
     if (!panel) return;
     var row = document.getElementById('m-afk-navrow');
     if (!row) {
@@ -789,7 +787,7 @@
       row.className = 'bg-slate-800 p-3 rounded-lg border border-slate-700';
       row.innerHTML = '<div class="text-sm text-amber-400 mb-2 border-b border-slate-700 pb-1 font-bold">🔌 外掛</div>' +
         '<div id="m-afk-navrow-btns" style="display:flex;gap:8px;"></div>';
-      scroll.appendChild(row);
+      panel.appendChild(row);
     }
     if (document.getElementById(btnId)) return;
     var b = document.createElement('button');

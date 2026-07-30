@@ -118,11 +118,7 @@
             + 'body.m-mobile #login-art-stage{ height:auto !important; min-height:100dvh; aspect-ratio:auto !important; display:flex !important; flex-direction:column !important; justify-content:flex-start !important; }\n'
             + 'body.m-mobile #login-title-layer, body.m-mobile #main-menu, body.m-mobile #login-meta-layer{ position:static !important; left:auto !important; right:auto !important; top:auto !important; bottom:auto !important; width:auto !important; transform:none !important; }\n'
             + 'body.m-mobile #login-title-layer{ margin-top:14px; }\n'
-            + 'body.m-mobile #login-meta-layer{ margin:10px auto 18px !important; text-align:center; }\n'
-            // 選角畫面（上游新版）：每列＝存檔鈕 + 固定寬匯入區，手機會把鈕擠成「存...」。改成直向堆疊：鈕全寬、匯入區在下。
-            + 'body.m-mobile #slot-list > div{ flex-wrap:wrap !important; }\n'
-            + 'body.m-mobile #slot-list > div > button:first-child{ flex:1 1 100% !important; }\n'
-            + 'body.m-mobile #slot-list > div > .w-56{ width:100% !important; }';
+            + 'body.m-mobile #login-meta-layer{ margin:10px auto 18px !important; text-align:center; }';
         (document.head || document.documentElement).appendChild(st);
     }
 
