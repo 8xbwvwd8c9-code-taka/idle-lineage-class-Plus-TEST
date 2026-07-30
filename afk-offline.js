@@ -523,6 +523,7 @@
     window.__afkGainTally = gainTally;
     var prevFf0, prevInTick0;   // 先宣告在 try 外:例外時 finally 才有得還原
     var _perfT0 = performance.now(), _realSimTicks = 0, _fastEvents = 0;   // ⏱ 診斷:結算耗時與組成(玩家回報「結算慢」時看這行就知道卡在哪段)
+    var _ckptMs = 0, _ckptN = 0;   // ⏱ 其中有多少真實時間是花在檢查點存檔(見 doCheckpoint)
     // ⚡ 結算期間 gainItem 一律帶 deferUi=true(上游 v3.6.97 為批次發獎新增的第 6 參):
     //   跳過每次獲得的 autoSortInventory——它以 state.ticks 節流(每 100 拍),快速段一個事件就跳幾十拍
     //   → 幾乎每殺必觸發全背包排序,24h 累計近萬次。結算尾統一排一次(見落點後)。renderTabs 本就被 ff 擋,無差。
@@ -1001,7 +1002,9 @@
         settleMs: Math.max(0, Math.round(performance.now() - _perfT0)),
         simTicks: _realSimTicks,
         fastEvents: _fastEvents,
-        fastWhy: fastWhy                    // 為什麼快／為什麼慢(代碼;中文對照見 FAST_WHY_TEXT)
+        fastWhy: fastWhy,                   // 為什麼快／為什麼慢(代碼;中文對照見 FAST_WHY_TEXT)
+        ckptMs: Math.round(_ckptMs),        // settleMs 裡有多少是花在檢查點存檔(壓縮慢的裝置上可能是大宗)
+        ckptN: _ckptN
       };
     }
     // 切到背景 / 關掉 App 前主動存一次:iOS 在背景更容易被系統直接丟掉整個分頁,
@@ -1013,11 +1016,16 @@
       } catch (e) {}
     };
     function doCheckpoint() {
+      // ⏱ 量自己花掉多少真實時間:存檔(壓縮)在慢裝置上可能很貴,而它是「每 CKPT_MS 一次」——
+      //   單次成本一旦逼近 CKPT_MS,結算時間就會失控放大(越慢→存越多次→更慢)。
+      //   把它跟結算總耗時並排記進離線紀錄,才分得出「真的在算」還是「卡在存檔」(2026-07-30 玩家回報結算 30 分鐘時加)。
+      var _ck0 = performance.now();
       try {
         var _sq = _saveSquelch; _saveSquelch = false;   // ⚡ 檢查點是「該存的存檔」:暫時放行 saveGame 擋板
         wallHoldsRestore();   // 💾 存檔前先把被撐長的效期(追蹤／追殺)還原,結算中途關頁也不會把假到期時間留在存檔裡
         try { if (typeof saveGame === 'function') saveGame(); } finally { _saveSquelch = _sq; wallHoldsApply(); }   // ff 下 logSys 靜音,不會洗「進度已儲存」;saveGame 尾端的 offlineStamp 被 catchingUp 擋掉,不影響錨點
         stampCore(timing.closeTs + done * TICK_MS);       // 錨點=已結算到的時間點(絕不用 now,剩餘離線時間才不會被吃掉)
+        _ckptN++; _ckptMs += performance.now() - _ck0;    // 先累計再寫紀錄,這一次的成本才會進到這筆紀錄裡
         recordHistory(buildHistRec());                    // 已結算部分先寫進離線紀錄(同 closeTs 覆寫,不會多筆)
       } catch (eCk) {}
       _ckptLastMs = performance.now();

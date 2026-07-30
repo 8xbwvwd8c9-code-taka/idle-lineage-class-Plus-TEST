@@ -225,6 +225,11 @@
       var why = '';
       try { if (r.fastWhy && window.__afk && __afk.fastWhyText) why = __afk.fastWhyText(r.fastWhy); } catch (e) {}
       line += '\n              └ ' + (why || '(這筆是舊版紀錄,沒有快轉原因)') + ' / ' + offStatsNote(s);
+      // 分辨「算太多次」還是「卡在存檔」——兩者要修的地方完全不同,沒有這兩個數字只能用猜的
+      var cost = [];
+      if (r.fastEvents) cost.push('快轉事件 ' + r.fastEvents + ' 個·平均 ' + (r.settleMs / r.fastEvents).toFixed(2) + ' ms');
+      if (r.ckptMs != null && r.ckptN) cost.push('中途存檔 ' + r.ckptN + ' 次共 ' + (r.ckptMs / 1000).toFixed(1) + ' 秒(占 ' + Math.round(r.ckptMs / Math.max(1, r.settleMs) * 100) + '%)');
+      if (cost.length) line += '\n              └ ' + cost.join(' · ');
       out.push(line);
     }
     return out.length ? '\n          ' + out.join('\n          ') : '(還沒有任何離線結算紀錄)';
