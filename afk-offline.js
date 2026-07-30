@@ -619,7 +619,7 @@
     // 🐲 BOSS 策略(懶驗證):每「種」BOSS(按名字)第一次遇到 → 逐拍真模擬打到倒下,記錄實際耗時與安全度;
     //   之後同名 BOSS:安全的 → 即殺但時間按「該 BOSS 實測耗時」推進(不是小怪均速);對打時血量掉太深的 → 每次都真打。
     //   打輸=外層撞死即停;打不動=照實耗完時間。純 BOSS 圖因此自然接近全真模擬。
-    var fastBossUid = null, fastBossName = '', fastBossStart = 0, fastBossMinHp = 1, fastBossKills0 = 0;
+    var fastBossUid = null, fastBossName = '', fastBossStart = 0, fastBossMinHp = 1, fastBossKills0 = 0, fastBossOwnKills0 = 0;
     var BOSS_REVERIFY_P = 0.05;   // 🐲 抽驗:每 ~20 隻「已驗證安全」的同名 BOSS 抽 1 隻真打,實測耗時/同場小怪數做移動平均——單一首打樣本變異極大(同隻 BOSS 兩輪量到 27 vs 316 拍),外推整晚會嚴重失真
     var bossStats = {};   // {怪名: {ticks:實測耗時(移動平均), safe:對打全程血量未低於安全線, minor:對戰期間同場被清掉的小怪數(移動平均)}}
     // ⚡ 批次擊殺模型:AOE 角色一次法術同時清多隻,「一次殺一隻、每殺推進一次」的串行模型會把清場速度壓低、
@@ -643,8 +643,8 @@
       var eq = [];
       try { for (var k in player.eq) { var e = player.eq[k]; if (e && e.id) eq.push(k + ':' + e.id + ':' + (e.en || 0)); } } catch (e) {}
       eq.sort();
-      return ['v2', mapState.current, player.lv, player.sherineWorld ? 1 : 0, player.sherineMad ? 1 : 0,
-        player.classicMode ? 1 : 0, player.traditionalMode ? 1 : 0, eq.join(',')].join('|');   // v2:2026-07-11 上游大移植(遺物效果/傭兵攻速/能力上限100/藥水隨機)殺速普遍改變,讓全體舊統計失效重取樣
+      return ['v3', mapState.current, player.lv, player.sherineWorld ? 1 : 0, player.sherineMad ? 1 : 0,
+        player.classicMode ? 1 : 0, player.traditionalMode ? 1 : 0, eq.join(',')].join('|');   // v2:2026-07-11 上游大移植(遺物效果/傭兵攻速/能力上限100/藥水隨機)殺速普遍改變,讓全體舊統計失效重取樣;v3:既有存檔的 boss 統計可能是「瞬移逃離被誤記成安全擊殺」的髒值(照它走會把玩家想躲的 BOSS 全部秒殺),一律作廢重取樣
     }
     function saveOffStats() {   // 量到新統計就更新快取(隨檢查點/結算尾的 saveGame 固化進存檔)
       try {
@@ -729,8 +729,10 @@
           if (player.gold >= 100 * unit) { player.gold -= 100 * unit; gainItem(id, 100, true, true); return true; }
           return false;
         }
-        var buyChk = { potion_haste: 'set-auto-buy-haste', potion_brave: 'set-auto-buy-brave', potion_blue: 'set-auto-buy-blue', new_item_140: 'set-auto-buy-cautious', new_item_139: 'set-auto-buy-elfcookie', scroll_poly: 'set-auto-buy-poly', scroll_teleport: 'set-auto-buy-teleport' }[id];
-        if (buyChk && on(buyChk)) {   // 增益藥水/卷軸:買 1 瓶(同 autoActions)
+        // 增益藥水/卷軸:上游「自動使用＝自動購買」——缺貨時看的是「自動使用」那個勾選框,沒有獨立的自動購買框
+        //   (獨立那批 set-auto-buy-* 的 DOM id 上游早已移除;問一個不存在的 id 會永遠補不到貨,同 fastTeleportAwayBoss 那個坑)
+        var useChk = { potion_haste: 'set-haste', potion_brave: 'set-brave', potion_blue: 'set-blue', new_item_140: 'set-cautious', new_item_139: 'set-elfcookie', scroll_poly: 'set-poly', scroll_magicbarrier: 'set-magicbarrier', scroll_teleport: 'set-teleport' }[id];
+        if (useChk && on(useChk)) {   // 買 1 瓶(同 autoActions)
           var p = shopPrice(DB.items[id].p);
           if (player.gold >= p) { player.gold -= p; gainItem(id, 1, true, true); return true; }
           return false;
@@ -802,12 +804,13 @@
         // 遺忘之島本島雖走快速段,但島上禁傳送(與線上一致)→ 這裡照 autoActions 一樣早退、照打
         if (isSiegeArea(mapState.current) || PURE_BOSS_MAPS.includes(mapState.current)) return false;
         if (state.prideClimb || state.oblivion || state.riftRun) return false;
-        // 找卷軸,沒有就依 set-auto-buy-teleport 自動買 1 張(與 autoActions 完全一致)
+        // 找卷軸,缺貨就自動買 1 張——上游「勾選自動使用＝同意自動購買」,只看金幣、不看任何勾選框。
+        //   ⚠ 這裡曾經去問一個上游早已刪掉的勾選框 id(set-auto-buy-teleport):getElementById 回 null → 條件永遠假
+        //   → 快速段一律補不到卷軸 → 迴避頭目在整個快速段等於沒勾(而線上照樣會買、玩家因此背包常態 0 張)。
         var item = player.inv.find(function (i) { return i && i.id === 'scroll_teleport'; });
         if (!item) {
-          var buyChk = document.getElementById('set-auto-buy-teleport');
           var cost = shopPrice(DB.items.scroll_teleport.p);
-          if (buyChk && buyChk.checked && player.gold >= cost) { player.gold -= cost; gainItem('scroll_teleport', 1, true, true); item = player.inv.find(function (i) { return i && i.id === 'scroll_teleport'; }); }
+          if (player.gold >= cost) { player.gold -= cost; gainItem('scroll_teleport', 1, true, true); item = player.inv.find(function (i) { return i && i.id === 'scroll_teleport'; }); }
         }
         if (!item) return false;                                                     // 沒卷軸又補不到 → 退回硬打,同線上
         var bossUid = m.uid;
@@ -885,6 +888,7 @@
             return _okAdv;
           }
           fastBossUid = _m0.uid; fastBossName = _m0.n || '?'; fastBossStart = done; fastBossMinHp = 1; fastBossKills0 = tallySum(killTally);   // 記真打起始殺數 → 倒下時算對戰期間清掉的小怪數
+          fastBossOwnKills0 = killTally[fastBossName] || 0;   // 這「種」BOSS 的起始擊殺數 → 收尾要靠它分辨「真的打死」與「只是不在場上」
           console.info('[AFK] ⚔ 快速結算遇到 BOSS「' + fastBossName + '」(' + (_bs && _bs.safe ? '抽驗' : '首次') + ')→ 切回真模擬對打,倒下後同名 BOSS 才可快轉。');
           return true;   // 不推進時間、不扣消耗品——接下來的真模擬拍會照實計(場上其他怪由真模擬一併處理)
         }
@@ -1010,19 +1014,27 @@
               var _hpB = (player.mhp > 0) ? (player.hp / player.mhp) : 1;
               if (_hpB < fastBossMinHp) fastBossMinHp = _hpB;
               var _bAlive = mapState.mobs.some(function (x) { return x && x.uid === fastBossUid && !x._dead; });   // 事件驅動:BOSS 可能在任一格位,依 uid 掃全場
-              if (!_bAlive) {   // BOSS 倒下(或場面被重置)→ 記錄實測耗時/安全度,回快速段
+              if (!_bAlive) {   // BOSS 離開場上 → 先分辨「真的被打死」還是「只是不在場上」,再決定要不要記統計
                 fastBossUid = null;
-                var _durB = Math.max(1, done - fastBossStart);
-                var _safeB = fastBossMinHp >= hpFloorNow();   // 安全線跟取樣共用同一條門檻(隨存活時間降到 0):撐滿 20 分鐘後 BOSS 首遇打得贏就 safe → 秒殺
-                var _minorB = Math.max(0, (tallySum(killTally) - fastBossKills0) - 1);   // 對戰期間總殺數 − BOSS 本身 1 = 同場被 AOE/傭兵/寵物清掉的小怪數
-                var _prevB = bossStats[fastBossName];
-                // 🐲 移動平均:抽驗(已有安全實測)→ 與舊值各半混合;首次/上次不安全 → 直接採用本次。
-                //   單一樣本的對打耗時變異極大(同 BOSS 27 vs 316 拍),平均化避免一次幸運/倒楣樣本外推整晚。
-                bossStats[fastBossName] = (_prevB && _prevB.safe && _safeB)
-                  ? { ticks: (_prevB.ticks + _durB) / 2, safe: true, minor: Math.round(((_prevB.minor || 0) + _minorB) / 2) }
-                  : { ticks: _durB, safe: _safeB, minor: _minorB };
-                saveOffStats();   // 💾 新量到的 BOSS 實測 → 更新統計快取(下次同簽章連首打都免)
-                console.info('[AFK] ⚔ BOSS「' + fastBossName + '」倒下:實測 ' + Math.round(_durB) + ' 拍、同場小怪 ' + _minorB + ' 隻' + (_safeB ? ',之後同名 BOSS 即殺、時間按實測(移動平均)推進並補回小怪。' : ',對打時血量偏低(' + Math.round(fastBossMinHp * 100) + '%) → 之後每次都真打。'));
+                // 🌀 沒有經 killMob 死掉卻不在場上 = 被瞬移走(tick() 裡的 autoActions 迴避頭目)或場面被重置。
+                //   不可當成「打贏了、而且只花這幾拍、血量沒掉=safe」記進 bossStats —— 那會讓之後同名 BOSS 全部走
+                //   「即殺」路徑,玩家勾的迴避頭目變成「每隻都打死拿掉落」(踩過:3h 離線秒殺 188 隻死亡騎士,
+                //   而且 safe 統計還會存進存檔,隔天連首打都省、整晚照殺)。這種情況不留任何統計,下次照樣先試瞬移。
+                if ((killTally[fastBossName] || 0) <= fastBossOwnKills0) {
+                  console.info('[AFK] ⚔ BOSS「' + fastBossName + '」未被擊殺就離開場上(瞬移逃離/場面重置)→ 不記錄對打統計,下次仍照迴避設定處理。');
+                } else {
+                  var _durB = Math.max(1, done - fastBossStart);
+                  var _safeB = fastBossMinHp >= hpFloorNow();   // 安全線跟取樣共用同一條門檻(隨存活時間降到 0):撐滿 20 分鐘後 BOSS 首遇打得贏就 safe → 秒殺
+                  var _minorB = Math.max(0, (tallySum(killTally) - fastBossKills0) - 1);   // 對戰期間總殺數 − BOSS 本身 1 = 同場被 AOE/傭兵/寵物清掉的小怪數
+                  var _prevB = bossStats[fastBossName];
+                  // 🐲 移動平均:抽驗(已有安全實測)→ 與舊值各半混合;首次/上次不安全 → 直接採用本次。
+                  //   單一樣本的對打耗時變異極大(同 BOSS 27 vs 316 拍),平均化避免一次幸運/倒楣樣本外推整晚。
+                  bossStats[fastBossName] = (_prevB && _prevB.safe && _safeB)
+                    ? { ticks: (_prevB.ticks + _durB) / 2, safe: true, minor: Math.round(((_prevB.minor || 0) + _minorB) / 2) }
+                    : { ticks: _durB, safe: _safeB, minor: _minorB };
+                  saveOffStats();   // 💾 新量到的 BOSS 實測 → 更新統計快取(下次同簽章連首打都免)
+                  console.info('[AFK] ⚔ BOSS「' + fastBossName + '」倒下:實測 ' + Math.round(_durB) + ' 拍、同場小怪 ' + _minorB + ' 隻' + (_safeB ? ',之後同名 BOSS 即殺、時間按實測(移動平均)推進並補回小怪。' : ',對打時血量偏低(' + Math.round(fastBossMinHp * 100) + '%) → 之後每次都真打。'));
+                }
               }
               if (fastBossUid == null && player.lv !== lastLv) {   // BOSS 經驗大,常直接升級 → 重新取樣殺速
                 lastLv = player.lv;
