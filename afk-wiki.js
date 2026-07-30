@@ -1379,7 +1379,7 @@
   var CASTLE_EXTRA_CITY = { windwood_dungeon: '風木城' };   // 🏰 攻城後開放的城堡狩獵區 → 要攻下哪座城(作者新增別的城堡狩獵區時補這裡;掉落查詢 afk-dex 亦有一份)
   function renderMap() {
     if (typeof MAP_REGIONS === 'undefined') return '<div class="m-wiki-note">讀不到地圖資料。</div>';
-    var h = '<div class="m-wiki-note">遊戲移動方式：打開<b>地圖選單</b>→ 左邊選<b>領域</b> → 右邊選該領域的<b>地圖</b>直接傳送（受進入條件擋）。「<b>回村</b>」按鈕回到你<b>最近待過的村莊／安全區</b>（沒紀錄才回職業家鄉；血盟持有城堡期間改回城堡）。下面依<b>領域</b>分組，每張圖標出<b>等級範圍</b>與<b>進入條件</b>；用搜尋（例 <b>底比斯</b>）也找得到它在哪個領域。</div>';
+    var h = '<div class="m-wiki-note">遊戲移動方式：打開<b>地圖選單</b>→ 左邊選<b>領域</b> → 右邊選該領域的<b>地圖</b>直接傳送（受進入條件擋）。「<b>回村</b>」按鈕回到你<b>最近待過的村莊／安全區</b>（沒紀錄才回職業家鄉；血盟持有城堡期間改回城堡）。</div>';
     var entryOf = (typeof mapEntryOf === 'function') ? mapEntryOf : function () { return null; };   // 由地圖 v 取 MAP_CATEGORIES 原定義(進入條件)
     MAP_REGIONS.forEach(function (reg) {
       if (!reg.maps || !reg.maps.length) return;
@@ -1440,7 +1440,7 @@
   }
   function renderNpc() {
     if (typeof DB === 'undefined' || !DB.towns) return '<div class="m-wiki-note">讀不到 NPC 資料。</div>';
-    var h = '<div class="m-wiki-note">依<b>村莊／安全區</b>分組，列出各地 NPC 的<b>作用</b>。到該村莊點對應 NPC 即可互動。用搜尋（例 <b>製作</b>、<b>倉庫</b>、NPC 名）也找得到它在哪個村莊。</div>';
+    var h = '';   // 這頁原本的說明整段都是「依村莊分組、點 NPC 互動、用搜尋找得到」——看畫面就知道的東西,不留
     Object.keys(DB.towns).forEach(function (tid) {
       var town = DB.towns[tid];
       if (!town || !town.npcs || !town.npcs.length) return;   // 無 NPC 的安全區（時空裂痕入口等）跳過
@@ -1499,9 +1499,11 @@
     if (!terms.length) terms = [q];
     SEARCH_SOURCES.forEach(function (s) {
       if (s.search) {   // 自訂搜尋器(裝備:掃索引;命中的列直接展開,因為關鍵字常在詳情裡)
-        var hits = s.search(terms, SEARCH_CARD_CAP + 1), over = hits.length > SEARCH_CARD_CAP;
-        if (over) hits = hits.slice(0, SEARCH_CARD_CAP);
-        if (hits.length) parts.push('<div class="m-wiki-sub">' + esc(s.label) + ' <span class="m-wiki-cnt">' + hits.length + (over ? '+' : '') + '</span></div>' +
+        var hits = s.search(terms, SEARCH_CARD_CAP + 1);
+        var body = hits.filter(function (h) { return !h.isHelp; }), over = body.length > SEARCH_CARD_CAP;
+        if (over) body = body.slice(0, SEARCH_CARD_CAP);
+        hits = hits.filter(function (h) { return h.isHelp; }).concat(body);
+        if (hits.length) parts.push('<div class="m-wiki-sub">' + esc(s.label) + ' <span class="m-wiki-cnt">' + body.length + (over ? '+' : '') + '</span></div>' +
           hits.map(function (h) { return h.html; }).join('') +
           (over ? '<div class="m-wiki-hint">符合的太多，只列前 ' + SEARCH_CARD_CAP + ' 件；要看全部請到「裝備」分頁用篩選器縮範圍。</div>' : ''));
         return;
@@ -2060,10 +2062,13 @@
 
   function makeListFilter(spec) {
     var P = spec.id;
-    var st = { sel: {}, num: {}, q: '', sort: spec.sorts[0].k, desc: spec.sorts[0].desc !== false, group: true, shown: LF_PAGE };
+    // q=使用者打的原文(顯示/分享用);qt=拆好的小寫詞(比對用)。兩個分開存,才不會把玩家打的字
+    //   回寫成規範化後的樣子(「盔甲 騎士」被吃掉空白、「AC」被改小寫,踩過)。
+    var st = { sel: {}, num: {}, q: '', qt: [], sort: spec.sorts[0].k, desc: spec.sorts[0].desc !== false, group: true, groupTouched: false, shown: LF_PAGE };
     var _res = null, _hSheet = null, _qTimer = null;
 
     function sel(k) { return st.sel[k] || (st.sel[k] = []); }
+    function termsOf(s) { return String(s || '').toLowerCase().split(/\s+/).filter(Boolean); }
     function sortDef() { var r = spec.sorts[0]; spec.sorts.forEach(function (s) { if (s.k === st.sort) r = s; }); return r; }
     function el(sfx) { return document.getElementById(P + '-' + sfx); }
     function activeCount() {
@@ -2089,7 +2094,11 @@
         if (f.mode === 'and') { for (j = 0; j < s.length; j++) if (have.indexOf(s[j]) < 0) return false; }
         else { var ok = false; for (j = 0; j < s.length; j++) if (have.indexOf(s[j]) >= 0) { ok = true; break; } if (!ok) return false; }
       }
-      return !st.q || spec.hay(it).indexOf(st.q) >= 0;
+      if (st.qt.length) {   // 空白分詞 AND(與上方跨分頁搜尋同一種行為:「盔甲 騎士」= 兩個詞都要有)
+        var h = spec.hay(it);
+        for (var t = 0; t < st.qt.length; t++) if (h.indexOf(st.qt[t]) < 0) return false;
+      }
+      return true;
     }
     function results() {
       if (_res) return _res;
@@ -2126,7 +2135,7 @@
       if (st.sort !== spec.sorts[0].k) out.push('sort:' + st.sort);
       if (st.desc !== (sortDef().desc !== false)) out.push('dir:' + (st.desc ? 'desc' : 'asc'));
       if (!st.group) out.push('group:0');
-      if (st.q) out.push('q:' + st.q.replace(/[|:,]/g, ' '));   // 三個分隔符不能出現在值裡;搜尋字含它們沒有意義,換成空白(空白分詞本來就是 AND)
+      if (st.q.trim()) out.push('q:' + st.q.trim().replace(/[|:,]/g, ' '));   // 三個分隔符不能出現在值裡;搜尋字含它們沒有意義,換成空白(空白分詞本來就是 AND)
       return out.join('|');
     }
     // 還原:網址是外面來的,一律驗過才收 —— 未知的 facet／不存在的值／非數字／不認識的排序鍵全部丟掉,
@@ -2144,7 +2153,7 @@
           if (k === 'sort') { if (okSort[v]) nsort = v; return; }
           if (k === 'dir') { if (v === 'asc' || v === 'desc') ndesc = (v === 'desc'); return; }
           if (k === 'group') { ngroup = (v !== '0'); return; }
-          if (k === 'q') { nq = v.trim().toLowerCase().slice(0, 40); return; }
+          if (k === 'q') { nq = v.trim().slice(0, 40); return; }
           var f = byKey[k]; if (!f) return;
           if (f.type === 'min') { var num = Number(v); if (v !== '' && isFinite(num)) nnum[k] = num; return; }
           var okv = {};
@@ -2153,13 +2162,31 @@
           v.split(',').forEach(function (x) { if (okv[x] && keep.indexOf(x) < 0) keep.push(x); });
           if (keep.length) nsel[k] = keep;
         });
-        st.sel = nsel; st.num = nnum; st.q = nq;
+        st.sel = nsel; st.num = nnum; st.q = nq; st.qt = termsOf(nq);
         if (nsort) st.sort = nsort;
         st.desc = (ndesc == null) ? (sortDef().desc !== false) : ndesc;
-        if (ngroup != null) st.group = ngroup;
+        if (ngroup != null) { st.group = ngroup; st.groupTouched = true; }   // 網址明寫了分組 → 當成玩家指定過,不要被排序自動切掉
+        else if (nsort) st.group = (st.sort === spec.sorts[0].k);
         invalidate();
         return true;
       } catch (e) { return false; }
+    }
+
+    // 每顆 chip 的件數:用「除了它自己那一組以外的條件」算出來(電商 facet 的標準做法)。
+    //   全域固定數字會騙人——只選了「魔杖」時「騎士」還寫 725,點下去卻只有 5 件。
+    //   算得到 0 的 chip 會淡掉(仍可點),讓玩家一眼知道那條路是死的。
+    //   成本:每組掃一遍全部項目;只在面板開著時算。
+    function facetCounts(fs) {
+      var out = {};
+      fs.forEach(function (f) {
+        if (f.type === 'min') return;
+        var others = fs.filter(function (x) { return x.k !== f.k; }), tally = (out[f.k] = {});
+        spec.items().forEach(function (it) {
+          if (!matches(it, others)) return;
+          (it.f[f.k] || []).forEach(function (v) { tally[v] = (tally[v] || 0) + 1; });
+        });
+      });
+      return out;
     }
 
     // ---- HTML ----
@@ -2222,7 +2249,10 @@
     }
     function listInner() {
       var arr = results();
-      if (!arr.length) return '<div class="m-wiki-hint">' + esc(spec.emptyHint || '沒有符合的項目。') + '</div>';
+      if (!arr.length) {   // 提示要依「現在是什麼把結果篩空的」給復原路徑:只打了搜尋字時,膠囊列是空的、「清除全部」那顆根本不存在(踩過)
+        var hint = (typeof spec.emptyHint === 'function') ? spec.emptyHint(st, activeCount()) : esc(spec.emptyHint || '沒有符合的項目。');
+        return '<div class="m-wiki-hint">' + hint + '</div>';
+      }
       return rowsHTML(arr, 0, Math.min(arr.length, st.shown)) + moreBtnHTML(arr);
     }
     function shellHTML() {
@@ -2246,12 +2276,15 @@
         if (sb) { sb.innerHTML = sheetBtnHTML(); sb.classList.toggle('on', !!activeCount()); }
         var dr = bar.querySelector('[data-lfdir]'); if (dr) dr.textContent = st.desc ? '▼' : '▲';
         var so = bar.querySelector('[data-lfsort]'); if (so && so.value !== st.sort) so.value = st.sort;
-        var qi = el('q'); if (qi && qi.value !== st.q) qi.value = st.q;
+        // ⚠ 刻意不回寫搜尋框的值:那會把玩家正在打的字改成規範化後的樣子
       }
-      if (sheetOpen()) renderSheet();
+      if (sheetOpen()) refreshSheet();   // ⚠ 不可整塊重建面板:正在輸入的數值框會被砍掉重生(只留一位數)、面板也會捲回頂端
+      var box = spec.scrollBox && spec.scrollBox();
+      if (box) box.scrollTop = 0;        // 條件/排序變了 → 回到最符合排序的前幾筆(不然會停在新清單的中段,還會順手把整組載完)
       if (spec.onState) spec.onState(st);   // 條件變了通知呼叫端(裝備頁用來把條件同步進網址)
     }
     function appendMore() {
+      if (_qTimer) return;   // 搜尋字/數值剛改、還在防抖窗內:結果集已經換了但 DOM 還是舊的,這時追加會混出重複列
       var arr = results(); if (st.shown >= arr.length) return;
       var list = el('list'); if (!list) return;
       var from = st.shown;
@@ -2280,9 +2313,33 @@
       s.addEventListener('input', onInput);
       return s;
     }
+    // 面板局部更新:動 class 與文字,不動 DOM 結構 → 輸入焦點、捲動位置、正在打的字都留著
+    function refreshSheet() {
+      var s = sheetEl(); if (!s) return;
+      var cnt = facetCounts(spec.facets());
+      Array.prototype.forEach.call(s.querySelectorAll('[data-lfchip]'), function (c) {
+        var k = c.getAttribute('data-lfchip'), v = c.getAttribute('data-lfv'), on = sel(k).indexOf(v) >= 0;
+        c.classList.toggle('on', on);
+        var i = c.querySelector('i');
+        if (i && cnt[k]) {
+          var nv = cnt[k][v] || 0;
+          i.textContent = nv;
+          c.classList.toggle('zero', !on && nv === 0);
+        }
+      });
+      Array.prototype.forEach.call(s.querySelectorAll('[data-lfnum]'), function (inp) {
+        if (document.activeElement === inp) return;   // 正在打字的那格絕對不要動
+        var v = st.num[inp.getAttribute('data-lfnum')], nv = (v == null || v === '') ? '' : String(v);
+        if (inp.value !== nv) inp.value = nv;
+      });
+      Array.prototype.forEach.call(s.querySelectorAll('[data-lfgroup]'), function (b) {
+        b.classList.toggle('on', (b.getAttribute('data-lfgroup') === '1') === !!st.group);
+      });
+      var done = s.querySelector('.m-lf-done'); if (done) done.textContent = '看結果（' + results().length + ' 件）';
+    }
     function renderSheet() {
       var s = sheetEl(); if (!s) return;
-      var body = spec.facets().map(function (f) {
+      var body = (spec.sheetNote || '') + spec.facets().map(function (f) {
         var h = '<div class="m-lf-fname">' + esc(f.n) + '</div>' + (f.hint ? '<div class="m-lf-fhint">' + esc(f.hint) + '</div>' : '');
         if (f.type === 'min') {
           h += '<div class="m-lf-nums"><label class="m-lf-num">≥ <input type="number" inputmode="numeric" data-lfnum="' + esc(f.k) + '" value="' + esc(st.num[f.k] == null ? '' : st.num[f.k]) + '"></label></div>';
@@ -2309,6 +2366,7 @@
     function openSheet() {
       if (!ensureSheet()) return;
       renderSheet();
+      refreshSheet();   // 件數要依目前其他條件算(renderSheet 先鋪的是全域數字)
       sheetEl().classList.add('open');
       var bd = el('bd'); if (bd) bd.classList.add('open');
       if (window.AFK_NAV && !_hSheet) _hSheet = AFK_NAV.push(hideSheet);   // 手機返回鍵先關面板,不會一下就退出小百科
@@ -2338,8 +2396,9 @@
         else { var s2 = sel(pk), i2 = s2.indexOf(pv); if (i2 >= 0) s2.splice(i2, 1); }
         invalidate(); repaint(); return true;
       }
-      if ((b = t.closest('[data-lfgroup]'))) { st.group = b.getAttribute('data-lfgroup') === '1'; invalidate(); repaint(); return true; }
-      if ((b = t.closest('[data-lfreset]'))) { st.sel = {}; st.num = {}; st.group = true; invalidate(); repaint(); return true; }   // 只清面板裡的條件與分組;控制列上的搜尋字/排序看得見,不替玩家動
+      if ((b = t.closest('[data-lfgroup]'))) { st.group = b.getAttribute('data-lfgroup') === '1'; st.groupTouched = true; invalidate(); repaint(); return true; }
+      if ((b = t.closest('[data-lfreset]'))) { st.sel = {}; st.num = {}; invalidate(); repaint(); return true; }   // 只清條件;分組/排序/搜尋字看得見,不替玩家動
+      if ((b = t.closest('[data-lfqclear]'))) { st.q = ''; st.qt = []; var _qi = el('q'); if (_qi) _qi.value = ''; invalidate(); repaint(); return true; }
       if ((b = t.closest('[data-lfdir]'))) { st.desc = !st.desc; invalidate(); repaint(); return true; }
       if ((b = t.closest('[data-lfmore]'))) { appendMore(); return true; }
       if ((b = t.closest('[data-lfshare]'))) { copyShare(b); return true; }
@@ -2352,6 +2411,9 @@
       if (!s) return false;
       st.sort = s.value;
       var d = sortDef(); st.desc = d.desc !== false;   // 換排序欄位時回到該欄位的預設方向(名稱預設 A→Z、數值預設高→低)
+      // 照某個數值排序時,分組會先按部位排 → 第一屏全是「這個部位根本沒有這個數值」的列(匕首沒有防禦),
+      //   看起來像排序沒生效。玩家沒自己動過分組時就幫他關掉;動過就尊重他的選擇。
+      if (!st.groupTouched && spec.groupKey) st.group = (st.sort === spec.sorts[0].k);
       invalidate(); repaint(); return true;
     }
     function onInput(e) {
@@ -2365,7 +2427,7 @@
       }
       var q = e.target.closest ? e.target.closest('.m-lf-q') : null;
       if (!q) return false;
-      st.q = q.value.trim().toLowerCase();
+      st.q = q.value; st.qt = termsOf(q.value);
       invalidate();
       if (_qTimer) clearTimeout(_qTimer);
       _qTimer = setTimeout(function () { _qTimer = null; repaint(); }, LF_Q_DEBOUNCE);
@@ -2406,7 +2468,7 @@
       serialize: serialize, deserialize: deserialize,
       shellHTML: shellHTML,
       onClick: onClick, onChange: onChange, onInput: onInput, onScroll: onScroll,
-      sheetOpen: sheetOpen, closeSheet: closeSheet, hideSheet: hideSheet,
+      sheetOpen: sheetOpen, closeSheet: closeSheet, hideSheet: hideSheet, refreshSheet: refreshSheet,
       repaint: repaint
     };
     return inst;
@@ -2439,6 +2501,7 @@
     if (d.critFuryHaste) p.push('爆擊後 +' + (d.critFuryHaste.pct || 30) + '%（' + (d.critFuryHaste.sec || 5) + ' 秒）');
     if (d.polyAtkSpdPct) p.push('變身時 +' + d.polyAtkSpdPct + '%');
     if (d.procInstakill && d.procInstakill.hasteSec) p.push('觸發即死後 +20%（' + d.procInstakill.hasteSec + ' 秒）');
+    if (d.hasteStrike) p.push('⚠ 一般攻擊命中時會清掉你的加速狀態');   // 殺人蜂的尾刺:加速中傷害/命中 +30,但一打中就把加速弄掉(js/04)——不列出來玩家會踩到
     return p.length ? { txt: p.join('、'), always: always, pct: pct } : null;
   }
 
@@ -2455,10 +2518,15 @@
     _dropRgCache = null;
     try {
       if (typeof DB === 'undefined' || !DB.items || !DB.mobs || !DB.maps || typeof MOB_DROPS === 'undefined') return null;
+      // ⚠ 這幾張表在 js/01-drops-config.js 是**頂層 const**,不會掛到 window 上
+      //   → 用 window['XXX'] 取一律是 undefined、一張都讀不到,而且完全不報錯(只會少算怪→少算區域)。
+      //   必須用裸名 + typeof 判斷(與 afk-dex.js 的 _allTables 同一組表、同一種寫法)。
       var tables = [MOB_DROPS];
-      ['DARK_WEAPON_DROPS', 'DARK_CRYSTAL_DROPS', 'DRAGON_DROPS', 'WARRIOR_DROPS'].forEach(function (nm) {
-        if (typeof window[nm] !== 'undefined') tables.push(window[nm]);
-      });
+      if (typeof DARK_WEAPON_DROPS !== 'undefined') tables.push(DARK_WEAPON_DROPS);
+      if (typeof DARK_CRYSTAL_DROPS !== 'undefined') tables.push(DARK_CRYSTAL_DROPS);
+      if (typeof DRAGON_DROPS !== 'undefined') tables.push(DRAGON_DROPS);
+      if (typeof WARRIOR_DROPS !== 'undefined') tables.push(WARRIOR_DROPS);
+      if (typeof MEM_DROPS !== 'undefined') tables.push(MEM_DROPS);
       var nameToId = {}; for (var mid in DB.mobs) nameToId[DB.mobs[mid].n] = mid;   // 掉落表用怪「名」、DB.maps 用怪「id」→ 要橋接
       var mobToMaps = {}; for (var mapId in DB.maps) (DB.maps[mapId] || []).forEach(function (mi) { (mobToMaps[mi] = mobToMaps[mi] || []).push(mapId); });
       var regionOf = function (mp) { try { return (window.AFK_EXTRA && AFK_EXTRA.mapRegion) ? (AFK_EXTRA.mapRegion(mp) || '') : ''; } catch (e) { return ''; } };
@@ -2526,8 +2594,13 @@
   }
   // 詳情:直接重用掉落查詢的完整物品詳情(itemDetailHTML),與掉落查詢一模一樣(類型/數值/攻速/賣價/製作/商店/取得/怪物掉落),只去掉它的名稱列與互動鈕;建一次快取
   var _equipDetail = {};
-  function equipDetailHTML(id) {
+  function equipDetailHTML(id) {   // 有快取版:真的展開來看時才走這裡
     if (_equipDetail[id] !== undefined) return _equipDetail[id];
+    var html = buildEquipDetailHTML(id);
+    _equipDetail[id] = html;
+    return html;
+  }
+  function buildEquipDetailHTML(id) {   // 無快取版:搜尋索引只需要「純文字」,建完取 textContent 就該丟掉那串 HTML
     var html = '';
     try {
       if (window.AFK_DEX_API && AFK_DEX_API.itemDetailHTML) {
@@ -2540,18 +2613,21 @@
         if (window.AFK_DEX_API && AFK_DEX_API.acquireHTML) html += '<div style="margin-top:6px;">' + AFK_DEX_API.acquireHTML(id) + '</div>';
       }
     } catch (e) {}
-    _equipDetail[id] = html;
     return html;
   }
   // 列表精簡行(一眼看重點);完整數值/特效/取得方式在詳情裡,點名稱才展開
   function equipCompact(d) {
     var bits = [];
     if (d.type === 'wpn') { bits.push((typeof isTwoHandedWpn === 'function' && isTwoHandedWpn(d)) ? '雙手' : '單手'); if (d.dmgS != null) bits.push('攻擊 ' + d.dmgS + '/' + d.dmgL); if (d.hit) bits.push('命中 ' + (d.hit > 0 ? '+' : '') + d.hit); }
-    else if (d.ac != null) bits.push('防禦(AC) ' + ((-d.ac) >= 0 ? '+' : '') + (-d.ac));
+    else if (d.ac) bits.push('防禦(AC) ' + ((-d.ac) >= 0 ? '+' : '') + (-d.ac));   // 0 就不寫(遊戲印「-0」、我們印「+0」,兩種都難看)
     if (d.req && d.req !== 'all') {   // 多職業 req(如 knight,elf,dark)逐一轉中文;三個以上只寫數量——列滿五個職業名會把裝備名擠成三行(完整清單在詳情裡,也搜得到)
       var rq = String(d.req).split(',');
       bits.push(rq.length <= 2 ? (rq.map(function (x) { return EQUIP_REQ_CN[x] || x; }).join('／') + '專用') : ('限 ' + rq.length + ' 職業'));
     }
+    // 頭像(性別)限定:遊戲 checkCanEquip 的第一道閘門是 reqAvatar/strictAvatar,職業對了也可能穿不上
+    //   → 精簡行要寫出來,不然「王族專用」會讓非公主的王族白找(冰之女王三件、純潔少女的憐愛)
+    if (d.reqAvatar) bits.push('限' + d.reqAvatar);
+    if (d.strictAvatar) bits.push('僅限' + d.strictAvatar);
     return bits.join('　');
   }
 
@@ -2581,18 +2657,35 @@
   // 特性標籤:玩家會拿來找裝備的「這件有沒有 X」。值由索引時算好(純欄位判斷,不掃說明文字)。
   var EQ_TAGS = [
     ['2h', '雙手武器'], ['1h', '單手武器'], ['ranged', '遠距離'], ['ele', '武器帶屬性'],
-    ['haste', '⚡ 加攻速'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
-    ['stat', '加能力值'], ['regen', '回 HP／MP'], ['res', '元素抗性'], ['imm', '免疫／抗異常'],
+    ['haste', '⚡ 影響攻速'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
+    ['stat', '加能力值'], ['regen', '回 HP／MP'], ['maxhp', '加 HP／MP 上限'], ['res', '元素抗性'], ['imm', '免疫／抗異常'],
     ['block', '有格擋'], ['wcap', '提高負重上限']
   ];
   var EQ_RARITY = [['relic', '🏺 遺物'], ['legend', '✦ 傳說'], ['normal', '一般']];
+  // 觸發特效:遊戲的觸發式欄位命名很雜(procXxx / xxxProc / 完全不含 proc 的具名旗標)。
+  //   ⚠ 只掃 proc 前綴會漏掉一大票(反傷 thorns、吸血 vampPct、受傷施法 castOnHurt…),
+  //     所以:①名字任何位置含 proc(不分大小寫) ②下面這串具名欄位。上游新增觸發欄位要補這裡(見 /update-wiki)。
+  //   eff:'haste' 是常駐加速、不是觸發,排除(它已經有 ⚡ 標籤)。
+  var EQ_PROC_FIELDS = ['spellProc', 'grantSkills', 'onHitCastSkill', 'onHitEleDmg', 'skillDmgMult', 'onDmgHeal', 'mpOnHit',
+    'castOnHurt', 'hurtExplode', 'charmOnHit', 'thorns', 'dmgReflect', 'vampPct', 'killHealHp', 'judgmentThunder',
+    'fireballBurst', 'instakillFull', 'eyePetrify', 'blueSpecter', 'redSpecter', 'strawCurse', 'missGrazeRate',
+    'freeChill', 'stealth', 'counterEles', 'eleWpnMult', 'eleBonusDmg', 'armguard', 'vanderStunHit', 'hasteStrike'];
   function eqHasProc(d) {
-    for (var k in d) if (k.indexOf('proc') === 0) return true;
-    return !!(d.spellProc || d.grantSkills || d.eff || d.onHitCastSkill || d.onHitEleDmg || d.skillDmgMult);
+    for (var k in d) if (/proc/i.test(k)) return true;
+    for (var i = 0; i < EQ_PROC_FIELDS.length; i++) if (d[EQ_PROC_FIELDS[i]]) return true;
+    return !!(d.eff && d.eff !== 'haste');
   }
+  // 免疫/抗異常:靠欄位名判斷。⚠ 名字含 Dmg 的不是抗性而是「打免疫該狀態的目標時加傷」
+  //   (屍毒之針 immParalyzeBonusDmg),不可收進來;另外兩件遺物的欄位名不合前綴規則,逐一列出。
+  var EQ_IMM_EXTRA = ['undeadImmune', 'fireNullify'];
   function eqHasImm(d) {
-    for (var k in d) if (k.indexOf('imm') === 0 || /Resist$/.test(k)) return true;
-    return !!(d.abnormalResist || d.noBleed);
+    for (var k in d) {
+      if (k.indexOf('Dmg') >= 0) continue;
+      if (k.indexOf('imm') === 0 || /Resist$/.test(k)) return true;
+    }
+    if (d.noBleed) return true;
+    for (var i = 0; i < EQ_IMM_EXTRA.length; i++) if (d[EQ_IMM_EXTRA[i]]) return true;
+    return false;
   }
 
   // 索引:每件裝備算一次「篩選要用的值」。900+ 件 × 8 職業的可裝備判定也在這裡一次算完,
@@ -2615,9 +2708,10 @@
       if (hi) tags.push('haste');
       if (eqHasProc(d)) tags.push('proc');
       if (d.set) tags.push('set');
-      if (!d.noEnhance) tags.push('enh');
-      if (d.str || d.dex || d.con || d.int || d.wis || d.cha) tags.push('stat');
-      if (d.hpR || d.mpR || d.mhp || d.mmp) tags.push('regen');
+      if (!d.noEnhance && !d.isArrow) tags.push('enh');   // 箭矢一律沒有強化鈕(js/10 的條件含 !d.isArrow),雖然它們沒標 noEnhance
+      if (d.str || d.dex || d.con || d.int || d.wis || d.cha || d.highestAttrPlus || d.polyAllStats || d.swordStr) tags.push('stat');   // 後三個是遺物的條件式加值(最高屬性/變身時/持劍時),沒有基礎六維欄位
+      if (d.hpR || d.mpR) tags.push('regen');       // 「回」= 自然恢復量
+      if (d.mhp || d.mmp) tags.push('maxhp');       // 上限不是恢復,分開一個標籤(混在一起會有 79 件其實不回血的被算進「回 HP／MP」)
       if (d.resFire || d.resWater || d.resEarth || d.resWind || d.resNone) tags.push('res');
       if (eqHasImm(d)) tags.push('imm');
       if (d.block) tags.push('block');
@@ -2629,7 +2723,9 @@
         f: { slot: [gk], cls: clsList, rar: [rar], tag: tags, set: d.set ? [d.set] : [], region: regions },
         v: {
           dmgS: (d.dmgS != null ? d.dmgS : null), dmgL: (d.dmgL != null ? d.dmgL : null),
-          ac: (d.ac != null ? -d.ac : null),        // 照遊戲顯示:數字越大越強(AC 本身越負越好)
+          // ⚠ 排序/篩選用「裝備上的 d.ac 原值」:遊戲是 d.ac -= ed.ac(js/02),所以 d.ac 是正值、越大防禦越好。
+          //   卡片上顯示的是 −d.ac(遊戲自己的寫法「防禦(AC) −20」),兩者刻意不同 → 篩選那欄的名稱要寫「防禦力」而不是 AC。
+          ac: (d.ac != null ? d.ac : null),
           hit: (d.hit != null ? d.hit : null),
           block: (d.block || null), p: (d.p || 0),
           spd: (hi ? hi.pct : null)
@@ -2654,7 +2750,7 @@
     var h = _eqHay[it.id];
     if (h === undefined) {
       var tmp = document.createElement('div');
-      tmp.innerHTML = equipDetailHTML(it.id);
+      tmp.innerHTML = buildEquipDetailHTML(it.id);   // 刻意用無快取版:1000 份詳情 HTML 留著要 ≈1.7MB,而這裡只要純文字
       var reqCn = (it.d.req && it.d.req !== 'all') ? String(it.d.req).split(',').map(function (x) { return EQUIP_REQ_CN[x] || x; }).join(' ') : '';
       h = _eqHay[it.id] = (it.name + ' ' + equipCompact(it.d) + ' ' + reqCn + ' ' + (tmp.textContent || '')).toLowerCase();
     }
@@ -2683,12 +2779,11 @@
   function eqHelpCards() {
     if (_eqHelpCache) return _eqHelpCache;
     var tips = [
-      '選<b>部位</b>、<b>職業</b>、<b>稀有度</b>、<b>特性</b>等條件篩選（可多選）；上面的框只在<b>這一頁</b>裡搜（含展開後的數值與取得方式），最上面那個搜尋框才是<b>跨全部分頁</b>搜。',
-      '<b>點任一件展開完整數值與取得方式</b>；排序可切「賣價／攻擊／防禦／命中／攻速／名稱」，▼▲ 切高低。',
+      '🔍 <b>兩個搜尋框不一樣</b>：這一頁的只篩這頁的裝備（連展開後的數值與效果一起找），最上面那個是<b>跨全部分頁</b>搜。',
       '💍 <b>飾品欄會隨等級解鎖</b>：戒指一開始 2 個，<b>Lv76 開第 3 個、Lv81 開第 4 個</b>；耳環一開始 1 個，<b>Lv59 開第 2 個</b>。',
       '🔒 <b>把裝備穿上身會自動取消它的「廢品」標記</b>（穿上＝你要留著），不會再被自動賣出賣掉。',
       '🗺️ <b>掉落區域</b>只算「怪物會掉」的：商店／製作／兌換取得的裝備沒有區域，選了區域就不會列出來。',
-      '🔗 <b>複製連結</b>：把目前這組篩選＋排序做成一條網址（貼給別人打開就是同一份結果）。'
+      '🔗 <b>複製連結</b>：把目前這組條件做成網址，貼給別人打開就是同一份結果。'
     ];
     var relic = [
       '<b>每隻怪物各有一件專屬遺物</b>（名稱藍字、說明帶【遺物】），擊殺時 <b>0.0001%</b>（百萬分之一）機率掉落；機率會吃掉落倍率：席琳的世界 <b>×3</b>、瘋狂的席琳世界 <b>×5</b>、恩賜怪 <b>×10</b>。想查哪隻怪掉哪件，到「掉落查詢」搜怪物名。',
@@ -2703,6 +2798,7 @@
       '其他來源都是<b>相乘疊加</b>：勇敢藥水 +33%、精靈餅乾 +15%、行走加速 +15%、切割 +20%、裝備上的攻速%、各職業精通。',
       '⚠️ <b>「攻速 −N%」是變慢</b>（鎧甲守衛的笨重巨劍 −50% ＝攻擊間隔加倍），別只看傷害就穿。',
       '🌑 <b>真‧冥皇套裝湊滿 5 件</b>另有攻速 <b>+30%</b>（與加速、勇敢藥水相乘疊加）——這是套裝效果，單件上看不到。',
+      '💃 <b>席琳「麗人」套裝湊滿 5 件</b>：<b>持近距離武器時攻速 +20%</b>（弓／遠距離武器不吃）——同樣是套裝效果，單件上看不到。',
       '條件觸發的（重擊時／爆擊後／觸發即死後／變身時／持近戰武器時）<b>只在那個狀態下生效</b>，用「⚡ 加攻速」篩出來後，右側摘要都寫明條件了。',
       '🏅 <b>精通給的攻速不算裝備</b>，但同樣相乘疊加：劍術／王族劍術 <b>+50%</b>、巨斧／雙斧／奇古獸／魔劍 <b>+30%</b>、切割精通<b>持切割武器常駐 +50%</b>（詳見「職業專精」分頁）。',
       '⚠️ <b>攻速與施法速度是兩回事</b>：堆攻速<b>不會</b>讓技能放得更快（放技能的快慢只看職業或變身本身的施法速度）。',
@@ -2714,7 +2810,7 @@
       return { t: t, html: html, text: t + ' ' + (tmp.textContent || '') };
     };
     _eqHelpCache = [
-      mk('📖 這一頁怎麼用／裝備小知識', tips),
+      mk('📖 裝備小知識', tips),
       mk('🏺 遺物（各怪專屬的極稀有裝備）', relic),
       mk('⚡ 攻速怎麼疊（挑裝備前先看）', haste)
     ];
@@ -2784,13 +2880,13 @@
         { label: '💍 飾品', opts: pick(function (g) { return accKeys[g.k]; }) },
         { label: '✨ 特殊', opts: pick(function (g) { return !wpnKeys[g.k] && !armKeys[g.k] && !accKeys[g.k]; }) }
       ] },
-      { k: 'cls', n: '職業（誰穿得上）', mode: 'or', hint: '多選＝任一職業穿得上就列出', groups: [{ label: '', opts: clsOpts }] },
+      { k: 'cls', n: '職業（誰穿得上）', mode: 'or', groups: [{ label: '', opts: clsOpts }] },
       { k: 'rar', n: '稀有度', mode: 'or', groups: [{ label: '', opts: EQ_RARITY.map(function (r) { return [r[0], r[1], eqCount('rar', r[0])]; }) }] },
-      { k: 'tag', n: '特性', mode: 'and', hint: '多選＝要「全部都符合」', groups: [{ label: '', opts: EQ_TAGS.map(function (t) { return [t[0], t[1], eqCount('tag', t[0])]; }).filter(function (o) { return o[2] > 0; }) }] },
+      { k: 'tag', n: '特性', mode: 'and', hint: '這一組多選＝要全部符合', groups: [{ label: '', opts: EQ_TAGS.map(function (t) { return [t[0], t[1], eqCount('tag', t[0])]; }).filter(function (o) { return o[2] > 0; }) }] },
       { k: 'set', n: '套裝', mode: 'or', groups: [{ label: '', opts: Object.keys(_eqCnt.set).sort(function (a, b) { return _eqCnt.set[b] - _eqCnt.set[a]; }).map(function (s) { return [s, eqSetName(s), _eqCnt.set[s]]; }) }] },
       { k: 'dmgS', n: '攻擊（小型）', type: 'min' },
       { k: 'dmgL', n: '攻擊（大型）', type: 'min' },
-      { k: 'ac', n: '防禦（AC）', type: 'min' },
+      { k: 'ac', n: '防禦力', type: 'min', hint: '數字越大防禦越好（裝備上寫的是 −N）' },
       { k: 'hit', n: '命中', type: 'min' }
     ];
     if (ridx && ridx.regions.length) facets.push({ k: 'region', n: '掉落區域（怪物掉落）', mode: 'or', groups: [{ label: '', opts: ridx.regions.map(function (r) { return [r, r, eqCount('region', r)]; }) }] });
@@ -2803,14 +2899,21 @@
       EQ_LF = makeListFilter({
         id: 'm-eq',
         qPlaceholder: '在裝備中搜尋（名稱／效果）…',
-        emptyHint: '沒有符合的裝備——試著少選幾個條件，或用「清除全部」。',
+        emptyHint: function (s, active) {   // 依「是什麼把結果篩空的」給按得到的復原鈕
+          var b = [];
+          if (s.q.trim()) b.push('<button type="button" class="m-lf-inline" data-lfqclear="1">清空搜尋「' + esc(s.q.trim()) + '」</button>');
+          if (active) b.push('<button type="button" class="m-lf-inline" data-lfreset="1">清除全部條件</button>');
+          return '沒有符合的裝備。' + (b.length ? '<div class="m-lf-fixrow">' + b.join('') + '</div>' : '');
+        },
+        scrollBox: function () { return document.getElementById('m-wiki-body'); },
+        sheetNote: '<div class="m-lf-fhint" style="margin:6px 0 0;">同一組裡多選＝<b>任一符合</b>；只有「特性」那組是<b>全部符合</b>。</div>',
         items: eqIndex,
         facets: eqFacets,
         hay: eqHay,
         // 說明收成一張摺疊卡:第一屏要留給裝備本身(三張各自一張會吃掉手機 300px)。
         //   內容一字不減,只是收起來;統一搜尋仍逐段命中(eqSearchBlocks 掃的是 eqHelpCards 那三段)。
         help: function () {
-          return [{ t: '📖 說明：這頁怎麼用・遺物・攻速怎麼疊', html: eqHelpCards().map(function (h) {
+          return [{ t: '📖 說明：裝備小知識・遺物・攻速怎麼疊', html: eqHelpCards().map(function (h) {
             return '<div class="m-eq-helpsec">' + esc(h.t) + '</div>' + h.html;
           }).join('') }];
         },
@@ -2818,7 +2921,7 @@
           { k: 'p', n: '賣價', val: function (it) { return it.v.p; } },
           { k: 'dmgS', n: '攻擊（小）', val: function (it) { return it.v.dmgS; } },
           { k: 'dmgL', n: '攻擊（大）', val: function (it) { return it.v.dmgL; } },
-          { k: 'ac', n: '防禦（AC）', val: function (it) { return it.v.ac; } },
+          { k: 'ac', n: '防禦力', val: function (it) { return it.v.ac; } },
           { k: 'hit', n: '命中', val: function (it) { return it.v.hit; } },
           { k: 'spd', n: '攻速%', val: function (it) { return it.v.spd; } },
           { k: 'name', n: '名稱', text: true, desc: false }
@@ -2834,7 +2937,10 @@
         row: eqRowHTML
       });
     }
-    if (_eqUrlPending != null) { EQ_LF.deserialize(_eqUrlPending); _eqUrlPending = null; }   // 套用網址帶進來的條件
+    if (_eqUrlPending != null) {   // 套用網址帶進來的條件
+      EQ_LF.deserialize(_eqUrlPending); _eqUrlPending = null;
+      setTimeout(syncUrl, 0);   // render() 早於這裡跑過 syncUrl(那時引擎還沒建、eqf 會被抹掉)→ 補寫一次,不然按 F5 條件就沒了
+    }
     eqWarmHay();   // 頁內搜尋要用的詳情文字索引:趁閒置先建好,別等玩家打第一個字才卡一下
     return EQ_LF.shellHTML();
   }
@@ -2844,15 +2950,15 @@
     var out = [];
     var hit = function (t) { for (var i = 0; i < terms.length; i++) if (t.indexOf(terms[i]) < 0) return false; return true; };
     try {
-      eqHelpCards().forEach(function (h) {
-        if (max && out.length >= max) return;
-        if (hit(h.text.toLowerCase())) out.push({ title: h.t, html: '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(h.t) + '</div>' + h.html + '</div>' });
+      eqHelpCards().forEach(function (h) {   // isHelp:說明卡不佔裝備的額度、也不算進「裝備 N」那個數字
+        if (hit(h.text.toLowerCase())) out.push({ title: h.t, isHelp: 1, html: '<div class="m-wiki-card"><div class="m-wiki-name">' + esc(h.t) + '</div>' + h.html + '</div>' });
       });
-      var idx = eqIndex();
+      var idx = eqIndex(), items = 0;
       for (var i = 0; i < idx.length; i++) {
-        if (max && out.length >= max) break;
+        if (max && items >= max) break;
         if (!hit(eqHay(idx[i]))) continue;
         out.push({ title: idx[i].name, html: eqRowHTML(idx[i], { open: true }) });   // 搜尋結果直接展開:命中的字常在詳情裡,收起來看不到
+        items++;
       }
     } catch (e) {}
     return out;
@@ -2877,8 +2983,7 @@
     }
     // 'gold' 是貨幣(存在 player.gold,不在 DB.items),配方材料用到時要自己給中文名
     var itemName = function (id) { return id === 'gold' ? '金幣' : ((DB.items[id] && DB.items[id].n) || id); };
-    var note = '<div class="m-wiki-note">各製作 NPC 能做的裝備／道具與所需材料。想知道某件東西在哪做，直接用上面搜尋打它的名字。'
-      + '<br>⚠️ <b>背包裡「鎖定（🔒）」的東西一律不算材料</b>——不會被列入數量、也不會被消耗。材料明明夠卻做不出來時先檢查有沒有上鎖（介面會提示「另有 N 個已上鎖不計」）。這條規則同樣適用於<b>試煉交付、卡片合成、娃娃兌換</b>。</div>';
+    var note = '<div class="m-wiki-note">⚠️ <b>背包裡「鎖定（🔒）」的東西一律不算材料</b>——不會被列入數量、也不會被消耗。材料明明夠卻做不出來時先檢查有沒有上鎖（介面會提示「另有 N 個已上鎖不計」）。這條規則同樣適用於<b>試煉交付、卡片合成、娃娃兌換</b>。</div>';
     var html = note;
     for (var npcId in CRAFT_RECIPES) {
       var recs = CRAFT_RECIPES[npcId]; if (!recs || !recs.length) continue;
@@ -4794,6 +4899,9 @@
       '.m-lf-chip.on{background:#0e7490;border-color:#22d3ee;color:#fff;font-weight:bold;}',
       '.m-lf-chip i{font-style:normal;color:#64748b;font-size:11px;margin-left:4px;}',
       '.m-lf-chip.on i{color:#a5f3fc;}',
+      '.m-lf-chip.zero{opacity:.42;}',   /* 這顆點下去會 0 件 → 淡掉但仍可點 */
+      '.m-lf-inline{padding:7px 12px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;font-family:inherit;}',
+      '.m-lf-fixrow{margin-top:9px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;}',
       '.m-lf-nums{display:flex;flex-wrap:wrap;gap:8px;}',
       '.m-lf-num{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#cbd5e1;}',
       '.m-lf-num input{width:74px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:7px;padding:6px 8px;font-size:16px;font-family:inherit;}',
