@@ -200,6 +200,47 @@ const untranslatedMaps = await page.evaluate(() => {
   return out;
 });
 
+// 🗡️ 裝備頁覆蓋檢查:三件事,都是「畫面正常、只是查不到」的靜默失效。
+//   ① 無條件件數 == DB.items 的裝備數 → 沒有裝備在索引階段被漏掉。
+//   ② 部位按鈕的件數加總 == 總件數 → 上游新增 slot 時,那個部位在篩選面板裡**沒有按鈕**(索引有、篩不到),
+//      而清單只畫前 40 列,不捲到底根本看不到它 —— 加總對不上是唯一會早期爆出來的訊號。
+//   ③ 部位按鈕的名稱不可含英文字母 → 沒補進 EQUIP_GROUPS 的 slot 會直接把原始 key 印在畫面上。
+//   (歷史:魔法娃娃 50 件 + 地龍之魔眼 1 件曾因部位對不上分組桶而整組消失。)
+const equipPageProblems = await page.evaluate(async () => {
+  const bad = [];
+  try {
+    if (!window.AFK_WIKI_API || typeof DB === 'undefined' || !DB.items) return bad;
+    AFK_WIKI_API.goto({ tab: 'equip' });
+    await new Promise((r) => setTimeout(r, 800));
+    const cntEl = document.getElementById('m-eq-cnt');
+    if (!cntEl) { bad.push('裝備頁的控制列不見了(找不到 #m-eq-cnt)→ 篩選器沒渲染出來'); return bad; }
+    const shown = parseInt(String(cntEl.textContent).replace(/[^0-9]/g, ''), 10);
+    let total = 0;
+    for (const id in DB.items) {
+      const d = DB.items[id];
+      if (d && d.n && (d.type === 'wpn' || d.type === 'arm' || d.type === 'acc')) total++;
+    }
+    if (shown !== total) bad.push(`裝備頁無條件時只列 ${shown} 件,DB.items 裡有 ${total} 件裝備 → 有裝備在索引階段被漏掉`);
+    const btn = document.querySelector('[data-lfsheet]');
+    if (!btn) { bad.push('裝備頁找不到「篩選」按鈕'); return bad; }
+    btn.click();
+    await new Promise((r) => setTimeout(r, 200));
+    const chips = [...document.querySelectorAll('#m-eq-sheet [data-lfchip="slot"]')];
+    if (!chips.length) { bad.push('篩選面板裡沒有任何「部位」按鈕'); return bad; }
+    let sum = 0;
+    for (const c of chips) {
+      const i = c.querySelector('i');
+      sum += i ? (parseInt(i.textContent.replace(/[^0-9]/g, ''), 10) || 0) : 0;
+      const label = c.textContent.replace(/[0-9]/g, '');
+      if (/[A-Za-z]/.test(label)) bad.push(`部位按鈕「${label.trim()}」露出英文/原始 key → 該 slot 沒補進 EQUIP_GROUPS`);
+    }
+    if (sum !== total) bad.push(`部位按鈕件數加總 ${sum} ≠ 總件數 ${total} → 有部位在篩選面板裡沒有按鈕(篩不到那批裝備)`);
+    const body = document.getElementById('m-wiki-body');
+    if (body && body.scrollWidth > body.clientWidth) bad.push(`裝備頁有橫向捲動(scrollWidth ${body.scrollWidth} > clientWidth ${body.clientWidth})`);
+  } catch (e) { bad.push('裝備頁檢查本身出錯:' + e.message); }
+  return bad;
+});
+
 await browser.close();
 server.close();
 
@@ -217,6 +258,13 @@ if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
+  process.exit(1);
+}
+
+if (equipPageProblems.length) {
+  console.error('冒煙測試失敗:小百科「裝備」分頁的覆蓋/版面有問題:');
+  for (const p of equipPageProblems) console.error('  ' + p);
+  console.error('  判準:部位對不上分組桶的裝備要落進「❓ 其他部位」,不可整組消失(見 afk-wiki.js 的 equipGroupKey / EQUIP_GROUPS)。');
   process.exit(1);
 }
 
