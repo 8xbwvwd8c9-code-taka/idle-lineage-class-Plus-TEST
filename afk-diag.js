@@ -135,6 +135,16 @@
   //   名稱/職業/等級重用遊戲自己的 slotSummary()(職業已翻中文、也處理得了舊明文存檔),
   //   只有它沒提供的「背包/傭兵件數」才自己讀。格數走 SAVE_SLOT_MAX,別自己寫死。
   function slotMax() { return (typeof SAVE_SLOT_MAX !== 'undefined') ? SAVE_SLOT_MAX : 16; }
+  // 好幾個欄位都要讀同一份存檔,而解壓一格可能上百 KB × 16 格(手機上很有感)→ 解一次共用。
+  //   collect() 開頭清空,重開診斷一定拿到當下的值。
+  var _saveCache = {};
+  function savePlayer(s) {
+    if (!(s in _saveCache)) {
+      try { _saveCache[s] = JSON.parse(_saveUnwrap(_lzGet('lineage_idle_save_' + s)).payload).p; }   // 存檔結構 {v,p,ms,ticks},玩家在 p
+      catch (e) { _saveCache[s] = null; }
+    }
+    return _saveCache[s];
+  }
   function charSummary() {
     var out = [];
     for (var s = 1; s <= slotMax(); s++) {
@@ -142,10 +152,8 @@
         var sum = (typeof slotSummary === 'function') ? slotSummary(s) : null;
         if (!sum) continue;
         var inv = '?', allies = '?';
-        try {
-          var d = JSON.parse(_saveUnwrap(_lzGet('lineage_idle_save_' + s)).payload).p;   // 存檔結構 {v,p,ms,ticks},玩家在 p
-          inv = (d.inv || []).length; allies = (d.allies || []).length;
-        } catch (e) {}
+        var d = savePlayer(s);
+        if (d) { inv = (d.inv || []).length; allies = (d.allies || []).length; }
         out.push('第' + s + '格: ' + (sum.name || '(未命名)') + ' / ' + sum.cls + ' Lv' + sum.lv +
           ' / 背包 ' + inv + ' 件 / 傭兵 ' + allies +
           (sum.classic ? ' / 經典' : '') + (sum.traditional ? ' / 傳統' : ''));
@@ -182,6 +190,44 @@
       out.push('第' + s + '格: ' + name + '(' + (mins >= 60 ? Math.floor(mins / 60) + ' 小時前' : mins + ' 分鐘前') + ')');
     }
     return out.length ? out.join('\n          ') : '(無)';
+  }
+
+  // 「同樣掛一晚,有的跑 30 分鐘、有的 2 分鐘」這類回報的第一現場:結算實際花多久、其中多少是
+  //   逐格完整模擬(慢)、多少被快轉掉(快),以及這次為什麼是這樣。資料來自外掛自己的
+  //   afk_hist_<格>(純 JSON,不是玩家存檔),只讀不寫;每格只印最近一筆,更早的請開「📜 離線掛機紀錄」。
+  function fmtDur(ms) {
+    var m = Math.floor(ms / 60000);
+    if (m < 1) return Math.max(0, Math.round(ms / 1000)) + ' 秒';
+    if (m < 60) return m + ' 分';
+    return Math.floor(m / 60) + ' 時' + (m % 60 ? ' ' + (m % 60) + ' 分' : '');
+  }
+  // 結算統計快取(存檔裡的 _offStats):命中就跳過取樣與 BOSS 首打 → 同一隻角色快慢差最多的一項
+  function offStatsNote(s) {
+    var p = savePlayer(s), c = p && p._offStats;
+    if (!c || !c.savedAt) return '統計快取 無';
+    return '統計快取 有(' + fmtDur(Math.max(0, Date.now() - c.savedAt)) + '前 · BOSS ' + Object.keys(c.boss || {}).length + ' 種)';
+  }
+  function offlineSettle() {
+    var out = [];
+    for (var s = 1; s <= slotMax(); s++) {
+      var arr = null;
+      try { arr = JSON.parse(localStorage.getItem('afk_hist_' + s) || 'null'); } catch (e) {}
+      if (!Array.isArray(arr) || !arr[0]) continue;
+      var r = arr[0];   // recordHistory 是 unshift,[0] 就是最近一筆
+      var line = '第' + s + '格: ' + (r.map || '?') + ' / 掛 ' + fmtDur(r.realMs || 0);
+      if (r.settleMs != null) {
+        var simMs = (r.simTicks || 0) * 100;                                // 一拍=100ms 遊戲時間
+        var fastMs = Math.max(0, (r.settledMs || 0) - simMs);
+        line += ' → 結算耗時 ' + (r.settleMs / 1000).toFixed(1) + ' 秒(完整模擬 ' + fmtDur(simMs) + ' · 快轉 ' + fmtDur(fastMs) + ')';
+      }
+      if (r.died) line += ' ⚠️陣亡';
+      if (r.capped) line += ' ·已達24h上限';
+      var why = '';
+      try { if (r.fastWhy && window.__afk && __afk.fastWhyText) why = __afk.fastWhyText(r.fastWhy); } catch (e) {}
+      line += '\n              └ ' + (why || '(這筆是舊版紀錄,沒有快轉原因)') + ' / ' + offStatsNote(s);
+      out.push(line);
+    }
+    return out.length ? '\n          ' + out.join('\n          ') : '(還沒有任何離線結算紀錄)';
   }
 
   // ── 存檔健康:玩家回報「創血盟失敗 / 寵物不給放生 / 進度不見」時的第一現場 ──────────
@@ -307,6 +353,7 @@
 
   function collect() {
     var out = {};
+    _saveCache = {};   // 每次重開診斷都重讀存檔,不吃上一次的舊值
     var _jobs = [];
     // 診斷的意義就是「出事時還讀得到」——任一欄位拋錯都不可以把整份帶走(實機踩過:
     //   cache.keys() 拋 Operation too large,整個診斷只印一行「診斷失敗」,其他全沒了)。
@@ -348,6 +395,7 @@
     put('寵物歸屬', petOwnership);
     put('倉庫', warehouseSummary);
     put('離線錨點', offlineAnchors);
+    put('離線結算', offlineSettle);
 
     var ls = localStorageStats();
     if (!ls) out.localStorage = '❌ 讀取失敗(可能被瀏覽器擋掉)';

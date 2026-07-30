@@ -156,7 +156,10 @@
     if (fState.perf && r.settleMs != null) {
       var _simMs = (r.simTicks || 0) * 100;                          // 每拍＝100ms 遊戲時間
       var _fastMs = Math.max(0, (r.settledMs || 0) - _simMs);        // 其餘＝快轉掉的遊戲時間
-      html += '<div class="m-hist-perf">⏱ 結算耗時 ' + (r.settleMs / 1000).toFixed(1) + ' 秒（完整模擬 ' + fmtDur(_simMs) + ' · 快轉 ' + fmtDur(_fastMs) + '）</div>';
+      var _why = '';
+      try { if (r.fastWhy && window.__afk && __afk.fastWhyText) _why = __afk.fastWhyText(r.fastWhy); } catch (e) {}
+      html += '<div class="m-hist-perf">⏱ 結算耗時 ' + (r.settleMs / 1000).toFixed(1) + ' 秒（完整模擬 ' + fmtDur(_simMs) + ' · 快轉 ' + fmtDur(_fastMs) + '）'
+        + (_why ? '<br>└ ' + esc(_why) : '') + '</div>';
     }
     // 道具(依品階上色)
     if (fState.items && r.items && r.items.length) {

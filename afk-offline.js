@@ -317,6 +317,26 @@
   var HIST_PREFIX = 'afk_hist_';
   var HIST_MAX    = 5;                          // 每個角色最多保留最近幾筆(同一個 key 一個陣列)
   function histKey() { return HIST_PREFIX + currentSlot; }
+  // 📝 快轉狀態代碼 → 給玩家看的中文。紀錄裡只存代碼,顯示端(離線掛機紀錄／診斷檔)才轉字——
+  //   舊紀錄沒有這欄、或代碼是新版才有的,一律回空字串不顯示,不會露出生代碼。
+  var FAST_WHY_TEXT = {
+    cache:          '快轉：沿用上次量到的統計，連取樣都免了',
+    sampled:        '快轉：取樣通過後啟用',
+    sampling:       '完整模擬：取樣還沒通過就結算完了',
+    'few-kills':    '完整模擬：取樣期間殺不到 8 隻，樣本不可信',
+    'hp-low':       '完整模擬：取樣期間血量掉太低，為了保住「撞死即停」不快轉',
+    climb:          '完整模擬：攀登不適用快轉',
+    king:           '完整模擬：軍王之室不適用快轉',
+    'obl-travel':   '完整模擬：遺忘之島途中不適用快轉',
+    short:          '完整模擬：離線太短，本來就不需要快轉',
+    'short-remain': '完整模擬：取樣後剩餘時間太短，不值得切',
+    levelup:        '重新取樣：離線期間升級，戰力變了要重量殺速',
+    dry:            '重新取樣：消耗品用完又補不到貨，戰局質變',
+    'king-left':    '快轉收尾：鑰匙用完被傳回村莊',
+    error:          '完整模擬：快轉途中發生異常，安全起見退回',
+    debug:          '完整模擬：除錯強制'
+  };
+  function fastWhyText(code) { return FAST_WHY_TEXT[code] || ''; }
   // 背包前後差 → [{n,cnt,c}](c=品階顏色 class,同摘要走 itemColorClass);依數量多→少排序(顯示用)
   function invDeltaList(before, after) {
     var ids = {}, out = [];
@@ -606,8 +626,18 @@
     //   (事件迴圈仍保留 _kbRespawnAt 時間軸與 kingLeftRoom 偵測——若日後重啟,把下行 !isKing 拿掉即可。)
     var fastEligible = !isClimb && !isKing && (!isObl || (preObl && preObl.phase === 'island'))
       && totalTicks >= (FAST_SAMPLE_TICKS + FAST_MIN_REMAIN) && !_forceNoFast;
-    _forceNoFast = false;   // 🧪 一次性:用過即歸零,不影響之後的真實離線結算
     var fastMode = false, fastOff = false;   // fastOff = 本次補跑永久退出快速段
+    // 📝 快轉狀態代碼(寫進離線紀錄的 fastWhy,供離線掛機紀錄／診斷檔顯示為什麼慢)。
+    //   語意=「本次結算最後一次決定快轉狀態的原因」:不合格的當下就定案;合格的先記 sampling,
+    //   之後由快取命中 / evalSample / 各退出分支改寫。順序不可調——不合格的原因要由「最specific」往下判,
+    //   遺忘之島本島但時間太短該記 short 而非 obl-travel。
+    var fastWhy = fastEligible ? 'sampling'
+      : _forceNoFast ? 'debug'
+      : isClimb ? 'climb'
+      : isKing ? 'king'
+      : (isObl && !(preObl && preObl.phase === 'island')) ? 'obl-travel'
+      : 'short';
+    _forceNoFast = false;   // 🧪 一次性:用過即歸零,不影響之後的真實離線結算
     var _dryHit = false;        // 消耗品斷貨旗標:fastAdvance 補不上貨時設起,主迴圈據此走「重取樣」而非永久退出
     var hpFloorFixed = false;   // 斷貨(戰局質變)後改用固定 70% 門檻——「撐過 20 分鐘=打得過」的信任基礎已失效,不再隨時間放寬
     // 血量安全門檻(取樣 + BOSS safe 共用):隨真模擬存活拍數 done 從 70% 線性降到 0(20 分鐘歸 0)。
@@ -675,10 +705,10 @@
       // 血量門檻隨真模擬存活拍數線性下降(hpFloorNow,70% → 20 分鐘歸 0):穩定低血但打不死的角色(吸血流卡低檔)
       //   撐越久門檻越低,最晚 20 分鐘門檻歸 0 必過 → 不會整晚全模擬。done 在「尚未切快速」期間就等於真模擬存活拍數;
       //   角色若真的會被磨死,取樣期間就死了、外層撞死即停,根本走不到這裡評估。
-      if (sampleMinHp < hpFloorNow()) { sampleGrew = false; beginSample(done); sampleEnd = done + FAST_SAMPLE_TICKS; return; }   // 沒過→再真模擬一段(那時門檻更低),直到過關或時間耗盡
+      if (sampleMinHp < hpFloorNow()) { fastWhy = 'hp-low'; sampleGrew = false; beginSample(done); sampleEnd = done + FAST_SAMPLE_TICKS; return; }   // 沒過→再真模擬一段(那時門檻更低),直到過關或時間耗盡
       if (kills < FAST_GOOD_KILLS && !sampleGrew) { sampleGrew = true; sampleEnd = done + FAST_SAMPLE_TICKS * 2; return; }   // 殺數不足以收斂平均殺速 → 延長取樣(再 +10 分鐘)
       if (kills < FAST_MIN_KILLS) {
-        fastOff = true; console.info('[AFK] 快速結算不啟用:取樣擊殺數太少(' + kills + '),樣本不可信,全程真模擬。'); return;
+        fastOff = true; fastWhy = 'few-kills'; console.info('[AFK] 快速結算不啟用:取樣擊殺數太少(' + kills + '),樣本不可信,全程真模擬。'); return;
       }
       var winTicks = Math.max(1, done - sampleFrom);
       // ⚡ 事件驅動:只取「純戰鬥」拍數(場上有怪的拍),出怪等待交給真實排程推進——
@@ -697,7 +727,7 @@
         var used = (sampleCnt0[k] || 0) + ((gainTally[k] || 0) - (sampleGain0[k] || 0)) - (cnt1[k] || 0);
         if (used > 0) consumePerTick[k] = used / winTicks;   // 每「拍」速率:消耗跟時間走(BOSS 一場耗時長、耗得多,按殺算會低估)
       }
-      fastMode = true;
+      fastMode = true; fastWhy = 'sampled';
       saveOffStats();   // 💾 新量到的殺速/消耗率 → 更新統計快取
       console.info('[AFK] ⚡ 快速結算啟動(事件驅動):每事件 ' + svcPerEvent.toFixed(1) + ' 拍、同時死 ' + batchPerEvent.toFixed(2) + ' 隻,每拍消耗 ' + JSON.stringify(consumePerTick));
     }
@@ -920,7 +950,7 @@
       consumePerTick = {}; for (var _ck in player._offStats.consume) consumePerTick[_ck] = player._offStats.consume[_ck];
       consumeAcc = {};
       bossStats = player._offStats.boss || {};
-      fastMode = true;
+      fastMode = true; fastWhy = 'cache';
       console.info('[AFK] 💾 統計快取命中:跳過取樣與 BOSS 首打,直接快速結算(每事件 ' + svcPerEvent.toFixed(1) + ' 拍×' + batchPerEvent.toFixed(2) + ' 隻,BOSS 快取 ' + Object.keys(bossStats).length + ' 種)。');
     }
     if (fastEligible && !fastMode) beginSample(0);
@@ -970,7 +1000,8 @@
         //   settleMs＝結算花的實際秒數；simTicks＝逐格真模擬的格數；fastEvents＝快速結算的事件數。
         settleMs: Math.max(0, Math.round(performance.now() - _perfT0)),
         simTicks: _realSimTicks,
-        fastEvents: _fastEvents
+        fastEvents: _fastEvents,
+        fastWhy: fastWhy                    // 為什麼快／為什麼慢(代碼;中文對照見 FAST_WHY_TEXT)
       };
     }
     // 切到背景 / 關掉 App 前主動存一次:iOS 在背景更容易被系統直接丟掉整個分頁,
@@ -1003,7 +1034,7 @@
           if (fastMode) {
             // ⚔ 軍王之室:鑰匙用完 → 核心 kbVictoryTeleport 已把人傳回村(mapState 變了)→ 剩餘時間在村莊,收快速段
             if (isKing && !kingLeftRoom && mapState && mapState.current !== huntMap) {
-              kingLeftRoom = true; fastMode = false; fastOff = true;
+              kingLeftRoom = true; fastMode = false; fastOff = true; fastWhy = 'king-left';
               console.info('[AFK] ⚔ 軍王之室:鑰匙用完被傳回村,剩餘離線時間無戰鬥收益。');
               continue;
             }
@@ -1038,7 +1069,7 @@
               }
               if (fastBossUid == null && player.lv !== lastLv) {   // BOSS 經驗大,常直接升級 → 重新取樣殺速
                 lastLv = player.lv;
-                fastMode = false; sampleGrew = false; sampleEnd = done + FAST_RESAMPLE_TICKS;
+                fastMode = false; fastWhy = 'levelup'; sampleGrew = false; sampleEnd = done + FAST_RESAMPLE_TICKS;
                 beginSample(done);
               }
               continue;
@@ -1050,19 +1081,19 @@
             if (!fastEventStep()) {
               if (_dryHit) {
                 _dryHit = false;
-                fastMode = false; sampleGrew = false; hpFloorFixed = true;
+                fastMode = false; fastWhy = 'dry'; sampleGrew = false; hpFloorFixed = true;
                 sampleEnd = done + FAST_SAMPLE_TICKS;
                 beginSample(done);
                 console.info('[AFK] ⚡ 消耗品斷貨(戰局質變):退出快速段重新取樣(固定 70% 血量門檻),新戰局撐得穩再回快速。');
                 continue;
               }
-              fastMode = false; fastOff = true;
+              fastMode = false; fastOff = true; fastWhy = 'error';
               console.info('[AFK] ⚡ 快速結算退回全模擬(步驟異常),剩餘時間照真模擬。');
               continue;
             }
             if (player.lv !== lastLv) {   // 升級 → 戰力變了 → 重新取樣殺速
               lastLv = player.lv;
-              fastMode = false; sampleGrew = false; sampleEnd = done + FAST_RESAMPLE_TICKS;
+              fastMode = false; fastWhy = 'levelup'; sampleGrew = false; sampleEnd = done + FAST_RESAMPLE_TICKS;
               beginSample(done);
             }
             continue;
@@ -1079,7 +1110,7 @@
             if (player.lv !== lastLv) lastLv = player.lv;   // 取樣中升級:樣本自然涵蓋新戰力,不需特別處理
             if (done >= sampleEnd) {
               if (totalTicks - done >= FAST_MIN_REMAIN) evalSample();
-              else fastOff = true;   // 剩太少,全模擬跑完就好
+              else { fastOff = true; fastWhy = 'short-remain'; }   // 剩太少,全模擬跑完就好
             }
           }
           if (isKing && !kingLeftRoom && mapState && mapState.current !== huntMap) kingLeftRoom = true;   // 鑰匙用完→原作已把人傳出軍王之室
@@ -1382,6 +1413,7 @@
     //   會讓剩下的 tick 與錨點推進算到新角色頭上 → 任何「就地換角」都必須先問這個(afk-mobile 換角在用)。
     busy: function () { return catchingUp; },
     histKey: histKey,   // 對外:目前角色的離線紀錄 key(供 afk-history)
+    fastWhyText: fastWhyText,   // 對外:離線紀錄的 fastWhy 代碼→中文(供 afk-history／afk-diag 顯示,對照表只留這一份)
     setCkptMs: function (ms) { CKPT_MS = Math.max(200, +ms || 5000); },   // 🧪 測試用:縮短檢查點間隔(驗「結算中斷只丟尾段」)
     forceCatchup: function (mins, noFast) { _forceNoFast = !!noFast; runCatchup(Math.floor((mins || 60) * 60000 / TICK_MS), true, (typeof mapState !== 'undefined' && mapState && mapState.current) || ''); }   // 帶當前地圖,否則 gotoMap(undefined) 空轉零收益;noFast=true 強制全模擬(A/B 用)
   };
