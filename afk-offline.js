@@ -23,7 +23,13 @@
   'use strict';
   if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('offline')) return;   // 🎚️ 外掛開關:關掉→不掛任何鉤子,遊戲回原版(無離線結算)
   // 子選項:掛機期間持續遭到追殺(預設關)。核心用牆鐘比對追殺到期時間,補跑時牆鐘幾乎凍結 → 不處理就等於離線自動豁免追殺。
-  if (window.AFK_TOGGLES) AFK_TOGGLES.register({ id: 'offlinechase', name: '掛機期間持續遭到追殺', group: '遊戲玩法', parent: 'offline', def: false });
+  //   ⚠ id 維持 offlinechase(玩家設定就是存這個 id),只改顯示名稱與說明:2026-07-31 起它同時管
+  //     「NPC 血盟群戰」——兩者都是「離線時會不會被玩家型 NPC 纏上」,而且都是結算變慢的來源,
+  //     分成兩個開關會變成「要兩個都關才有效」,玩家只關一個就困惑。
+  if (window.AFK_TOGGLES) AFK_TOGGLES.register({
+    id: 'offlinechase', name: '掛機期間遭遇玩家對戰', group: '遊戲玩法', parent: 'offline', def: false,
+    desc: '開啟後，離線掛機也會被記恨你的玩家追殺、也可能被捲入 NPC 血盟群戰。這類戰鬥是完整的職業對戰，會讓結算時間明顯變長。'
+  });
   function chaseOn() { return !!(window.AFK_TOGGLES && AFK_TOGGLES.enabled('offlinechase')); }
 
   // ----- 可調參數 ---------------------------------------------------------
@@ -463,6 +469,15 @@
       try { logSys(`<span class="text-amber-300 font-bold">🔑 ${_krKey}已用完，已自動傳回村莊。</span>`); }
       catch (e) { console.log('[AFK] ' + _krKey + '已用完，已自動傳回村莊。'); }
     }
+    // 🏴 擋掉的血盟團戰:不講的話玩家只會發現「離線好像都沒遇到團戰」卻不知道為什麼,那是靜默的行為變更。
+    //   只有真的擋到才顯示(沒擋到不印),不會變成常駐雜訊;順便告訴他開關在哪、開了要付什麼代價。
+    //   ⚠ 刻意**不報次數**:我們是在原作擲骰之前就攔下來,沒有模擬「已經在打的期間不會再開新的」,
+    //     算出來的次數會高估好幾倍(實測開關打開時實際開 44 場,同條件我們的估法會算成兩百多)。
+    //     寧可不給數字,也不要給一個看起來精確但錯的數字。
+    if (_gbBlocked > 0) {
+      var gb = '<span class="text-slate-400">🏴 離線期間略過了血盟團戰（設定 →「掛機期間遭遇玩家對戰」可開啟，但結算時間會明顯變長）。</span>';
+      try { logSys(gb); } catch (e) { console.log('[AFK] 離線期間略過了血盟團戰。'); }
+    }
     // 平均效率(對齊遊戲「本圖效率統計」的 經驗/10分、金幣/10分):用實際補跑時間換算
     var preciseMin = doneTicks * TICK_MS / 60000;
     if (preciseMin > 0 && (dExp > 0 || dGold > 0)) {
@@ -507,6 +522,8 @@
 
   // ----- 離線補跑(時間切片) ----------------------------------------------
   var catchingUp = false;
+  var _gbBlocked = 0;      // 🏴 本次結算擋掉幾次 NPC 血盟群戰(供結算摘要提示玩家)
+  var _gbPossible = false; // 本次結算的玩家是否真的處於「會被開團」的處境(每次結算只判一次,見 runCatchup)
   var _settleSeq = 0;   // 本次頁面開啟後跑過幾次結算(連續切角色會累積,用來檢驗「越後面越慢」)
   var killTally = null;   // 📜 非 null 時(只在補跑中)累計各怪擊殺數 {怪名:次數};線上遊玩為 null → killMob 的計數判斷零開銷
   var gainTally = null;   // ⚡ 非 null 時(只在補跑中)累計各物品獲得數 {物品id:數量};供快速結算把「淨變化」還原成「真實消耗」(消耗=期初+獲得−期末)
@@ -615,6 +632,22 @@
       // 🌑 聖地 BOSS 房離線續戰：視同「繼續打你關遊戲時正在打的那隻（已付過入場費）」→ 第一隻免費、之後每次復活扣 1 入場道具
       //   （sanctBossRespawnCharge 於 state.ff 照扣；扣光被踢回長老會議廳、後續空轉自然停）。
       if (typeof SANCT_RESPAWN_COST !== 'undefined' && SANCT_RESPAWN_COST[huntMap]) mapState._sanctBossSpawned = false;
+    }
+
+    // 🏴 關遊戲時正在 NPC 血盟群戰中 → **不必自己收**:上游 changeMap 在地圖真的改變時就會呼叫
+    //   npcClanOnLeaveBattleArea,而 force 進場時它用的理由碼正好就是 'cancel'(不扣士氣)。
+    //   而我們進場一定是「村莊 → 狩獵圖」(loadGame 會先強制回村),地圖必然改變 → 上游已經處理掉了。
+    //   (曾經在這裡自己補一次 npcClanGroupBattleEnd('cancel'),實測從未被執行到＝死碼,已移除。)
+    //   玩家真正失去的是「本來會開打的團戰」,結算摘要要告訴他。這裡先判一次「他有沒有可能被開團」
+    //   (要有 NPC 血盟正在對他宣戰且仇恨>80,跟原作 npcClanMaybeStartGroupBattle 的候選條件一致)——
+    //   只算一次,不影響效能;沒這個閘的話,沒血盟/沒宣戰的玩家也會收到「略過了 N 次團戰」的雜訊。
+    _gbBlocked = 0;
+    _gbPossible = false;
+    if (!chaseOn()) {
+      try {
+        var _w = (typeof npcClanGetWorld === 'function') ? npcClanGetWorld(player) : null;
+        _gbPossible = !!(_w && Array.isArray(_w.clans) && _w.clans.some(function (c) { return c && c.war && c.hatred > 80; }));
+      } catch (e) {}
     }
 
     var before = snapshot();
@@ -1573,6 +1606,33 @@
       window.updateUI = function () { if (catchingUp) return; return _uui.apply(this, arguments); };
     }
     console.log('[AFK] ⚡ 補跑熱點快取已掛上(_saveUnwrap/_seedHash/isSiegeArea/pvpEnsureState/updateUI)');
+  }
+
+  // 🏴 NPC 血盟群戰:補跑期間不啟動(除非玩家開了「掛機期間遭遇玩家對戰」)。
+  //   為什麼擋:群戰一開打,場上就持續補滿敵盟的**玩家型 NPC**——那是完整職業對戰,比打一般怪貴得多,
+  //   而且會把快轉逼回全模擬。實測(6x 限速·同角色同圖·只改這一個條件):每事件成本從 194µs
+  //   跳到數千~數十萬µs(變異很大,因為對手強弱每次不同)。這是唯一掃到會炸的角色狀態——
+  //   追殺清單、血盟資料量、卡瑞任務道具、背包、傭兵、寵物都不會。
+  //   為什麼當「規則」處理而不是硬修效能:攻城區、時空裂痕、排名攀登**本來就都排除在離線之外**,
+  //   理由都是「那是玩家在場的即時對戰,不該自動幫他打」。群戰是同一類。
+  //   代價(寫在開關說明裡讓玩家自己選):離線拿不到敵盟玩家的噴裝(10%~3%·遺物 0.001%)、
+  //   血盟戰爭進度不推進。打贏群戰本身沒有獎勵(只有一句日誌),所以損失比想像中小。
+  //   ⚠ 只有王族加入血盟並主動對 NPC 血盟宣戰才會遇到群戰 → 這條只影響那一小群玩家。
+  if (typeof npcClanMaybeStartGroupBattle === 'function') {
+    var _startGB = npcClanMaybeStartGroupBattle;
+    window.npcClanMaybeStartGroupBattle = function () {
+      if (catchingUp && !chaseOn()) {
+        // ⚠ 這裡不能直接 _gbBlocked++:本函式掛在**每次擊殺**上,無條件計數會變成「略過了兩萬次團戰」的胡說。
+        //   照原作 v3.7.30 的「先骰再讀」同一招:先擲同一個機率,骰不中就跟原作一樣什麼都沒發生(不計數),
+        //   骰中了才算「本來會開一場」。仍然完全跳過昂貴的血盟世界讀取,零成本。
+        //   再加 _gbPossible(每次結算只算一次:玩家有沒有處於「會被開團」的處境)當閘,
+        //   否則沒血盟/沒宣戰的玩家也會被通知「略過了 N 次團戰」,那是純雜訊。
+        var _p = (typeof NPC_CLAN_GROUP_CHANCE !== 'undefined') ? NPC_CLAN_GROUP_CHANCE : 0.01;
+        if (_gbPossible && Math.random() < _p) _gbBlocked++;
+        return false;
+      }
+      return _startGB.apply(this, arguments);
+    };
   }
   installFfPerfHooks();
 
