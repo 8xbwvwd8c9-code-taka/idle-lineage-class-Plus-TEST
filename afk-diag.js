@@ -151,11 +151,13 @@
       try {
         var sum = (typeof slotSummary === 'function') ? slotSummary(s) : null;
         if (!sum) continue;
-        var inv = '?', allies = '?';
+        var inv = '?', allies = '?', chase = 0;
         var d = savePlayer(s);
-        if (d) { inv = (d.inv || []).length; allies = (d.allies || []).length; }
+        // 😤 被追殺清單:離線期間野外每次重生有 5% 變成「白目玩家」遭遇＝玩家型 NPC 戰鬥,
+        //   是除了血盟團戰以外另一條會讓結算變貴的路徑,而且是**逐角色**的(診斷別處看不到)。
+        if (d) { inv = (d.inv || []).length; allies = (d.allies || []).length; chase = (d.trollPlayers || []).length; }
         out.push('第' + s + '格: ' + (sum.name || '(未命名)') + ' / ' + sum.cls + ' Lv' + sum.lv +
-          ' / 背包 ' + inv + ' 件 / 傭兵 ' + allies +
+          ' / 背包 ' + inv + ' 件 / 傭兵 ' + allies + (chase ? ' / 被追殺 ' + chase + ' 人' : '') +
           (sum.classic ? ' / 經典' : '') + (sum.traditional ? ' / 傳統' : ''));
       } catch (e) { out.push('第' + s + '格: ⚠️ 讀取失敗(' + String(e.message).slice(0, 40) + ')'); }
     }
@@ -248,6 +250,35 @@
     if (r.petsOut >= 0) b.push('出戰寵物 ' + r.petsOut);
     if (b.length) L.push('· ' + b.join(' · '));
     return L;
+  }
+  // 🏴 血盟戰況:離線結算會不會被 NPC 血盟「團戰」拖垮,取決於有沒有 NPC 血盟處於「宣戰中且仇恨>80」
+  //   (那是 npcClanMaybeStartGroupBattle 的候選條件)。團戰一開打,場上就持續補滿敵盟的玩家型 NPC
+  //   ＝完整職業對戰,實測會讓結算慢兩位數倍。
+  //   ⚠ 一定要用讀的、不要問玩家「你有沒有宣戰過」——宣戰有兩條路(王族按宣戰、對求和回應「嗆聲」),
+  //     而且血盟世界是**同模式所有角色共用**,可能是別隻角色很久以前做的,本人不會記得。
+  //   讀法比照遊戲自己的路徑;讀不到就說讀不到,不要靜靜顯示 0 讓人誤判成「沒事」。
+  function clanWarState() {
+    if (typeof _clanReadState !== 'function' || typeof clanModeKey !== 'function') return '(這版核心沒有血盟系統)';
+    var st = null;
+    try { st = _clanReadState(); } catch (e) {}
+    if (!st) return '⚠️ 血盟資料讀取失敗';
+    var out = [];
+    try {
+      var mine = (typeof clanGetModeInfo === 'function') ? clanGetModeInfo(player) : null;
+      out.push('目前角色的血盟: ' + (mine && mine.name ? mine.name : '(未加入或未載入角色)'));
+    } catch (e) { out.push('目前角色的血盟: (讀取失敗)'); }
+    ['normal', 'classic'].forEach(function (mode) {
+      var w = st.npcWorlds && st.npcWorlds[mode];
+      if (!w || !Array.isArray(w.clans)) return;
+      var war = w.clans.filter(function (c) { return c && c.war; });
+      var hot = war.filter(function (c) { return c.hatred > 80; });
+      var hostile = w.clans.filter(function (c) { return c && c.hostile; });
+      out.push((mode === 'normal' ? '一般' : '經典') + '世界: NPC 血盟 ' + w.clans.length
+        + ' 個 / 宣戰中 ' + war.length + ' / 其中仇恨>80(會開團戰) ' + hot.length + ' / 敵對 ' + hostile.length
+        + (hot.length ? '  ⚠️ 離線會被開團戰(除非關掉「掛機期間遭遇玩家對戰」)' : ''));
+      if (war.length) out.push('  宣戰中: ' + war.map(function (c) { return (c.name || '?') + '(仇恨' + Math.round(c.hatred || 0) + ')'; }).join('、'));
+    });
+    return out.length ? '\n          ' + out.join('\n          ') : '(無資料)';
   }
   function offlineSettle() {
     var out = [];
@@ -431,6 +462,7 @@
     put('寵物歸屬', petOwnership);
     put('倉庫', warehouseSummary);
     put('離線錨點', offlineAnchors);
+    put('血盟戰況', clanWarState);
     put('離線結算', offlineSettle);
 
     var ls = localStorageStats();
