@@ -17,7 +17,7 @@
 | 7 | js/10 | 「立即賣出」總開關關閉時不強制套規則(免誤賣沒標記的裝備) |
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 
-## 外掛(54 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(55 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -38,6 +38,7 @@
 | `afk-dex.js` | 掉落查詢(五張掉落表+特殊掉落 SPECIAL_BLOCKS;`?view=dex` 獨立頁) |
 | `afk-wiki.js` | 小百科(多分頁+統一搜尋;`?view=wiki` 獨立頁;改內容跑 `/update-wiki`。裝備頁走檔內的**列表篩選引擎** `makeListFilter`:索引→純函式篩選→只畫前 40 列、詳情點開才建;要把它給第二個頁面用再抽成獨立外掛,且那支**不可有開關**) |
 | `afk-storage.js` | 首頁「⚙ 設定」選單(MENU_ITEMS 可擴充)+檢查存檔大小 |
+| `afk-fullsave.js` | 整包備份／還原(本機檔案·`storage` 子項)。**整包搬不挑 key**——白名單會跟不上上游、漏搬是安靜失效;還原=清空後原樣寫回(`_lzSetStoredRaw`,不可用 `_lzSet`/`localStorage.clear()`,理由見檔頭)。方案比較見 `docs/save-transfer.md` |
 | `afk-notice.js` | 首頁公告卡(通用框架;檔頭 `NOTICE=null` 就不顯示,要發公告填一組設定即可) |
 | `afk-quotawarn.js` | 存檔空間警告(localStorage >80% 時首頁紅卡提醒刪角;唯讀;估算與 afk-storage 同套) |
 | `afk-history.js` | 離線掛機紀錄卡片(讀 afk_hist_<slot>,唯讀) |
