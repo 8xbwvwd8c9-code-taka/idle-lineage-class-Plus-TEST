@@ -593,6 +593,8 @@
     <script src="afk-lzcache.js?v=f687c0e2f8"></script>
     <!-- afk-synccompress：存檔即時壓縮（預設關）——開啟後把 _lzSet 換回同步壓縮，根治登出/多開後存檔未壓縮爆滿。緊接 lzcache、在任何會存檔的外掛之前 -->
     <script src="afk-synccompress.js?v=e607fb58aa"></script>
+    <!-- afk-clanroster：血盟名冊瘦身——名冊只增不減（上限一萬筆），而野外 PVP 每生一個對手就整包讀改寫一次，越玩越慢。排在 synccompress 之後（它包 _lzSet，我們包 _clanWriteState，互不干擾） -->
+    <script src="afk-clanroster.js?v=05c9123c51"></script>
     <!-- 共用基礎：自製彈窗/確認、dex/wiki 共用資料表（其他外掛依賴，排前面） -->
     <script src="afk-ui.js?v=42afb5c84f"></script>
     <script src="afk-extradata.js?v=a069862188"></script>

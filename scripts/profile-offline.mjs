@@ -213,6 +213,7 @@ for (const slot of slots) {
         return out;
       })(),
       lzcache: (window.AFK_LZCACHE && window.AFK_LZCACHE.stats()) || null,
+      roster: (window.AFK_CLANROSTER && window.AFK_CLANROSTER.counts()) || null,   // 血盟名冊筆數(結算後)——野外 PVP 開著時,它就是每次寫入的成本來源
     };
   }, slot);
   await ctx.close();
@@ -236,6 +237,7 @@ for (const slot of slots) {
     console.log('  ⚠ 沒拿到離線紀錄（沒觸發結算？地圖是村莊、或角色已死）');
   }
   if (out.lzcache) console.log('  快取：' + JSON.stringify(out.lzcache));
+  if (out.roster) console.log('  血盟名冊(結算後)：' + JSON.stringify(out.roster));
   if (out.prof) {
     console.log(`  JSON.parse：${out.prof.json.n} 次 / ${out.prof.json.ms}ms / ${out.prof.json.MB}MB`);
     console.log('  熱點 [函式, 次數, 累計ms(含子呼叫)]：');
