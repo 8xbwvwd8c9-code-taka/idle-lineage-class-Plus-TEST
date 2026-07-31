@@ -1480,7 +1480,8 @@
   window.__afkKillTally = null;
   window.__afkGainTally = null;
 
-  // 入口提示(時空裂痕/排名攀登不支援離線)已直接寫進核心 renderRiftEntrance(js/05)/renderPrideEntrance(js/11),不再包 wrapper 注入。
+  // 時空裂痕/排名攀登的入口**沒有**「不支援離線」提示:上游核心(renderRiftEntrance/renderPrideEntrance)自己不寫,
+  //   我方也不包 wrapper 注入 → 玩家只在離線回來時看到 maybeCatchup 那兩段 skipNote。要補提示得另開外掛 wrapper。
 
   // ----- 心跳 + 關閉前蓋章 -------------------------------------------------
   setInterval(function () {
