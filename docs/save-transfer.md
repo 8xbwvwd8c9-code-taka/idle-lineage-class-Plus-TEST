@@ -60,8 +60,11 @@
 ### 還原順序(配額最省)
 
 1. 警語 + `AFK_UI.confirm`(`afk-ui.js:257`)確認
-2. **先刪**這台裝置上前綴符合 `lineage_idle_` / `fb5_` / `afk_` / `dograce_` 的 key
-   ⚠️ 不要用 `localStorage.clear()` —— `file://` 下所有本機頁面可能共用同一個 origin,clear 會掃到別人的東西
+2. **`localStorage.clear()` 全清**
+   ⚠️ 原稿寫的是「只刪 `lineage_idle_`/`fb5_`/`afk_`/`dograce_` 前綴、不要用 clear()」,**實作時已推翻**:
+   既然匯出是整包不挑,清除就該對稱地整包清,否則「搬了卻沒清」會留下上一個玩家的殘留 key。
+   原本擔心的「clear 會讓在途的背景壓縮蓋掉新值」實測不成立——worker 回來會比對 `_lsGet(key)`
+   是不是它記得的原值(`js/00-data.js:136`),對不上就自己 return。
 3. 再逐 key `_lzSetStoredRaw` 寫入
 4. `location.reload()`
 
