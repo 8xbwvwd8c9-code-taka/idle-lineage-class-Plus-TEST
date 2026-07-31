@@ -6,6 +6,7 @@
 |---|---|
 | 查「有哪些外掛 / 哪些核心補丁」 | `docs/plugins.md` |
 | 改離線掛機(afk-offline) | `docs/offline.md` ＋ afk-offline.js 檔頭註解 |
+| 玩家回報「離線結算跑很久」 | 跑 `node scripts/profile-offline.mjs --file <.testdata 檔> --slot N [--hot]`(拿真實存檔實測,別用新角色猜) |
 | 想加速離線結算 | `docs/offline-batch-settle.md`(**草稿·尚未實作**;開頭補註說明為什麼優先順序被降低) |
 | 做「存檔搬家 / 跨裝置轉移」 | `docs/save-transfer.md`(**評估·尚未實作**;整包 localStorage 的打包/還原做法、五種方案的優缺點) |
 | 改 sw.js / 快取 / PWA | `docs/sw-pwa.md` |
