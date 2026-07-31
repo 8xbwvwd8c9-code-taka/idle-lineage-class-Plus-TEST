@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(57 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(58 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -47,7 +47,7 @@
 | `afk-history.js` | 離線掛機紀錄卡片(讀 afk_hist_<slot>,唯讀) |
 | `afk-diag.js` | 快取診斷(全程唯讀;欄位各自包錯;產物自帶版本號) |
 | `afk-reissueid.js` | 換發身分證(角色身分碼重發) |
-| `afk-powersave.js` | 省電模式(關戰鬥動畫/降更新頻率;涵蓋寵/召 ticker=補丁4) |
+| `afk-powersave.js` | 省電模式,面板六項**由上而下省電效果遞減**:降更新頻率／關戰鬥動畫(本外掛自己的,涵蓋寵/召 ticker=補丁4)＋戰鬥特效／傷害數字／背景音樂／音效(**直接讀寫核心自己的狀態並呼叫核心 setter,不另存一份**——原本散在標題畫面與遊戲中音量列三處,玩家要省電時是四個一起關;核心少哪支就安靜不列那列) |
 | `afk-statpts.js` | 能力值來源分解(能力圖下方單一區塊) |
 | `afk-statlist.js` | 能力分頁條列式(拿掉經典背景圖改大字卡片;純 CSS,DOM/updateUI 不動;配點中改單欄) |
 | `afk-autobuy.js` | 自動買肉/魔法屏障卷軸補貨(預設開;離線結算共用 `__afkAutobuyCheck`) |
@@ -63,6 +63,7 @@
 | `afk-toast.js` | 手機 toast(包 logSys,點擊同步窗內訊息浮現) |
 | `afk-touchtip.js` | 手機長按看資料(技能/商店/製作/收集冊/背包) |
 | `afk-notip.js` | 關閉物品懸停資訊框(預設關;技能說明保留、只在滑鼠環境動作;不印 hooks OK 不進 smoke) |
+| `afk-dollcursor.js` | 關閉魔法娃娃游標(預設關;包 `applyDollCursor`)。上游裝娃娃時會① body cursor 換娃娃圖 ② 加 `has-doll-cursor` 讓可點擊處也吃 `cursor:inherit!important` ③ 啟用跟著滑鼠跑的 `#doll-cursor-glow`。**手機看到的那顆「點一下留下的光點」就是③**(觸控會補送合成 mousemove),所以兩者是同一個開關、不能只關一半 |
 | `afk-trackinfo.js` | 狀態欄顯示魔物追蹤剩餘時間(包 renderStatusEffects,補一格) |
 | `afk-battlebuffs.js` | 手機戰鬥框下方鏡射整條狀態欄(必須排在 afk-trackinfo 之後才含追蹤格) |
 | `afk-relicguard.js` | 快速廢品的「全選」跳過遺物(包 quickJunkSelectAll/buildQuickHeader) |
@@ -71,7 +72,7 @@
 | `afk-cursebatch.js` | 詛咒卷軸一鍵弱化(包 openModal 掛入口;**不看 `isMaxEnhanced`**——上游滿強化就整顆強化鈕消失,連帶讓詛咒卷軸沒入口。批次同樣靠靜音副作用迴圈呼叫 executeCurseDeEnhance;背包堆疊要**自己先拆一件**,否則核心每次呼叫各拆一件變成 N 件各 -1) |
 | `afk-retrial.js` | 試煉批次兌換(試煉道具持續掉落·已完成也照掉;面板自訂數量重複兌換;試煉狀態只讀不寫;包 trialItemActive/trialQHTML/build50TrialHTML) |
 | `afk-traditional.js` | 傳統模式(偽)/自動衝裝(掉落自帶強化值;靠補丁2 的 `__afkTradRollEn` 鉤子) |
-| `afk-warehouse.js` | 倉庫增強(金幣全存/全取、遺物與席琳遺骸分類、**只列可穿＋不可穿標紅**;可穿判定一律呼叫核心 `checkCanEquip`,過濾包在 `whMatchFilter`＋`whMatchSearch` 兩支上(搜尋不走 filter),核心的「沒有物品」空訊息才會正確) |
+| `afk-warehouse.js` | 倉庫增強(魔法書標`[已學習]`/`[無法學習]`並各給底色——判定一律用核心那兩條(`player.skills` 有沒有它、`skillReqLv()` 是否 undefined),不自己判職業表;金幣全存/全取、遺物與席琳遺骸分類、**只列可穿＋不可穿標紅**;可穿判定一律呼叫核心 `checkCanEquip`,過濾包在 `whMatchFilter`＋`whMatchSearch` 兩支上(搜尋不走 filter),核心的「沒有物品」空訊息才會正確) |
 | `afk-whbatch.js` | 倉庫批次存取(**預設關**——會改掉「點清單」原本的意思;包核心函式型:照樣安裝 wrapper、每次重繪問 `enabled()`,關掉就收乾淨注入的 UI 並透明放行,故開關即時生效且仍印 hooks OK。⚠️ `register` 必須早於第一次 `enabled()`:找不到登錄項時預設值一律回 true(afk-toggles.js:39),先問就把 def:false 問成 true。「🗂️ 批次」鈕→點清單=勾選、全選、一次搬完;整批共用一次 `whTxnSnapshot`/`whTxnCommit`＝核心 `whOneClickDeposit` 的既有模式,實測 4998 格倉庫由 145ms/件 → 0.1ms/格。搬移規則逐條比照核心 whDeposit/whWithdraw,唯一差別是一律整疊。⚠️ **不可用 uid 當索引**:玩家倉庫真的存在「兩格共用同一 uid」(4998 格裡 17 組),uid→物品的 map 只留最後一格,另一格會被連同數量一起刪掉＝真實遺失(踩過,少 35 件);一律掃來源陣列比對勾選集合。同 sig 查找改 Map(核心 `_whStackFind` 是線性 find,N 筆就 O(N²)、幾千格會卡住)) |
 | `afk-dograce.js` | 賽狗場迷你遊戲(自動化分頁入口;押金幣或龍鑽、中獎自動入袋;自製) |
 | `afk-pwa.js` | PWA 安裝 UI+圖桶/程式桶對帳(reconcile 送 SW) |

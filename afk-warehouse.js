@@ -35,6 +35,20 @@
         if (!_isPlayerGear(d)) return false;   // 非玩家裝備(道具/材料/寵物裝)不參與判定
         try { return !checkCanEquip({ id: id }); } catch (e) { return false; }
     }
+    // ── 魔法書:已學習／無法學習 ────────────────────────────────
+    // 倉庫兩欄只印物品全名,顏色只反映稀有度 → 四個角色共用一個倉庫時,分不出哪本自己學過、
+    // 哪本這個職業根本學不了。背包(核心 js/10:285-296)本來就有這兩個標記,這裡把同一件事補到倉庫。
+    // 🚨 判定一律用核心自己那兩條,不重寫:已學習＝player.skills 有它;無法學習＝skillReqLv() 回 undefined
+    //    (那支已經含魔導精通之類的特例,自己判職業表一定會漏)。
+    function _bookState(id) {
+        var d = DB.items[id];
+        if (!d || d.type !== 'skillbk') return '';
+        try {
+            if (player && player.skills && player.skills.indexOf(d.sk) >= 0) return 'learned';
+            if (typeof skillReqLv === 'function' && skillReqLv(DB.skills[d.sk], d.sk) === undefined) return 'cant';
+        } catch (e) {}
+        return '';
+    }
     window.__afkWhWearOnly = function (on) {
         _wearOnly = !!on;
         renderWarehouseNPC(document.getElementById('interaction-content'));
@@ -232,11 +246,20 @@
             '#wh-inv-list .afk-wh-noeq.afk-wh-noeq,#wh-store-list .afk-wh-noeq.afk-wh-noeq{background:rgba(80,12,22,.55) !important;border-color:#9f1239 !important;border-left-width:4px !important;}',
             '#wh-inv-list .afk-wh-noeq.afk-wh-noeq:hover,#wh-store-list .afk-wh-noeq.afk-wh-noeq:hover{background:rgba(110,18,30,.7) !important;}',
             // 字樣與顏色跟背包那邊對齊(核心 js/10 是 text-red-500 text-[10px] font-bold 的 [無法裝備])
-            '#wh-inv-list .afk-wh-noeq::after,#wh-store-list .afk-wh-noeq::after{content:"　[無法裝備]";font-size:10px;font-weight:bold;color:#ef4444;}'
+            '#wh-inv-list .afk-wh-noeq::after,#wh-store-list .afk-wh-noeq::after{content:"　[無法裝備]";font-size:10px;font-weight:bold;color:#ef4444;}',
+            // 魔法書:無法學習＝同一套紅底(跟「無法裝備」是同一類「這隻用不了」,不該長得不一樣);
+            //         已學習＝灰底壓暗(核心背包用 bg-slate-900 opacity-70,這裡用等效的底色,不動整列透明度以免圖示也一起糊掉)
+            '#wh-inv-list .afk-wh-nolearn.afk-wh-nolearn,#wh-store-list .afk-wh-nolearn.afk-wh-nolearn{background:rgba(80,12,22,.55) !important;border-color:#9f1239 !important;border-left-width:4px !important;}',
+            '#wh-inv-list .afk-wh-nolearn.afk-wh-nolearn:hover,#wh-store-list .afk-wh-nolearn.afk-wh-nolearn:hover{background:rgba(110,18,30,.7) !important;}',
+            '#wh-inv-list .afk-wh-nolearn::after,#wh-store-list .afk-wh-nolearn::after{content:"　[無法學習]";font-size:10px;font-weight:bold;color:#ef4444;}',
+            '#wh-inv-list .afk-wh-learned.afk-wh-learned,#wh-store-list .afk-wh-learned.afk-wh-learned{background:rgba(15,23,42,.85) !important;border-color:#475569 !important;border-left-width:4px !important;}',
+            '#wh-inv-list .afk-wh-learned.afk-wh-learned:hover,#wh-store-list .afk-wh-learned.afk-wh-learned:hover{background:rgba(30,41,59,.9) !important;}',
+            '#wh-inv-list .afk-wh-learned::after,#wh-store-list .afk-wh-learned::after{content:"　[已學習]";font-size:10px;font-weight:bold;color:#94a3b8;}'
         ].join('\n');
         (document.head || document.documentElement).appendChild(s);
     }
-    // 逐列反查實例 → 本職業穿不了就標記(「只列可穿」關掉時才看得到,開著時那些列本來就被濾掉了)
+    // 逐列反查實例 → 標「本職業穿不了」與魔法書的「已學習／無法學習」
+    //   (「只列可穿」關掉時才看得到穿不了那些,開著時那些列本來就被濾掉了;魔法書不受該篩選影響)
     function _markNoEquip() {
         var w = loadWarehouse();
         [['wh-inv-list', (player && player.inv) || []], ['wh-store-list', (w && w.items) || []]].forEach(function (pair) {
@@ -244,7 +267,11 @@
             host.querySelectorAll('[data-tip-uid]').forEach(function (el) {
                 var uidv = el.getAttribute('data-tip-uid');
                 var it = pair[1].find(function (i) { return i && String(i.uid) === String(uidv); });
-                if (it && _cannotWear(it.id)) el.classList.add('afk-wh-noeq');
+                if (!it) return;
+                if (_cannotWear(it.id)) el.classList.add('afk-wh-noeq');
+                var st = _bookState(it.id);
+                if (st === 'cant') el.classList.add('afk-wh-nolearn');
+                else if (st === 'learned') el.classList.add('afk-wh-learned');
             });
         });
     }
