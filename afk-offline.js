@@ -532,6 +532,31 @@
   //   大存檔的 JSON.stringify+壓縮是結算的大宗成本——頭目密集圖 24h 可達數百次)。
   //   檢查點與結算尾自己要存時暫時放行(見 doCheckpoint);錨點不動,被擋掉的段落中斷了也只是重算,不丟收益。
   var _saveSquelch = false;
+  // ⏱ 結算分段計時:只在結算期間掛上(runCatchup 開頭裝、finally 拆),平時完全不存在 → 線上零開銷。
+  //   為什麼要有:玩家回報「同一台裝置、同一張圖,兩隻角色差幾十倍」時,舊欄位(總耗時＋事件數)分不出
+  //   時間花在哪——「平均 ms/事件」的分母只是快轉呼叫次數,一個事件可能殺 1 隻也可能殺 20 隻,兩隻角色
+  //   的數字根本不同單位,拿來相比會把人帶去錯的方向(2026-07-31 查過一輪才發現)。
+  //   包這幾支就能把 擊殺全鏈(掉落/經驗/收集冊)、出怪、血盟讀取、存檔、localStorage 分開計。
+  //   量測成本:每殺約 8 次 performance.now(),佔比 <1%,而且只在結算期間付。
+  function perfSegInstall() {
+    var seg = { kill: 0, spawn: 0, clan: 0, save: 0, lsGet: 0, lsSet: 0, lsGetKB: 0 }, undo = [];
+    function wrap(name, key) {
+      var f = window[name];
+      if (typeof f !== 'function') return;
+      window[name] = function () { var t = performance.now(); try { return f.apply(this, arguments); } finally { seg[key] += performance.now() - t; } };
+      undo.push(function () { window[name] = f; });
+    }
+    wrap('killMob', 'kill'); wrap('spawnMob', 'spawn'); wrap('_clanReadState', 'clan'); wrap('saveGame', 'save');
+    try {
+      var proto = Object.getPrototypeOf(localStorage) || Storage.prototype;
+      var g = proto.getItem, s = proto.setItem;
+      proto.getItem = function (k) { var v = g.call(this, k); seg.lsGet++; seg.lsGetKB += (v ? v.length : 0) / 1024; return v; };
+      proto.setItem = function (k, v) { seg.lsSet++; return s.call(this, k, v); };
+      undo.push(function () { proto.getItem = g; proto.setItem = s; });
+    } catch (e) {}
+    seg.done = function () { undo.forEach(function (f) { try { f(); } catch (e) {} }); undo = []; };
+    return seg;
+  }
   async function runCatchup(totalTicks, withOverlay, huntMap, prePride, preObl, timing) {
     if (catchingUp) return;
     catchingUp = true;
@@ -539,6 +564,7 @@
     gainTally = {};   // ⚡ 本次補跑的獲得計數歸零
     window.__afkKillTally = killTally;   // 核心 killMob/gainItem 在結算期間經這兩個計數(平時 null → 零開銷)
     window.__afkGainTally = gainTally;
+    var _perfSeg = perfSegInstall();     // ⏱ 分段計時(只在結算期間掛上,結束即拆;平時零開銷)
     var prevFf0, prevInTick0;   // 先宣告在 try 外:例外時 finally 才有得還原
     var _perfT0 = performance.now(), _realSimTicks = 0, _fastEvents = 0;   // ⏱ 診斷:結算耗時與組成(玩家回報「結算慢」時看這行就知道卡在哪段)
     var _ckptMs = 0, _ckptN = 0;   // ⏱ 其中有多少真實時間是花在檢查點存檔(見 doCheckpoint)
@@ -1075,6 +1101,12 @@
         simMs: Math.round(_simSliceMs),     // 切片層級歸屬:純真模擬的切片共花多久
         fastMs: Math.round(_fastSliceMs),   // 有跑到快轉事件的切片共花多久
         invMax: _invMax,                    // 結算期間背包峰值
+        // ⚡ 「一個事件到底代表幾隻怪」——沒有這兩個,fastEvents 與 settleMs 相除得到的數字在角色之間不可比。
+        batchE: (typeof batchPerEvent === 'number') ? Math.round(batchPerEvent * 100) / 100 : null,   // 每個死亡事件殺幾隻
+        svcE: (typeof svcPerEvent === 'number') ? Math.round(svcPerEvent * 100) / 100 : null,         // 每個事件推進幾拍
+        perf: (function () { try { return { kill: Math.round(_perfSeg.kill), spawn: Math.round(_perfSeg.spawn), clan: Math.round(_perfSeg.clan), save: Math.round(_perfSeg.save), lsGet: _perfSeg.lsGet, lsSet: _perfSeg.lsSet, lsGetMB: Math.round(_perfSeg.lsGetKB / 1024) }; } catch (e) { return null; } })(),
+        pvpOn: (function () { try { return !!player.pvpOn; } catch (e) { return null; } })(),          // 野外 PVP 開關(開了野外圖每次出怪多跑玩家 NPC 生成)
+        trollN: (function () { try { return (player.trollPlayers || []).length; } catch (e) { return -1; } })(),   // 被追殺人數
         allies: (function () { try { return (player.allies || []).length; } catch (e) { return -1; } })(),
         petsOut: _petsOut,                  // 出戰寵物數(名冊是模式共用的,診斷檔只印得出全域總數→這裡記「這隻角色的」)
         settleSeq: _seqThis                 // 本次頁面開啟後的第幾次結算
@@ -1359,6 +1391,7 @@
       if (_giDefer) { window.gainItem = _giDefer; _giDefer = null; }   // 保險:例外路徑也要還原 gainItem(正常路徑已還原 → 此處不動作)
       killTally = null; gainTally = null;                  // 回到「線上不計數」狀態
       window.__afkKillTally = null; window.__afkGainTally = null;
+      try { if (_perfSeg && _perfSeg.done) _perfSeg.done(); } catch (e4) {}   // ⏱ 分段計時一定要拆(例外路徑也是):留著會讓線上每次存取 localStorage 都多繞一層
       if (prevFf0 !== undefined && state.ff !== prevFf0) { state.ff = prevFf0; state.inTick = prevInTick0; }   // 例外時的保險還原(正常路徑已還原 → 此處不動作)
       try { if (typeof startGameTimers === 'function') startGameTimers(); } catch (e3) {}   // 內含去重,正常路徑已重啟 → 無事
       removeOverlay();

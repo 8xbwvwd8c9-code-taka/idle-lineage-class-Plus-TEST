@@ -230,7 +230,15 @@
     try { if (r.fastWhy && window.__afk && __afk.fastWhyText) why = __afk.fastWhyText(r.fastWhy); } catch (e) {}
     var a = [];
     if (why) a.push(why);
-    if (r.fastEvents) a.push('事件 ' + r.fastEvents + ' 個·平均 ' + (r.settleMs / r.fastEvents).toFixed(2) + ' ms');
+    // ⚠️ 「平均 ms/事件」不能拿來比兩隻角色:分母只是快轉呼叫次數,一個事件可能殺 1 隻也可能殺 20 隻
+    //   (batchE)。唯一可比的單位是「µs/隻」——所以同一行一定要把總擊殺數與 batchE 一起印出來。
+    var killN = 0;
+    try { (r.kills || []).forEach(function (k) { killN += (k && k.cnt) || 0; }); } catch (e) {}
+    if (r.fastEvents) {
+      a.push('事件 ' + r.fastEvents + ' 個·平均 ' + (r.settleMs / r.fastEvents).toFixed(2) + ' ms'
+        + (r.batchE != null ? '(每事件殺 ' + r.batchE + ' 隻)' : ''));
+    }
+    if (killN) a.push('共殺 ' + killN + ' 隻·' + Math.round(r.settleMs * 1000 / killN) + ' µs/隻');
     if (r.simTicks != null) a.push('真模擬 ' + fmtDur(r.simTicks * 100));
     if (r.ckptN) a.push('存檔 ' + r.ckptN + ' 次 ' + (r.ckptMs / 1000).toFixed(1) + ' 秒(' + Math.round(r.ckptMs / Math.max(1, r.settleMs) * 100) + '%)');
     if (a.length) L.push('· ' + a.join(' · '));
@@ -248,7 +256,24 @@
     if (r.invMax) b.push('背包峰值 ' + r.invMax);
     if (r.allies >= 0) b.push('傭兵 ' + r.allies);
     if (r.petsOut >= 0) b.push('出戰寵物 ' + r.petsOut);
+    if (r.pvpOn != null) b.push('野外PVP ' + (r.pvpOn ? '開' : '關'));
+    if (r.trollN > 0) b.push('被追殺 ' + r.trollN + ' 人');
     if (b.length) L.push('· ' + b.join(' · '));
+
+    // ⏱ 分段耗時:上面那些只講「總共多久、卡不卡」,這行才回答「時間到底花在哪一段」。
+    //   擊殺全鏈(掉落/經驗/收集冊)、出怪、血盟讀取、存檔各佔多少,以及 localStorage 被讀了幾次
+    //   (iOS 上每次存取都不便宜,而它跟角色狀態有關 → 兩隻角色差幾十倍時第一個要看的就是這行)。
+    var p = r.perf;
+    if (p) {
+      var pct = function (ms) { return Math.round(ms / Math.max(1, r.settleMs) * 100) + '%'; };
+      var c = [];
+      if (p.kill != null) c.push('擊殺 ' + (p.kill / 1000).toFixed(1) + 's(' + pct(p.kill) + ')');
+      if (p.spawn != null) c.push('出怪 ' + (p.spawn / 1000).toFixed(1) + 's(' + pct(p.spawn) + ')');
+      if (p.clan) c.push('血盟讀取 ' + (p.clan / 1000).toFixed(1) + 's(' + pct(p.clan) + ')');
+      if (p.save) c.push('存檔 ' + (p.save / 1000).toFixed(1) + 's(' + pct(p.save) + ')');
+      if (p.lsGet) c.push('localStorage 讀 ' + p.lsGet + ' 次/' + p.lsGetMB + ' MB·寫 ' + p.lsSet + ' 次');
+      if (c.length) L.push('· 分段 ' + c.join(' · '));
+    }
     return L;
   }
   // 🏴 血盟戰況:離線結算會不會被 NPC 血盟「團戰」拖垮,取決於有沒有 NPC 血盟處於「宣戰中且仇恨>80」
