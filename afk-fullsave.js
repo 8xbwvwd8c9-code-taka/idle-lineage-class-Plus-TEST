@@ -272,7 +272,9 @@
   }
   // 文案只留玩家用得到的:容量、項目數、內部名詞對他們沒有任何幫助,寫了只會讓人不看。
   function renderBody() {
-    return '<div class="fsv-desc">把全部角色的進度存成一個檔案，換手機時一次搬完，也可以傳給作者查問題。</div>'
+    // 玩家最常見的「存檔不見了」是清快取／換手機／瀏覽器自己回收資料——這句是叫他現在就去按匯出，不是純提醒
+    return '<div class="fsv-warn">進度只存在這台裝置的瀏覽器裡，清除瀏覽器資料或換手機就會不見，記得定期匯出備份留一份。</div>'
+      + '<div class="fsv-desc">把全部角色的進度存成一個檔案，換手機時一次搬完，也可以傳給作者查問題。</div>'
       + '<div class="fsv-btns">'
       + '<button id="m-fsv-exp" class="fsv-b fsv-go">📤 匯出備份</button>'
       + '<button id="m-fsv-imp" class="fsv-b fsv-danger">📥 還原備份</button>'
@@ -417,7 +419,7 @@
       '.fsv-code{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:.22em;color:#fcd34d;user-select:all;}',
       '.fsv-note{margin-top:10px;font-size:12.5px;color:#a7f3d0;min-height:1em;}',
       '.fsv-note.fsv-bad{color:#fca5a5;}',
-      '.fsv-warn{margin-top:12px;padding:8px 10px;border:1px solid #78350f;background:rgba(120,53,15,.28);border-radius:8px;color:#fcd34d;font-size:12px;}'
+      '.fsv-warn{margin:0 0 12px;padding:8px 10px;border:1px solid #78350f;background:rgba(120,53,15,.28);border-radius:8px;color:#fcd34d;font-size:12px;}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
   }
