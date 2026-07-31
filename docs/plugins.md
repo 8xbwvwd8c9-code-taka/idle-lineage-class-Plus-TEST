@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(56 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(57 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -27,6 +27,7 @@
 | `afk-synccompress.js` | 存檔即時壓縮(預設關;把 `_lzSet` 換回同步壓縮,根治登出/多開後存檔未壓縮爆滿;代價=存檔當下多花 0.02~0.4 秒) |
 | `afk-lzcache.js` | 大資料重複處理的快取,兩層:①存檔解壓(同一份壓縮字串只解一次;離線結算 4×) ②血盟 Buff 查詢(`getClanBuffStats`——解壓被快取後剩下的成本是每次重 `JSON.parse` 242KB 血盟資料＋整份正規化,`recomputeStats` 每次都會問一次) |
 | `afk-clanroster.js` | 血盟名冊瘦身(核心把「遇過的玩家型 NPC」逐一登記在血盟共用桶、**只增不減**、上限一萬筆;而野外 PVP 每生成一個對手就整包讀改寫一次 → 越玩越慢。改成盟主全留、每盟留最近 20 個成員、無血盟路人留最近 200 個。實測玩家存檔 6,189 筆→620 筆、每離線小時 20.0s→3.4s) |
+| `afk-allyslim.js` | 傭兵快照瘦身(傭兵＝來源角色的深拷貝,隊長存檔裡每個傭兵都各帶一份**沒人讀**的資料;實測三位玩家全部存檔位未壓縮 5,299KB 中傭兵快照佔 1,644KB,光廢品標記就 824KB。清空 junkPrefs/pvpAlignLock/pandoraMarket2/_offStats/autoSellRules/lastMapByCat 六個欄位,存檔小 33~38%。**新增欄位前要過三關**:js/02 整份沒有(player=ally 視窗只跑 recomputeStats)、js/06 整份沒有、全 repo 只以 `player.` 前綴出現;`config` 是反例不能清。清空不 delete——上游哪天加讀取,`{}` 只是空的、undefined 會炸) |
 | `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層) |
 | `afk-extradata.js` | dex/wiki 共用手動補充資料(`AFK_EXTRA`:itemAcquire/武器特性白話/mapName) |
 | `afk-offline.js` | 離線掛機整套(關遊戲也結算掛機收益;monkey-patch loadGame/saveGame/changeMap/killMob/gainItem,見 `docs/offline.md`) |
