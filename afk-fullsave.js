@@ -68,7 +68,28 @@
     return { format: FORMAT, schema: SCHEMA, exportedAt: new Date().toISOString(), keyCount: n, keys: keys };
   }
 
+  // 🔁 與核心 exportSave(js/13:558)同一套,不要自己另立一種:showSaveFilePicker 可用就用
+  //    (Chrome/Edge,含 Android → 跳出「選存到哪」),AbortError=玩家自己取消、不算失敗,
+  //    其他錯或不支援(iOS Safari / Firefox)才退回 <a download>。
+  //    ⚠️ 少了這段兩個匯出的手感就不一致——玩家實測:核心那顆會跳選擇位置,我們這顆直接下載。
+  //    讓玩家自己挑位置順便繞開「Android 存到下載資料夾變 0 byte」的情形。
   function download(text, fname) {
+    if (typeof window.showSaveFilePicker === 'function') {
+      return window.showSaveFilePicker({
+        suggestedName: fname,
+        types: [{ description: '備份檔', accept: { 'application/json': ['.json'] } }]
+      }).then(function (handle) {
+        return handle.createWritable().then(function (w) {
+          return w.write(text).then(function () { return w.close(); }).then(function () { return 'saved'; });
+        });
+      }).catch(function (e) {
+        if (e && e.name === 'AbortError') return 'cancel';   // 玩家自己按取消,不是失敗
+        return downloadFallback(text, fname);                // 其他錯(權限/沙箱)→ 照舊下載
+      });
+    }
+    return Promise.resolve(downloadFallback(text, fname));
+  }
+  function downloadFallback(text, fname) {
     try {
       var blob = new Blob([text], { type: 'application/json' });
       var url = URL.createObjectURL(blob);
@@ -76,17 +97,20 @@
       a.href = url; a.download = fname;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      return true;
-    } catch (e) { return false; }
+      return 'saved';
+    } catch (e) { return 'fail'; }
   }
 
   function doExport() {
     var fname = 'idle-lineage-backup-' + stamp() + '.json';
     var text;
     try { text = JSON.stringify(buildPack()); }
-    catch (e) { note('❌ 打包失敗：' + (e && e.message || e), true); return null; }
-    if (!download(text, fname)) { note('❌ 檔案下載失敗（瀏覽器可能擋住了下載）。', true); return null; }
-    return { fname: fname, bytes: text.length };
+    catch (e) { note('❌ 打包失敗：' + (e && e.message || e), true); return Promise.resolve(null); }
+    return download(text, fname).then(function (r) {
+      if (r === 'cancel') return null;
+      if (r !== 'saved') { note('❌ 存檔失敗（瀏覽器可能擋住了下載）。', true); return null; }
+      return { fname: fname };
+    });
   }
 
   // ── 還原 ───────────────────────────────────────────────────
@@ -192,8 +216,7 @@
     document.getElementById('m-fsv-body').innerHTML = renderBody();
     var e1 = document.getElementById('m-fsv-exp');
     if (e1) e1.addEventListener('click', function () {
-      var b = doExport(null);
-      if (b) note('✅ 已匯出：' + b.fname);
+      doExport().then(function (b) { if (b) note('✅ 已匯出：' + b.fname); });
     });
     var e2 = document.getElementById('m-fsv-imp');
     if (e2) e2.addEventListener('click', startRestore);
