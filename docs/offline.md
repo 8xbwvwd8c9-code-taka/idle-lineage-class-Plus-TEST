@@ -39,5 +39,6 @@
   以及 `fastWhy`——**為什麼快轉、或為什麼沒快轉**的代碼。顯示在兩個地方:離線掛機紀錄(工具列開「結算耗時」)、診斷檔的「離線結算」段。
   **新增「退出/進入快轉」的分支時,記得一併設 `fastWhy` 並在 afk-offline 的 `FAST_WHY_TEXT` 補一條中文**(對照表只有那一份,經 `__afk.fastWhyText` 給顯示端;
   漏補不會報錯,只是那格空白——等於玩家回報時又只能用猜的)。
+- **裝備也可能讓結算慢幾十倍**:效果掛在「每次擊殺」上又會觸發 `recomputeStats` 的裝備(踩過:吉爾塔斯魔杖;傭兵持有更貴,`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`)。已由核心補丁 9 修掉,但上游新增這類效果時會再中。判準:`node scripts/profile-offline.mjs --file <.testdata 檔> --slot N --hot`,看 `recomputeStats` 次數是不是跟擊殺數同一個量級。
 - **🚨 背景分頁回前景由 afk-offline 包 `settleBackgroundMs` 接管,交回核心 `queueCatchupMs` 逐 tick 補跑**:上游 v3.7.17 把 visibilitychange/bfcache 從 `queueCatchupMs` 改成 `settleBackgroundMs` → `offlineSettleCatchup`(統計一次結算),那套本來要靠上游自己的實戰取樣。我方直接把 `settleBackgroundMs` 包成 `queueCatchupMs(ms)`,不走上游的一次結算(核心補跑有時間預算讓步 `FF_BUDGET_MS`＋抽樣快轉,不會凍住分頁)。判準:**上游只要再動 js/01 的 visibilitychange/pageshow 或 catchup 入口,就要重驗這條**——「離線=關遊戲、背景=遊戲照跑補回來」是本外掛的前提,不是可調偏好。
 - **🚨 目前 js/27 不載入 → afk-offline 是唯一離線收益來源、無雙重發獎**。但上游若哪天把 `js/27-offline-rewards.js` 加回 index.html,兩套就會搶(它也包 loadGame/saveGame/killMob/changeMap)→ 屆時測「離線回來」時,時間戳要三處一起回撥:afk-offline 的 `afk_ts_<slot>`、上游的 `lineage_idle_offline_v1_*`、**以及存檔裡的 `player.offlineHunt.awaySince`**(在 `d.p.offlineHunt`)。漏掉存檔內那份 → 上游判定「離線 0 分鐘」看似和平共存,**實際會雙重發獎**(踩過)。
