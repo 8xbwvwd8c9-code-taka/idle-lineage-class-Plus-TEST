@@ -6,6 +6,7 @@
 |---|---|
 | 查「有哪些外掛 / 哪些核心補丁」 | `docs/plugins.md` |
 | 改離線掛機(afk-offline) | `docs/offline.md` ＋ afk-offline.js 檔頭註解 |
+| 想加速離線結算 | `docs/offline-batch-settle.md`(**草稿·尚未實作**;開頭補註說明為什麼優先順序被降低) |
 | 改 sw.js / 快取 / PWA | `docs/sw-pwa.md` |
 | 改手機或平板版面、覆寫上游手機樣式 | `docs/mobile.md` |
 | 同步上游 | 跑 `/sync-upstream`;背景與 CI 見 `docs/sync-upstream.md` |
