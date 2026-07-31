@@ -144,7 +144,9 @@
     try { when = new Date(pack.exportedAt).toLocaleString('zh-TW'); } catch (e) {}
     // 「先關掉其他分頁」不是客套話:還原同一個角色的舊備份時,核心的 _roleSaveAllowed(js/13:426)
     // 因為角色指紋一樣而放行,開著的分頁每 5 秒就把還原的內容蓋回去,而且畫面照樣顯示還原成功。
-    ask('備份檔：' + when + '\n\n請先關掉其他遊戲分頁。\n這台裝置現在的進度會全部被蓋掉，救不回來。',
+    // ⚠️ AFK_UI.confirm 會把 message 先 esc() 再把 \n 換成 <br>(afk-ui.js) → 塞 HTML 標籤會被當文字印出來,
+    //    要條列只能用純文字編號。
+    ask('備份檔：' + when + '\n\n1. 請確認已關閉其他遊戲分頁。\n2. 這台裝置原本的紀錄將被覆蓋。',
       function () { runApply(pack); });
   }
 
@@ -161,7 +163,7 @@
 
   function ask(message, onOk) {
     if (window.AFK_UI && AFK_UI.confirm) {
-      AFK_UI.confirm({ title: '⚠️ 還原完整資料備份', message: message, okText: '我了解，繼續', cancelText: '取消', danger: true, onOk: onOk });
+      AFK_UI.confirm({ title: '⚠️ 還原完整資料備份', message: message, align: 'left', okText: '我了解，繼續', cancelText: '取消', danger: true, onOk: onOk });
     } else if (window.confirm(message)) { onOk(); }
   }
 
