@@ -142,7 +142,9 @@
   function confirmAndApply(v) {
     var pack = v.pack, when = pack.exportedAt || '?';
     try { when = new Date(pack.exportedAt).toLocaleString('zh-TW'); } catch (e) {}
-    ask('備份檔：' + when + '\n\n這台裝置現在的進度會全部被蓋掉，救不回來。\n要保留的話先按取消，匯出一份再回來。',
+    // 「先關掉其他分頁」不是客套話:還原同一個角色的舊備份時,核心的 _roleSaveAllowed(js/13:426)
+    // 因為角色指紋一樣而放行,開著的分頁每 5 秒就把還原的內容蓋回去,而且畫面照樣顯示還原成功。
+    ask('備份檔：' + when + '\n\n請先關掉其他遊戲分頁。\n這台裝置現在的進度會全部被蓋掉，救不回來。',
       function () { runApply(pack); });
   }
 
