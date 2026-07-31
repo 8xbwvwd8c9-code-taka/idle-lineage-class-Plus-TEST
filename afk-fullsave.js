@@ -30,6 +30,27 @@
  *   ⑤ 入口在首頁設定選單(afk-storage,掛在 #main-menu)→ 天然只有主選單開得到,
  *      不會發生「遊戲中還原完,記憶體裡的舊 player 又被 saveGame 寫回去」。
  *
+ * 🔑 轉移碼(2026-08-01 加·子開關 fullsavecode):同一包資料改用「六碼」搬,免存檔案。
+ *   A 按「產生轉移碼」→ 整包上傳到 Litterbox → 拿它回傳的六碼;B 輸入六碼 → 抓回來 → 走上面同一條還原流程。
+ *   打包/驗證/寫入完全共用,轉移碼只是換一個「把那包交出去」的管道。
+ *
+ *   為什麼是 Litterbox(catbox.moe 的暫存版):比較過 Pixeldrain / Catbox / Uguu / Filebin /
+ *   file.io / JSONBin,**只有它兩半都在瀏覽器裡通、而且 `file://` 也通**(實機驗過)。
+ *     - Pixeldrain / JSONBin:要 API 金鑰 → 金鑰得放進公開 repo,等於把帳號送人
+ *     - Catbox(永久版) / Uguu:上傳或下載沒有 CORS 標頭 → 瀏覽器讀不到回應,拿不到網址
+ *     - Filebin:上傳可以、**下載不行**——它看 User-Agent,瀏覽器一律拿到導頁 HTML 而不是檔案
+ *   詳細比較與實測數字見 docs/save-transfer.md。
+ *
+ *   🚨 這條路會把玩家整包資料送到第三方主機,所以:
+ *     ① 面板文字要講明「暫存在網路上、24 小時後自動刪除」——這是玩家決定按不按的依據。
+ *     ② 獨立子開關,關掉只剩檔案那半(它是本機、零依賴的保底,永遠不能被雲端取代)。
+ *     ③ 對方掛掉/沒網路時訊息要把玩家導回檔案那半,不要只說「失敗」。
+ *
+ *   ⚠️ 碼是伺服器給的小寫英數六碼(如 `4wz0fn`)、**大小寫敏感**(`4WZ0FN` → 404)。
+ *     跨裝置是「看著 A 的螢幕在 B 上打字」,`0`/`o`、`1`/`l` 一定有人看錯 → 輸入端自動轉小寫、
+ *     去空白,找不到時明講可能是看錯了。**絕不可自動把 o 換成 0 再試一次**:那可能抓到
+ *     別人的存檔並覆蓋玩家進度。沒機密性歸沒機密性,還原到別人的存檔是災難。
+ *
  * 優雅降級:缺 _lzSetStoredRaw / AFK_SETTINGS 就 console.warn 後安靜停用。
  * ========================================================================== */
 (function () {
@@ -40,6 +61,12 @@
     desc: '把整台裝置的遊戲資料（全部角色＋倉庫＋寵物＋收集冊＋血盟＋外掛設定）存成一個檔案，換手機時一次搬完；也可以把檔案傳給作者查問題。'
   });
   function on() { try { return !window.AFK_TOGGLES || AFK_TOGGLES.enabled('fullsave'); } catch (e) { return true; } }
+
+  if (window.AFK_TOGGLES) AFK_TOGGLES.register({
+    id: 'fullsavecode', parent: 'fullsave', name: '用轉移碼搬家', group: '系統與其他', def: true,
+    desc: '不想存檔案時，可以改用六碼把資料搬到另一台裝置；資料會暫存在網路上，24 小時後自動刪除。'
+  });
+  function codeOn() { try { return !window.AFK_TOGGLES || AFK_TOGGLES.enabled('fullsavecode'); } catch (e) { return true; } }
 
   if (typeof window._lzSetStoredRaw !== 'function') {
     try { console.warn('[AFK-fullsave] 缺核心 _lzSetStoredRaw,完整資料備份與還原停用。'); } catch (e) {}
@@ -110,6 +137,50 @@
       if (r === 'cancel') return null;
       if (r !== 'saved') { note('❌ 存檔失敗（瀏覽器可能擋住了下載）。', true); return null; }
       return { fname: fname };
+    });
+  }
+
+  // ── 轉移碼(同一包資料,換一個交出去的管道) ────────────────────
+  var LB_UPLOAD = 'https://litterbox.catbox.moe/resources/internals/api.php';
+  var LB_FILE   = 'https://litter.catbox.moe/';
+  var LB_EXPIRY = '24h';        // 1h/12h/24h/72h。選 24h:玩家常常上傳完跑去做別的事,1 小時真的會過期
+  var CODE_RE   = /^[a-z0-9]{6}$/;
+
+  // 回傳的是 https://litter.catbox.moe/4wz0fn.json → 取出中間那六碼
+  function codeFromUrl(url) {
+    var m = String(url || '').trim().match(/([a-z0-9]{6})\.json\s*$/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+  // 玩家可能打成大寫、前後帶空白;整串網址貼進來也一併吃掉(不寫在提示裡,但別讓他走進死路)
+  function normalizeCode(s) {
+    var t = String(s || '').trim().toLowerCase();
+    if (t.indexOf('/') >= 0) t = t.slice(t.lastIndexOf('/') + 1);
+    return t.replace(/\.json$/, '').trim();
+  }
+
+  function uploadPack() {
+    var text;
+    try { text = JSON.stringify(buildPack()); }
+    catch (e) { return Promise.reject(new Error('打包失敗：' + (e && e.message || e))); }
+    var fd = new FormData();
+    fd.append('reqtype', 'fileupload');
+    fd.append('time', LB_EXPIRY);
+    fd.append('fileToUpload', new Blob([text], { type: 'application/json' }), 'save.json');
+    return fetch(LB_UPLOAD, { method: 'POST', body: fd }).then(function (r) {
+      if (!r.ok) throw new Error('上傳失敗（' + r.status + '）');
+      return r.text();
+    }).then(function (url) {
+      var code = codeFromUrl(url);
+      if (!code) throw new Error('上傳結果看不懂');
+      return code;
+    });
+  }
+
+  function downloadByCode(code) {
+    return fetch(LB_FILE + code + '.json', { cache: 'no-store' }).then(function (r) {
+      if (r.status === 404) throw new Error('NOTFOUND');
+      if (!r.ok) throw new Error('讀取失敗（' + r.status + '）');
+      return r.text();
     });
   }
 
@@ -206,7 +277,57 @@
       + '<button id="m-fsv-exp" class="fsv-b fsv-go">📤 匯出備份</button>'
       + '<button id="m-fsv-imp" class="fsv-b fsv-danger">📥 還原備份</button>'
       + '</div>'
+      + (codeOn() ? ('<div class="fsv-sep">或用轉移碼，不存檔案</div>'
+        + '<div class="fsv-desc">在這台按「產生轉移碼」，到另一台輸入那六碼就搬過去了；資料暫存在網路上，24 小時後自動刪除。</div>'
+        + '<div class="fsv-btns">'
+        + '<button id="m-fsv-gen" class="fsv-b fsv-go">🔑 產生轉移碼</button>'
+        + '<div id="m-fsv-codebox" class="fsv-codebox"><span id="m-fsv-code" class="fsv-code"></span>'
+        + '<button id="m-fsv-copy" class="fsv-b fsv-mini">📋 複製</button></div>'
+        + '<div class="fsv-row"><input id="m-fsv-in" class="fsv-input" maxlength="64" autocomplete="off" '
+        + 'autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="輸入六碼">'
+        + '<button id="m-fsv-use" class="fsv-b fsv-danger fsv-mini">搬過來</button></div>'
+        + '</div>') : '')
       + '<div id="m-fsv-note" class="fsv-note"></div>';
+  }
+
+  // 產生轉移碼:上傳整包 → 顯示六碼 + 複製鈕
+  function doGenerate() {
+    var btn = document.getElementById('m-fsv-gen');
+    if (btn) { btn.disabled = true; btn.textContent = '上傳中…'; }
+    note('上傳中…請不要關掉頁面。');
+    uploadPack().then(function (code) {
+      var box = document.getElementById('m-fsv-codebox'), el = document.getElementById('m-fsv-code');
+      if (el) el.textContent = code;
+      if (box) box.classList.add('show');
+      note('✅ 到另一台裝置輸入這六碼就搬過去了（24 小時內有效）。');
+    }).catch(function (e) {
+      var off = (typeof navigator !== 'undefined' && navigator.onLine === false);
+      note('❌ ' + (off ? '沒有網路連線。' : '產生轉移碼失敗（' + (e && e.message || e) + '）。')
+        + '\n可以改用上面的「匯出備份」存成檔案再自己傳過去。', true);
+    }).then(function () {
+      if (btn) { btn.disabled = false; btn.textContent = '🔑 產生轉移碼'; }
+    });
+  }
+
+  // 輸入轉移碼:抓回來 → 走與檔案還原完全相同的驗證與確認流程
+  function doUseCode() {
+    var input = document.getElementById('m-fsv-in');
+    var code = normalizeCode(input && input.value);
+    if (!CODE_RE.test(code)) { note('❌ 請輸入六碼（英文小寫或數字）。', true); return; }
+    var btn = document.getElementById('m-fsv-use');
+    if (btn) btn.disabled = true;
+    note('讀取中…');
+    downloadByCode(code).then(function (text) {
+      var v = validate(text);
+      if (!v.ok) { note('❌ ' + v.err, true); return; }
+      note('');
+      confirmAndApply(v);
+    }).catch(function (e) {
+      // 🚨 只講「可能看錯」,不要自己拿相近字元重試——那可能抓到別人的存檔並覆蓋玩家進度
+      if (e && e.message === 'NOTFOUND') note('❌ 找不到這組轉移碼。可能是打錯了（注意 0 和 o、1 和 l），或是已經超過 24 小時。', true);
+      else if (typeof navigator !== 'undefined' && navigator.onLine === false) note('❌ 沒有網路連線。', true);
+      else note('❌ 讀取失敗（' + (e && e.message || e) + '）。可以改請對方用「匯出備份」存成檔案傳給你。', true);
+    }).then(function () { if (btn) btn.disabled = false; });
   }
   function openModal() {
     if (!on()) return;
@@ -220,8 +341,34 @@
     });
     var e2 = document.getElementById('m-fsv-imp');
     if (e2) e2.addEventListener('click', startRestore);
+    var e3 = document.getElementById('m-fsv-gen');
+    if (e3) e3.addEventListener('click', doGenerate);
+    var e4 = document.getElementById('m-fsv-copy');
+    if (e4) e4.addEventListener('click', function () {
+      var t = (document.getElementById('m-fsv-code') || {}).textContent || '';
+      if (!t) return;
+      var done = function () { note('✅ 已複製轉移碼 ' + t + '。'); };
+      // navigator.clipboard 在 file:// 與部分手機瀏覽器不存在/被擋 → 退回選取整段讓玩家自己複製
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t).then(done).catch(function () { selectCode(); });
+      } else selectCode();
+    });
+    var e5 = document.getElementById('m-fsv-use');
+    if (e5) e5.addEventListener('click', doUseCode);
+    var e6 = document.getElementById('m-fsv-in');
+    if (e6) e6.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') doUseCode(); });
     m.classList.add('open');
     _layer = window.AFK_UI ? AFK_UI.openLayer(hideModal) : null;
+  }
+  // 複製 API 不能用時的保底:把六碼選起來,玩家長按/Ctrl+C 就能自己複製
+  function selectCode() {
+    var el = document.getElementById('m-fsv-code');
+    if (!el) return;
+    try {
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      note('請長按（或按 Ctrl+C）複製選取的六碼。');
+    } catch (e) { note('請手動抄下上面的六碼。'); }
   }
   function hideModal() { var m = document.getElementById('m-fsv-modal'); if (m) m.classList.remove('open'); _layer = null; }
   function closeModal() { if (_layer && window.AFK_UI) AFK_UI.closeLayer(_layer); else hideModal(); }
@@ -259,6 +406,15 @@
       '.fsv-go:hover{background:#0891b2;}',
       '.fsv-danger{background:#7f1d1d;border-color:#b91c1c;color:#fecaca;}',
       '.fsv-danger:hover{background:#991b1b;}',
+      '.fsv-sep{margin:16px 0 8px;padding-top:12px;border-top:1px solid #334155;color:#94a3b8;font-size:12px;}',
+      '.fsv-mini{padding:8px 12px;font-size:13px;flex:0 0 auto;}',
+      '.fsv-row{display:flex;gap:8px;}',
+      // 六碼是「看著另一台螢幕打字」用的 → 等寬字＋拉開字距，讓 0/o、1/l 分得出來
+      '.fsv-input{flex:1 1 auto;min-width:0;background:#020617;border:1px solid #475569;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:18px;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.18em;text-align:center;}',
+      '.fsv-input:focus{outline:none;border-color:#0891b2;}',
+      '.fsv-codebox{display:none;align-items:center;gap:10px;justify-content:center;background:#020617;border:1px solid #475569;border-radius:8px;padding:10px;}',
+      '.fsv-codebox.show{display:flex;}',
+      '.fsv-code{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:.22em;color:#fcd34d;user-select:all;}',
       '.fsv-note{margin-top:10px;font-size:12.5px;color:#a7f3d0;min-height:1em;}',
       '.fsv-note.fsv-bad{color:#fca5a5;}',
       '.fsv-warn{margin-top:12px;padding:8px 10px;border:1px solid #78350f;background:rgba(120,53,15,.28);border-radius:8px;color:#fcd34d;font-size:12px;}'
