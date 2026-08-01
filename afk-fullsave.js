@@ -58,13 +58,13 @@
 
   if (window.AFK_TOGGLES) AFK_TOGGLES.register({
     id: 'fullsave', parent: 'storage', name: '完整資料備份與還原', group: '系統與其他', def: true,
-    desc: '把整台裝置的遊戲資料（全部角色＋倉庫＋寵物＋收集冊＋血盟＋外掛設定）存成一個檔案，換手機時一次搬完；也可以把檔案傳給作者查問題。'
+    desc: '把整台裝置的遊戲資料存成一個檔案，換手機時一次搬完，也可以傳給作者查問題'
   });
   function on() { try { return !window.AFK_TOGGLES || AFK_TOGGLES.enabled('fullsave'); } catch (e) { return true; } }
 
   if (window.AFK_TOGGLES) AFK_TOGGLES.register({
     id: 'fullsavecode', parent: 'fullsave', name: '用轉移碼搬家', group: '系統與其他', def: true,
-    desc: '不想存檔案時，可以改用六碼把資料搬到另一台裝置；資料會暫存在網路上，24 小時後自動刪除。'
+    desc: '用六碼把資料搬到另一台裝置；資料會暫存在網路上，24 小時後自動刪除'
   });
   function codeOn() { try { return !window.AFK_TOGGLES || AFK_TOGGLES.enabled('fullsavecode'); } catch (e) { return true; } }
 

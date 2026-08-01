@@ -28,7 +28,7 @@
   //     分成兩個開關會變成「要兩個都關才有效」,玩家只關一個就困惑。
   if (window.AFK_TOGGLES) AFK_TOGGLES.register({
     id: 'offlinechase', name: '掛機期間遭遇玩家對戰', group: '遊戲玩法', parent: 'offline', def: false,
-    desc: '開啟後，離線掛機也會被記恨你的玩家追殺、也可能被捲入 NPC 血盟群戰。這類戰鬥是完整的職業對戰，會讓結算時間明顯變長。'
+    desc: '離線掛機也會被記恨你的玩家追殺、被捲入血盟群戰；結算時間會明顯變長'
   });
   function chaseOn() { return !!(window.AFK_TOGGLES && AFK_TOGGLES.enabled('offlinechase')); }
 

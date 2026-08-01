@@ -24,7 +24,7 @@
 
   if (window.AFK_TOGGLES) AFK_TOGGLES.register({
     id: 'dollcursor', name: '關閉魔法娃娃游標', group: '系統與其他', def: false,
-    desc: '裝魔法娃娃時不要把滑鼠游標換成娃娃圖；手機點下去也不會留一顆光點。'
+    desc: '裝魔法娃娃時不要把滑鼠游標換成娃娃圖；手機點下去也不會留一顆光點'
   });
   // 讀不到開關中樞 → 當「關閉」(透明放行原版)。這支是拿掉上游功能的,不確定時不要動它。
   function on() { try { return !!(window.AFK_TOGGLES && AFK_TOGGLES.enabled('dollcursor')); } catch (e) { return false; } }

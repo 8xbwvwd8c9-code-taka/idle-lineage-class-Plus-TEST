@@ -83,16 +83,16 @@
         { id: 'bossring', name: '傳送控制戒指自動找 BOSS', desc: '傳送控制戒指放背包就生效（不必裝備）；場上沒 BOSS 就自動用瞬移卷軸找一隻', group: '自動化' },
         // ⚠️ 名稱避開「解壓」「壓縮」字樣:玩家會誤判成壓縮功能而關掉它（回報過）。
         { id: 'lzcache', name: '資料記憶體暫存', desc: '戰鬥比較不卡、離線結算快好幾倍；會多用一點記憶體', group: '系統與其他' },
-        { id: 'reissueid', name: '換發身分證', desc: '⚠️ 進階工具，平常用不到：把每個角色換成各自獨立的身分（複製出來的角色互相打架時才需要）。會改寫全部存檔且無法復原。', group: '存檔工具', parent: 'storage' },
+        { id: 'reissueid', name: '換發身分證', desc: '⚠️ 把複製出來的角色換成各自獨立的身分；會改寫全部存檔且無法復原', group: '存檔工具', parent: 'storage' },
         { id: 'pwa', name: '安裝成 App / 離線快取', desc: '把遊戲裝成手機／電腦上的 App，圖片存在本機不用每次重抓', group: '系統與其他' },
         { id: 'storage', name: '設定選單', desc: '首頁的 ⚙ 設定選單，可檢查存檔大小', group: '系統與其他' },
-        { id: 'synccompress', name: '存檔即時壓縮', desc: '存檔當下就壓縮，避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間，預設關', group: '系統與其他', def: false },
-        { id: 'powersave', name: '省電模式', desc: '把降低畫面更新頻率、關動畫、關特效與音效等省電選項收在同一個面板', group: '系統與其他' },
+        { id: 'synccompress', name: '存檔即時壓縮', desc: '避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間', group: '系統與其他', def: false },
+        { id: 'powersave', name: '省電模式', desc: '省電選項：降低畫面更新頻率、關動畫、關特效與音效', group: '系統與其他' },
         { id: 'skin', name: '首頁外掛入口/資訊', desc: '整理首頁的外掛入口，並顯示原作者連結與最後同步原版的時間', group: '系統與其他' },
-        { id: 'offline', name: '離線快速結算', desc: '關掉遊戲回來自動結算掛機收益；離線期間魔物追蹤照樣生效，追蹤時間也不會被多扣', group: '遊戲玩法' },
+        { id: 'offline', name: '離線快速結算', desc: '關掉遊戲回來自動結算掛機收益', group: '遊戲玩法' },
         { id: 'traditional', name: '傳統模式(偽)', desc: '打到或做出來的裝備自帶隨機強化值（在選角卡右上角逐角色開關）', group: '遊戲玩法' },
         { id: 'dograce', name: '賽狗場', desc: '賭哪隻狗第一，押金幣或龍鑽、中了自動入袋（自動化分頁開啟）', group: '遊戲玩法' },
-        { id: 'anyclass', name: '裝備不限職業/性別', desc: '武器、防具、飾品（含遺物）都不再檢查職業與性別，任何角色都能裝；關掉後讀檔時穿不上的會自動卸回背包', group: '遊戲玩法', def: false }
+        { id: 'anyclass', name: '裝備不限職業/性別', desc: '所有裝備都不看職業與性別，任何角色都能裝；關掉後穿不上的會自動卸回背包', group: '遊戲玩法', def: false }
     ].forEach(api.register);
 
     // 開啟彈窗當下：實測非官方橫幅(#_orig_pbar)高度,直接寫進 overlay 的 padding-top,讓卡片一定落在橫幅下方。

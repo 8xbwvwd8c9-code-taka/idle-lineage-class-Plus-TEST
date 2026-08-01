@@ -23,7 +23,7 @@
 
   if (window.AFK_TOGGLES) AFK_TOGGLES.register({
     id: 'synccompress', name: '存檔即時壓縮', group: '系統與其他', def: false,
-    desc: '存檔當下就壓縮，避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間，所以預設關（在「檢查存檔大小」看到很多「未壓縮」再開）。'
+    desc: '避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間'
   });
 
   if (typeof _lzSet !== 'function' || typeof LZString === 'undefined' || typeof LZString.compressToUTF16 !== 'function') {

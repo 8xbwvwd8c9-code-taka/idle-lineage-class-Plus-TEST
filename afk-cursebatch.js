@@ -26,7 +26,7 @@
   if (window.AFK_TOGGLES) {
     AFK_TOGGLES.register({
       id: 'cursebatch', name: '一鍵弱化（詛咒卷軸）', group: '遊戲玩法', def: true,
-      desc: '詛咒卷軸可一次降到指定強化值；已強化到上限的裝備也點得到（原版會整顆按鈕消失）'
+      desc: '詛咒卷軸可一次降到指定強化值；已強化到上限的裝備也點得到'
     });
   }
   function on() { return !window.AFK_TOGGLES || AFK_TOGGLES.enabled('cursebatch'); }

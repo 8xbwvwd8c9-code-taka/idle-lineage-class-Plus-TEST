@@ -543,7 +543,7 @@
     if (window.AFK_TOGGLES) {
       AFK_TOGGLES.register({
         id: 'reissueid', name: '換發身分證', group: '存檔工具', def: true, parent: 'storage',
-        desc: '⚠️ 進階工具，平常用不到：把每個角色換成各自獨立的身分（複製出來的角色互相打架時才需要）。會改寫全部存檔且無法復原。'
+        desc: '⚠️ 把複製出來的角色換成各自獨立的身分；會改寫全部存檔且無法復原'
       });
     }
     window.AFK_SETTINGS = window.AFK_SETTINGS || { _items: [], add: function (it) { this._items.push(it); } };
