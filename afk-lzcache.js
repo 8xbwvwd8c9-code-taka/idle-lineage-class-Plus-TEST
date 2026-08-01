@@ -1,5 +1,5 @@
 /**
- * afk-lzcache.js — 大資料重複處理的快取（兩層：解壓一層、血盟 Buff 查詢一層）
+ * afk-lzcache.js — 大資料重複處理的快取（三層：解壓、血盟 Buff 查詢、血盟狀態讀取）
  *
  * 為什麼需要：核心把幾包大資料以 LZString 壓在 localStorage（血盟狀態、存檔、圖鑑…），
  * 而 killMob → pvpOnKillMob → npcClanMaybeStartGroupBattle 會在擲骰「要不要開血盟團戰」之前
@@ -17,6 +17,11 @@
  *   recomputeStats() 每次都會問一次血盟 Buff，而重算在某些配裝下是逐殺發生的
  *   （見 apply-core-patches 補丁 9：吉爾塔斯魔杖）→ 同樣被放大成離線結算的大宗。
  *   細節見下方該段的註解。
+ *
+ * 【第三層】包住 _clanReadStateResult——野外圖上「每生一個 PVP 對手、每殺一隻怪問一次要不要開
+ *   團戰」都會整包重讀血盟狀態，實測某玩家存檔 3,002 次／離線小時、佔該場結算 25~35%。
+ *   第一層蓋不到它：結算期間存的多半是未壓縮明文（_lzSet 先寫明文、壓縮丟給 Worker），根本沒解壓。
+ *   細節與兩條安全紅線見下方該段的註解。
  */
 (function () {
     'use strict';
@@ -107,14 +112,89 @@
         window.getClanBuffStats.__afkClanBuf = true;
     }
 
+    // ───────────────────────────────────────────────────────────────────────
+    // 第三層：血盟狀態讀取快取（省掉重複的「解壓 + JSON.parse + 整份正規化」）
+    //
+    // _clanReadState() 是野外圖離線結算的大宗：每生一個玩家型 PVP 對手、每殺一隻怪問一次
+    // 「要不要開血盟團戰」都會問它。實測某玩家存檔（龍之谷·對 8 個 NPC 血盟宣戰·遭遇率 3%）：
+    // **3,002 次／離線小時、每次約 370µs（JSON.parse 150µs ＋ _clanNormalizeState 230µs）
+    // ＝ 1.1 秒**，佔那場結算的 25~35%。（結算期間存的多半是未壓縮明文——_lzSet 先寫明文、
+    // 壓縮丟給 Worker——所以第一層的解壓快取在這條路上幾乎沒作用，要另外擋一層。）
+    //
+    // 有效性判定與第一/二層同一個道理：**localStorage 裡那個字串有沒有變**。任何人寫過那個 key
+    // （含別的分頁）字串就不同 → 自動未命中重算，不需要通知機制、也不怕跨分頁改到。
+    //
+    // 🚨 兩個一定要守住的點：
+    //   1. **快取存字串、不存物件，每次回傳新的物件**。呼叫端（js/25 _clanWithLock 的 mutator）
+    //      會就地改它，而且有 `commit:false` 的路徑是**改完不寫回**的 —— 共用同一個物件會讓
+    //      那些「本來該丟掉的修改」默默留下來，是會改變遊戲行為的靜默錯誤。
+    //      （這也是為什麼不用 structuredClone 回傳複本：實測 279µs，比重新 parse 還貴。）
+    //   2. 跳過正規化的前提是**正規化冪等**（對已正規化的資料再跑一次結果相同）。實測成立，
+    //      但上游哪天改成不冪等就會變成靜默失真 → 第一次填快取時自己驗一次，驗不過就
+    //      **整層自我停用**（退回原本行為，只是慢一點），不賭。
+    var crHits = 0, crMisses = 0, crRaw = null, crNorm = null, crOK = true;
+    if (typeof window._clanReadStateResult === 'function' && typeof window._clanNormalizeState === 'function'
+        && typeof window._lsGet === 'function' && !window._clanReadStateResult.__afkClanRead) {
+        var crKey = (typeof CLAN_STATE_KEY === 'string' && CLAN_STATE_KEY) ? CLAN_STATE_KEY : 'fb5_clan_state_v1';
+        var crOrig = window._clanReadStateResult;
+        window._clanReadStateResult = function () {
+            if (!crOK) return crOrig.apply(this, arguments);
+            var raw = null;
+            try { raw = _lsGet(crKey); } catch (e) { return crOrig.apply(this, arguments); }
+            if (raw != null && raw === crRaw && crNorm != null) {
+                try { crHits++; return { ok: true, state: JSON.parse(crNorm) }; }
+                catch (e) { crRaw = crNorm = null; }   // 快取內容壞了就丟掉重來，不要拖累遊戲
+            }
+            crMisses++;
+            var r = crOrig.apply(this, arguments);
+            if (!r || !r.ok || !r.state || raw == null) return r;
+            try {
+                var text = JSON.stringify(r.state);
+                if (crNorm === null && crRaw === null) {   // 第一次填快取：驗「正規化是冪等的」
+                    if (JSON.stringify(_clanNormalizeState(JSON.parse(text))) !== text) {
+                        crOK = false;
+                        console.warn('[AFK-lzcache] 血盟正規化不再冪等（上游改過？）→ 第三層快取自我停用，結算會慢一點但行為不變。');
+                        return r;
+                    }
+                }
+                crRaw = raw; crNorm = text;
+            } catch (e) { crRaw = crNorm = null; }
+            return r;
+        };
+        window._clanReadStateResult.__afkClanRead = true;
+
+        // 寫入後順手把快取填好。不填的話每次寫入都讓下一次讀取未命中（實測 3,002 讀對 1,086 寫，
+        // 命中率只有六成多，而且每次未命中還要多付一次 JSON.stringify 去填快取）。
+        // 填的成本趨近於零：剛寫進去的那個字串就是 localStorage 現在的值，把它 _saveUnwrap
+        // 拆掉簽章就是「已正規化的 JSON 文字」——兩步都不用重新正規化也不用重新序列化。
+        if (typeof window._clanWriteState === 'function' && !window._clanWriteState.__afkClanRead) {
+            var cwOrig = window._clanWriteState;
+            window._clanWriteState = function () {
+                var ok = cwOrig.apply(this, arguments);
+                if (!crOK) return ok;
+                if (!ok) { crRaw = crNorm = null; return ok; }   // 沒寫成功 → 舊快取可能已失真，丟掉
+                try {
+                    var raw = _lsGet(crKey);
+                    var u = (typeof _saveUnwrap === 'function') ? _saveUnwrap(raw) : null;
+                    var text = (u && u.payload != null) ? u.payload : raw;
+                    if (raw != null && text != null) { crRaw = raw; crNorm = text; }
+                    else { crRaw = crNorm = null; }
+                } catch (e) { crRaw = crNorm = null; }
+                return ok;
+            };
+            window._clanWriteState.__afkClanRead = true;
+        }
+    }
+
     window.AFK_LZCACHE = {   // 供 afk-diag / 問題回報取證（唯讀）
         stats: function () {
             return {
                 hits: hits, misses: misses, entries: cache.size, chars: chars,
-                clanBuffHits: cbHits, clanBuffMisses: cbMisses, clanBuffEntries: cbCache.size
+                clanBuffHits: cbHits, clanBuffMisses: cbMisses, clanBuffEntries: cbCache.size,
+                clanReadHits: crHits, clanReadMisses: crMisses, clanReadOn: crOK
             };
         },
-        clear: function () { cache.clear(); chars = 0; cbCache.clear(); }
+        clear: function () { cache.clear(); chars = 0; cbCache.clear(); crRaw = crNorm = null; }
     };
 
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
