@@ -200,6 +200,32 @@ const untranslatedMaps = await page.evaluate(() => {
   return out;
 });
 
+// 🔌 桌機外掛入口區塊(afk-skin 的 #afk-plugin-panel):整塊絕對定位在左欄「版本號正上方」。
+//   座標是照上游 4:3 舞台的百分比放的 → 上游改首頁版面(標題變高、搬 #login-meta-layer、換舞台元素)時,
+//   入口不會消失、只會疊到標題/版號上或被舞台的 overflow:hidden 切掉,肉眼不掃根本看不出來。
+const pluginPanelProblems = await page.evaluate(() => {
+  const bad = [];
+  const rectOf = (s) => { const el = document.querySelector(s); return el && el.getBoundingClientRect(); };
+  const panel = document.getElementById('afk-plugin-panel');
+  if (!panel) { bad.push('#afk-plugin-panel 不存在(桌機入口沒被放到左欄)'); return bad; }
+  const kids = [...panel.children].map((c) => c.getBoundingClientRect());
+  if (!kids.length) { bad.push('#afk-plugin-panel 是空的(入口沒被搬進來)'); return bad; }
+  const top = Math.min(...kids.map((r) => r.top)), bottom = Math.max(...kids.map((r) => r.bottom));
+  const ver = rectOf('#login-version'), title = rectOf('#login-title-layer'), stage = rectOf('#login-art-stage');
+  if (ver && bottom > ver.top) bad.push(`入口區塊底端(${Math.round(bottom)}px)壓到版本號(頂端 ${Math.round(ver.top)}px)`);
+  if (title && top < title.bottom) bad.push(`入口區塊頂端(${Math.round(top)}px)壓到標題(底端 ${Math.round(title.bottom)}px)`);
+  if (stage && (top < stage.top || bottom > stage.bottom)) bad.push('入口區塊超出 4:3 舞台,會被 overflow:hidden 切掉');
+  for (const [sel, nm] of [['.m-dex-entry-main', '掉落查詢入口'], ['.m-wiki-entry-main', '小百科入口'], ['#afk-stg-gear', '⚙ 其他功能']]) {
+    const r = rectOf(sel);
+    if (!r) { bad.push(nm + '不存在'); continue; }
+    if (!(r.width > 0 && r.height > 0)) { bad.push(nm + '沒有尺寸'); continue; }
+    const el = document.querySelector(sel);
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!(hit === el || el.contains(hit))) bad.push(`${nm}被「${(hit && (hit.id || hit.tagName)) || '未知元素'}」蓋住,點不到`);
+  }
+  return bad;
+});
+
 // 🗡️ 裝備頁覆蓋檢查:三件事,都是「畫面正常、只是查不到」的靜默失效。
 //   ① 無條件件數 == DB.items 的裝備數 → 沒有裝備在索引階段被漏掉。
 //   ② 部位按鈕的件數加總 == 總件數 → 上游新增 slot 時,那個部位在篩選面板裡**沒有按鈕**(索引有、篩不到),
@@ -258,6 +284,14 @@ if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
+  process.exit(1);
+}
+
+if (pluginPanelProblems.length) {
+  console.error('冒煙測試失敗:桌機首頁左欄的外掛入口區塊位置不對(玩家會看到入口疊在標題/版號上或被切掉):');
+  for (const p of pluginPanelProblems) console.error('  ' + p);
+  console.error('  判準:#afk-plugin-panel 的座標(left/width/top/bottom)是照上游 4:3 舞台算的,');
+  console.error('       上游搬動 #login-title-layer / #login-meta-layer 就要跟著調(見 afk-skin.js 的 CSS)。');
   process.exit(1);
 }
 
