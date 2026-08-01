@@ -87,4 +87,10 @@ if (process.env.AFK_SKIP_SMOKE === '1') {
   run('node scripts/smoke-hooks.mjs');
 }
 
+// ── 7) 外掛 DOM 錨點檢查（上游刪 id 的當天就要抓到）─────────────────
+//   外掛靠 getElementById 讀上游的設定勾選框/容器。上游改版刪掉某個 id 時 getElementById 回 null，
+//   依賴它的條件永遠不成立 → 那段功能安靜消失（無錯誤、無警告，smoke 也驗不到）。同步正是 id 消失的時機，
+//   所以排在流程最尾：前面的產生性步驟都已完成，這裡失敗＝要去改外掛的錨點，不必重跑同步。
+run('node scripts/check-dom-ids.mjs');
+
 console.log('\n✅ sync-upstream 完成：核心已是上游原版 + 加掛版補丁，index/manifest/版本/checkpoint 已更新。');

@@ -6,6 +6,9 @@
 |---|---|
 | 查「有哪些外掛 / 哪些核心補丁」 | `docs/plugins.md` |
 | 改離線掛機(afk-offline) | `docs/offline.md` ＋ afk-offline.js 檔頭註解 |
+| 玩家回報「離線結算跑很久」 | 跑 `node scripts/profile-offline.mjs --file <.testdata 檔> --slot N [--hot]`(拿真實存檔實測,別用新角色猜) |
+| 想加速離線結算 | `docs/offline-batch-settle.md`(**草稿·尚未實作**;開頭補註說明為什麼優先順序被降低) |
+| 做「存檔搬家 / 跨裝置轉移」 | `docs/save-transfer.md`(**評估·尚未實作**;整包 localStorage 的打包/還原做法、五種方案的優缺點) |
 | 改 sw.js / 快取 / PWA | `docs/sw-pwa.md` |
 | 改手機或平板版面、覆寫上游手機樣式 | `docs/mobile.md` |
 | 同步上游 | 跑 `/sync-upstream`;背景與 CI 見 `docs/sync-upstream.md` |
@@ -15,7 +18,7 @@
 ## 專案性質與架構（2026-07-19 起・純上游鏡像＋外掛層）
 
 - 網頁放置遊戲。遊戲本體由原作者(巴哈姆特 秋玥)製作,原版:**https://shines871.github.io/idle-lineage-class/**;本站(加掛版):https://pp771007.github.io/idle-lineage-class/。
-- **架構=「上游原版鏡像＋外掛層」**:核心(`js/NN-*.js`、`css/*`、`index.html`、`assets/`、`public/`)永遠是上游原文/原檔的位元組級鏡像;我們的所有功能都在**外掛層**——根目錄 `afk-*.js`(51 支)＋`sw.js`(PWA,上游沒有)＋極少量**錨點式核心補丁**(`scripts/apply-core-patches.mjs`)。
+- **架構=「上游原版鏡像＋外掛層」**:核心(`js/NN-*.js`、`css/*`、`index.html`、`assets/`、`public/`)永遠是上游原文/原檔的位元組級鏡像;我們的所有功能都在**外掛層**——根目錄 `afk-*.js`(54 支)＋`sw.js`(PWA,上游沒有)＋極少量**錨點式核心補丁**(`scripts/apply-core-patches.mjs`)。
 - 上游本機 clone:`D:/otherPersonRepos/idle-lineage-class`。**引用上游做任何判斷前先 `git -C <clone> fetch`**——舊 clone 會讓「上游也是這樣」的結論整個相反(踩過)。
 - 同步狀態記在 `upstream-checkpoint.json`(`syncedUpstreamCommit`=目前鏡像的上游 commit)。
 - ⚠️ **`assets/`、`public/` 下不可放我方獨有檔案**——CI 同步用 `rsync --delete` 鏡像,會被刪掉。外掛需要圖優先引用上游既有檔。
@@ -57,12 +60,28 @@
 - 覆寫上游「寫在 media query 裡」的樣式、或做手機/平板專屬元素 → 先讀 `docs/mobile.md`(兩套版面、同一條 MQ、橫幅讓位三條規則,都有 smoke 把關)。
 - 外掛自建遊戲物件(如木人場 spawn 怪)欄位要對齊核心 `spawnMob`,缺欄位(如 `_born`)會整個系統安靜失效。
 - 上游改版後外掛的「字串/DOM 結構假設」可能失效——同步後 smoke＋人工掃一輪首頁/手機版面。
+- **🚨 搬運/備份/轉存類的東西,不可以「認得」被搬的內容**:正確性來自原樣進、原樣出。任何看得懂內容的判斷(key 名格式、欄位長度、「這是不是合法存檔」)都是對上游格式的假設,作者改個名字就把**所有合法檔案擋在門外**,而且是在玩家換裝置時才爆。要驗只能驗**自己寫進檔案的欄位**(format / schema / 項目數),不可以驗遊戲的東西。(afk-fullsave 踩過:`/^lineage_idle_save_\d+$/` 當「至少要有一個角色」的閘門。)
+
+## 🚨 玩家看得到的字:一句都不能是廢話
+
+判準只有一條:**這句話會讓玩家做出不同的動作嗎?** 不會就刪。
+
+- 刪:容量、項目數、key 名、內部機制、設計理由(「刻意不挑是因為…」)——那些是註解該寫的,不是畫面該有的
+- 刪:我們其實不知道的事(檔案會存到哪、能用什麼 App 傳)——寫了就是誤導(Android 下載資料夾還有 0 byte 的雷)
+- 刪:在按鈕旁邊解釋這顆按鈕在幹嘛(按鈕名稱取好就夠)
+- 留:他現在要做什麼決定、按下去會發生什麼、出事了該怎麼辦
+
+版面預算(超過就是寫太多):面板說明 ≤1 句、危險確認 ≤2 句(後果+怎麼避免)、成功/失敗提示 ≤1 句。錯誤訊息只寫「怎麼回事+該怎麼做」,技術細節走 `console.warn`。
+
+**寫的順序:先把按鈕文字定下來,再問「還缺什麼玩家非知道不可」**——反過來先寫說明段落,就會不自覺把設計理由倒進畫面。自我檢查:每一句單獨拿出來問「刪掉會怎樣」,答不出具體後果就刪。
+
+> 同一個精神在別處已經各寫過一次(發版說明「只寫玩家有感的、白話」、`/update-wiki` 的版面預算),但那兩條都綁死在各自場合 → 寫外掛 UI 時一條都不適用,才會失守。這節是通則,涵蓋所有玩家看得到的字。
 
 ## 🚨 push 前(→ 跑 `/prepush`)
 
 - **本 repo 的 `git push` 一定要使用者親口說了才能做**(全域那條「push 不必再問」在這裡不適用):使用者開口後,在指令尾端加註解 `#user-approved` 才放行,**沒得到同意不可以自己加**。已由 `prepush-guard.mjs` 硬擋(Bash / PowerShell 兩個工具都收,實測過)。「誰決定上線」與「內容夠不夠格上線」是兩層,各擋各的——有你同意但 stamp 沒跑,照樣擋。
 - 完整步驟在 skill 裡,這裡只留一條原則:**commit 階段不 bump/stamp**——那是 push/發版流程的事(功能做完就 commit,等說要 push 才跑 /prepush 一次處理)。
-- 其餘不必自己記:`?v=` 沒對齊內容、核心補丁掉了、sw.js 的 `CODE_VERSION` 過時、rebase 衝突標記殘留、afk-*.js 沒在 index.html 引用、音檔索引沒重產 —— `.claude/hooks/prepush-guard.mjs` 會在 `git push` 前 exit 2 硬擋並印出要跑的指令。(`?v=` 漏 bump 的後果是**新舊混搭**:玩家快取時序決定,低機率無法重現,踩過整晚收益歸零——所以才做成硬擋。)
+- 其餘不必自己記:`?v=` 沒對齊內容、核心補丁掉了、sw.js 的 `CODE_VERSION` 過時、rebase 衝突標記殘留、afk-*.js 沒在 index.html 引用、音檔索引沒重產、**外掛錨到已不存在的 DOM id**(`scripts/check-dom-ids.mjs`;同步上游流程尾端也會跑) —— `.claude/hooks/prepush-guard.mjs` 會在 `git push` 前 exit 2 硬擋並印出要跑的指令。(`?v=` 漏 bump 的後果是**新舊混搭**:玩家快取時序決定,低機率無法重現,踩過整晚收益歸零——所以才做成硬擋。)
 
 ## 暫存 / 測試
 

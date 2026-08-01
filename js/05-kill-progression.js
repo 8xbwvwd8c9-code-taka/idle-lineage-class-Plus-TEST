@@ -419,8 +419,8 @@ player.exp += _playerExpGain;
     if (player.allies && player.allies.length) player.allies.forEach(a => { if (a && !a._downed && a.eq && a.eq.helm && (DB.items[a.eq.helm.id] || {}).killHealHp) a.curHp = Math.min(a.mhp || 1, (a.curHp || 0) + DB.items[a.eq.helm.id].killHealHp); });
     // 🪄 吉爾塔斯魔杖：任意擊殺後 10 秒內依主玩家邪惡值取得額外魔法點數（滿邪惡 +20）；再次擊殺刷新時間。
     let _giltasWandTriggered = [];
-    if (player.eq && player.eq.wpn && player.eq.wpn.id === 'wpn_giltas_wand') { player._giltasWandFuryUntil = state.ticks + 100; _giltasWandTriggered.push(player); }
-    if (player.allies && player.allies.length) player.allies.forEach(a => { if (a && !a._downed && a.eq && a.eq.wpn && a.eq.wpn.id === 'wpn_giltas_wand') { a._giltasWandFuryUntil = state.ticks + 100; _giltasWandTriggered.push(a); } });
+    if (player.eq && player.eq.wpn && player.eq.wpn.id === 'wpn_giltas_wand') { let _gwB = (typeof pvpEvilBonus === 'function' ? pvpEvilBonus(20) : 0); let _gwSame = player._giltasWandFuryUntil > state.ticks && player._giltasWandBonus === _gwB; player._giltasWandFuryUntil = state.ticks + 100; player._giltasWandBonus = _gwB; if (!_gwSame) _giltasWandTriggered.push(player); }   // 🔌 加掛版補丁:buff 還在且加成值沒變→這次重算不會改變任何衍生值,略過(離線結算的最大熱點)
+    if (player.allies && player.allies.length) player.allies.forEach(a => { if (a && !a._downed && a.eq && a.eq.wpn && a.eq.wpn.id === 'wpn_giltas_wand') { let _gwP = player, _gwB = 0; player = a;   try { _gwB = (typeof pvpEvilBonus === 'function' ? pvpEvilBonus(20) : 0); } finally { player = _gwP; } let _gwSame = a._giltasWandFuryUntil > state.ticks && a._giltasWandBonus === _gwB; a._giltasWandFuryUntil = state.ticks + 100; a._giltasWandBonus = _gwB; if (!_gwSame) _giltasWandTriggered.push(a); }/* 🔌 加掛版補丁:同上(傭兵路徑更貴——_allyLevelRecompute 內部還會再叫一次玩家的 calcStats);算加成值前先把 player 換成這名傭兵,因為 pvpEvilBonus 讀的是全域 player */ });
     if (_giltasWandTriggered.includes(player)) calcStats();
     _giltasWandTriggered.forEach(a => { if (a !== player && typeof _allyLevelRecompute === 'function') _allyLevelRecompute(a); });
 

@@ -79,7 +79,7 @@
         { id: 'pwa', name: '安裝成 App / 離線快取', desc: '把遊戲裝成手機／電腦上的 App，圖片存在本機不用每次重抓', group: '系統與其他' },
         { id: 'storage', name: '設定選單', desc: '首頁的 ⚙ 設定選單，可檢查存檔大小', group: '系統與其他' },
         { id: 'synccompress', name: '存檔即時壓縮', desc: '存檔當下就壓縮，避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間，預設關', group: '系統與其他', def: false },
-        { id: 'powersave', name: '省電模式', desc: '關掉戰鬥動畫、降低畫面更新頻率，省電也比較不卡', group: '系統與其他' },
+        { id: 'powersave', name: '省電模式', desc: '把降低畫面更新頻率、關動畫、關特效與音效等省電選項收在同一個面板', group: '系統與其他' },
         { id: 'skin', name: '首頁外掛入口/資訊', desc: '整理首頁的外掛入口，並顯示原作者連結與最後同步原版的時間', group: '系統與其他' },
         { id: 'offline', name: '離線快速結算', desc: '關掉遊戲回來自動結算掛機收益；離線期間魔物追蹤照樣生效，追蹤時間也不會被多扣', group: '遊戲玩法' },
         { id: 'traditional', name: '傳統模式(偽)', desc: '打到或做出來的裝備自帶隨機強化值（在選角卡右上角逐角色開關）', group: '遊戲玩法' },
@@ -207,6 +207,10 @@
         return true;
     }
     injectEntry();
+    // 🏠 小百科／掉落查詢的獨立分頁（?view=…）也要藏：那裡頁首有自己的導覽列（首頁／小百科／掉落查詢），
+    //    這顆固定按鈕的位置正好蓋住第一顆「🏠 首頁」讓人點不到（玩家回報）。獨立分頁只看 location.search，
+    //    不碰任何外掛設的變數／class（逃生門不可依賴可被關掉的東西）；回到首頁就看得到這顆鈕，逃生門仍在。
+    function inStandaloneView() { try { return !!new URLSearchParams(location.search).get('view'); } catch (e) { return false; } }
     // 只在首頁顯示：進遊戲（#game-screen 顯示 / #main-menu 隱藏）就把左上角開關鈕藏起來。
     function syncEntryVisibility() {
         var btn = document.getElementById('afk-toggles-entry');
@@ -214,7 +218,7 @@
         // 以「遊戲畫面是否顯示」為準（最可靠）：game-screen 沒隱藏＝在遊戲中→藏開關鈕；否則(首頁/選角/創角)顯示。
         var gs = document.getElementById('game-screen');
         var inGame = gs && !gs.classList.contains('hidden');
-        btn.style.display = inGame ? 'none' : '';
+        btn.style.display = (inGame || inStandaloneView()) ? 'none' : '';
         syncEntryTop();   // 橫幅由遊戲 loop 晚注入、高度也會變（換行）→ 每秒跟著校正一次
     }
     syncEntryVisibility();

@@ -462,6 +462,7 @@ function patchInsigniaOrder() {
   } else { already++; }
 }
 
+
 // ── 補丁 13：js/02 recomputeStats 加入射擊場/圖書館/魔法塔/魔法練習場/練兵場/神殿等建築效果 ──
 //   在血盟 Buff 區塊之後插入城堡建築效果：
 //     - shootingRange → d.rangedCrit, d.rangedCritDmg（遠距離暴擊率+2%、暴擊傷害+2% per LV）
@@ -612,7 +613,76 @@ changed++;
 console.log(`[patch] getClanBuffStats 補上 extraMp 套用（${FILE}）`);
 }
 
-const PATCHES = [patchMaybeSpawnMobs, patchTradEnHook, patch16Slots, patchPetAnimTicker, patchBossHuntEscape, patchUseItemKeepModal, patchSellNowNoForce, patchInsigniaOrder, patchCastleBuildingsData, patchCastleButlerNPC, patchCastleBuildingCollection, patchCastleExpGoldBonus, patchCastleButlerNpcList, patchCastleBuildingStats, patchCastleEnchantRate, patchClanBuffExtraMp];
+
+// ── 補丁 9：js/05 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算一次」──────────
+//   這把杖的效果＝擊殺後 10 秒內依邪惡值加額外魔法點數(js/02:306 的 d.extraMp)。上游作法是每次擊殺
+//   都把持有者丟進 _giltasWandTriggered → 玩家走 calcStats()、傭兵走 _allyLevelRecompute()
+//   (而後者結尾又叫一次玩家的 calcStats() → **一個傭兵拿杖＝每殺一隻重算兩次**)。
+//   但 buff 本來就還在、加成值又沒變時,重算前後的 d 完全一樣＝白算;而每次重算都會經
+//   getClanBuffStats() 把整包血盟資料(壓縮 23KB／解開 242KB)重讀＋JSON.parse＋正規化一次。
+//   實測(玩家真實存檔·1 小時離線):沒人拿杖 2.4 秒、一個傭兵拿杖 54 秒、兩個傭兵拿杖 91 秒。
+//   改法:只有「buff 原本已過期」或「加成值真的變了」才進重算清單——會改變 d 的情況一次都沒少,
+//   純粹拿掉重複。上次的加成值記在 _giltasWandBonus(同 _giltasWandFuryUntil 一樣是存檔內的暫時欄位)。
+//   到期那側的重算由 js/03 tick 既有的 _giltasWandExpired 負責,不受影響。
+//   ⚠ 判準要比「加成值」不能只比「邪惡值」:普通怪每殺一隻邪惡值就 +1(要一路殺到 ±32767 才停),
+//     比邪惡值等於幾乎每次都不同 → 完全省不到。而 pvpEvilBonus(20) 是量化過的(每 ~1638 點才跳一階),
+//     真正決定 d 的是它。
+//   ⚠ 傭兵那側要先把全域 player 暫時換成該傭兵再算:js/02:306 的 pvpEvilBonus() 讀的是**當下的全域
+//     player**,而傭兵重算時 player 正是被換成該傭兵(_allyLevelRecompute 的既有做法)。在 killMob 裡
+//     不換就算會拿到隊長的值,兩邊比錯。try/finally 保證任何情況都換得回來。
+//   實測同一存檔 1 小時離線 54 秒 → 0.9 秒;擊殺數與掉落一致。
+function patchGiltasWandRecompute() {
+  const FILE = 'js/05-kill-progression.js';
+  let s = readFileSync(FILE, 'utf8');
+  if (s.includes('_giltasWandBonus')) { already++; return; }
+
+  const SITES = [
+    ["{ player._giltasWandFuryUntil = state.ticks + 100; _giltasWandTriggered.push(player); }",
+      "{ let _gwB = (typeof pvpEvilBonus === 'function' ? pvpEvilBonus(20) : 0);" +
+      ' let _gwSame = player._giltasWandFuryUntil > state.ticks && player._giltasWandBonus === _gwB;' +
+      ' player._giltasWandFuryUntil = state.ticks + 100; player._giltasWandBonus = _gwB;' +
+      ' if (!_gwSame) _giltasWandTriggered.push(player); }   // 🔌 加掛版補丁:buff 還在且加成值沒變→這次重算不會改變任何衍生值,略過(離線結算的最大熱點)'],
+    ["{ a._giltasWandFuryUntil = state.ticks + 100; _giltasWandTriggered.push(a); }",
+      '{ let _gwP = player, _gwB = 0; player = a;' +
+      "   try { _gwB = (typeof pvpEvilBonus === 'function' ? pvpEvilBonus(20) : 0); } finally { player = _gwP; }" +
+      ' let _gwSame = a._giltasWandFuryUntil > state.ticks && a._giltasWandBonus === _gwB;' +
+      ' a._giltasWandFuryUntil = state.ticks + 100; a._giltasWandBonus = _gwB;' +
+      // ⚠ 這一處在 forEach 的箭頭函式**中間**,後面還接著 `});`——註解只能用 /* */,
+      //   用 // 會把同一行後面的 `});` 一起吃掉(語法壞掉,而且只在執行期才看得出來)。
+      ' if (!_gwSame) _giltasWandTriggered.push(a); }/* 🔌 加掛版補丁:同上(傭兵路徑更貴——_allyLevelRecompute 內部還會再叫一次玩家的 calcStats);算加成值前先把 player 換成這名傭兵,因為 pvpEvilBonus 讀的是全域 player */'],
+  ];
+  for (const [from, to] of SITES) {
+    if (s.indexOf(from) < 0) throw new Error(`[${FILE}] 找不到吉爾塔斯魔杖擊殺錨點「${from.slice(0, 46)}…」——上游可能改寫了該段,請人工檢查(此補丁是離線結算效能的關鍵)。`);
+    s = s.replace(from, to);
+  }
+  if (!CHECK) writeFileSync(FILE, s);
+  changed++;
+  console.log(`[patch] 吉爾塔斯魔杖不再每殺必重算（${FILE}）`);
+}
+
+const PATCHES = [
+    patchMaybeSpawnMobs,
+    patchTradEnHook,
+    patch16Slots,
+    patchPetAnimTicker,
+    patchBossHuntEscape,
+    patchUseItemKeepModal,
+    patchSellNowNoForce,
+    patchInsigniaOrder,
+
+    // upstream
+    patchGiltasWandRecompute,
+
+    // 城堡系統
+    patchCastleBuildingsData,
+    patchCastleButlerNPC,
+    patchCastleBuildingCollection,
+    patchCastleExpGoldBonus,
+    patchCastleButlerNpcList,
+    patchCastleBuildingStats,
+    patchCastleEnchantRate,
+    patchClanBuffExtraMp
+];
 
 try {
   for (const p of PATCHES) p();

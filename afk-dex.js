@@ -620,7 +620,7 @@
 
   // ----- 物品詳情彈窗(點掉落物名字 → 顯示遊戲內數值與圖示) ------------------
   var IT_TYPE = { wpn: '武器', arm: '防具', acc: '飾品', pot: '藥水', scroll: '卷軸', skillbk: '魔法書', misc: '道具', etc: '道具' };
-  var IT_SLOT = { helm: '頭盔', armor: '盔甲', shin: '脛甲', tshirt: '內衣', boots: '長靴', gloves: '手套', shield: '盾牌', cloak: '斗篷', belt: '腰帶', ring: '戒指', amulet: '項鍊', ear: '耳環', ear1: '耳環', ear2: '耳環', pet: '寵物裝備', petwpn: '寵物武器', petarm: '寵物防具', doll: '娃娃',
+  var IT_SLOT = { helm: '頭盔', armor: '盔甲', shin: '脛甲', tshirt: '內衣', boots: '長靴', gloves: '手套', shield: '盾牌', cloak: '斗篷', belt: '腰帶', ring: '戒指', amulet: '項鍊', ear: '耳環', ear1: '耳環', ear2: '耳環', pet: '寵物裝備', petwpn: '寵物武器', petarm: '寵物防具', doll: '娃娃', eye: '魔眼',
     rem_claw: '席琳遺骸', rem_eye: '席琳遺骸', rem_blood: '席琳遺骸', rem_flesh: '席琳遺骸', rem_heart: '席琳遺骸', rem_bone: '席琳遺骸', rem_fang: '席琳遺骸', rem_scale: '席琳遺骸' };
   function _baseInst(id) { return { id: id, uid: 0, cnt: 1, en: 0, bless: false, anc: false, attr: false, seteff: false, lock: false, junk: false }; }
   // 適用職業:遊戲的 buildItemDescHTML 只擺一排職業 logo(16px 小圖、彼此又長得像,認不出誰是誰)→ 每個 logo 後補上職業名。
@@ -779,8 +779,6 @@
   // 標題統一「🔌 外掛」(這列不只查詢,還有木人場)→ 三支建列字串一致,不靠事後改名。
   function injectAutoNav(btnId, label, onClick) {
     var panel = document.getElementById('tab-automation');   // v2.6.74 起自動化設定改為遊戲分頁(靜態 DOM,不會被重繪洗掉)
-    var scroll = panel;
-    if (!panel) { panel = document.getElementById('automation-panel'); scroll = panel && (panel.querySelector('.overflow-y-auto') || panel); }   // 舊版面後備
     if (!panel) return;
     var row = document.getElementById('m-afk-navrow');
     if (!row) {
@@ -789,7 +787,7 @@
       row.className = 'bg-slate-800 p-3 rounded-lg border border-slate-700';
       row.innerHTML = '<div class="text-sm text-amber-400 mb-2 border-b border-slate-700 pb-1 font-bold">🔌 外掛</div>' +
         '<div id="m-afk-navrow-btns" style="display:flex;gap:8px;"></div>';
-      scroll.appendChild(row);
+      panel.appendChild(row);
     }
     if (document.getElementById(btnId)) return;
     var b = document.createElement('button');

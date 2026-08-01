@@ -8,6 +8,10 @@
     <script src="afk-lzcache.js"></script>
     <!-- afk-synccompress：存檔即時壓縮（預設關）——開啟後把 _lzSet 換回同步壓縮，根治登出/多開後存檔未壓縮爆滿。緊接 lzcache、在任何會存檔的外掛之前 -->
     <script src="afk-synccompress.js"></script>
+    <!-- afk-clanroster：血盟名冊瘦身——名冊只增不減（上限一萬筆），而野外 PVP 每生一個對手就整包讀改寫一次，越玩越慢。排在 synccompress 之後（它包 _lzSet，我們包 _clanWriteState，互不干擾） -->
+    <script src="afk-clanroster.js"></script>
+    <!-- afk-allyslim：傭兵快照瘦身——傭兵是來源角色的深拷貝，隊長存檔裡每個傭兵都各帶一份廢品標記等用不到的資料（實測佔存檔三成）。包 saveGame，存檔前清空 -->
+    <script src="afk-allyslim.js"></script>
     <!-- 共用基礎：自製彈窗/確認、dex/wiki 共用資料表（其他外掛依賴，排前面） -->
     <script src="afk-ui.js"></script>
     <script src="afk-extradata.js"></script>
@@ -26,6 +30,8 @@
     <script src="afk-wiki.js"></script>
     <!-- 設定選單 / 存檔 / 診斷 / 離線紀錄 -->
     <script src="afk-storage.js"></script>
+    <!-- 整包備份／還原（本機檔案）：入口掛在 afk-storage 的設定選單裡，必須排在它之後 -->
+    <script src="afk-fullsave.js"></script>
     <!-- 存檔空間警告：localStorage 用量 >80% 時首頁紅色警告(唯讀;與 afk-storage 同一套估算) -->
     <script src="afk-quotawarn.js"></script>
     <!-- 首頁公告卡（通用框架：檔頭 NOTICE 設成 null 就不顯示，要發公告時填一組設定即可） -->
@@ -56,6 +62,10 @@
     <script src="afk-enhtarget.js"></script>
     <!-- 試煉重複挑戰：已完成的職業試煉可重置再刷（包 trialQHTML/build50TrialHTML） -->
     <script src="afk-retrial.js"></script>
+    <!-- 碧恩賦予屬性一鍵衝到指定階段/星數（包 renderBianAttr，批次呼叫 doBianAttr） -->
+    <script src="afk-attrbatch.js"></script>
+    <!-- 詛咒卷軸一鍵弱化＋補回滿強化裝備的入口（包 openModal，批次呼叫 executeCurseDeEnhance） -->
+    <script src="afk-cursebatch.js"></script>
     <!-- 手機戰鬥框下方鏡射整條狀態欄：必須排在 afk-trackinfo 之後（要含它補的「🔍 追蹤」那格） -->
     <script src="afk-battlebuffs.js"></script>
     <script src="afk-toast.js"></script>
@@ -63,11 +73,18 @@
     <script src="afk-touchtip.js"></script>
     <!-- 關閉物品懸停資訊框（預設關;嫌 hover 擋路的人自行開啟;不印 hooks OK 故不在 smoke need 內） -->
     <script src="afk-notip.js"></script>
+    <!-- afk-dollcursor：關閉魔法娃娃游標（預設關）——包 applyDollCursor；手機上那顆「點一下留下的光點」也是同一個東西，一起關 -->
+    <script src="afk-dollcursor.js"></script>
     <!-- 傳統模式(偽)/自動衝裝：需搭配 scripts/apply-core-patches.mjs 的 gainItem _tEn 鉤子 -->
     <script src="afk-traditional.js"></script>
     <script src="afk-warehouse.js"></script>
+
     <!-- 城堡建築系統（血盟佔領城堡後，盟主可建造與升級 5 種建築；依賴 afk-toggles 外掛開關 + 核心補丁 apply-core-patches） -->
     <script src="afk-castle-buildings.js"></script>
+
+    <!-- 倉庫批次存取(預設關):勾選/全選一次搬完(核心是一件一件搬、每件都 saveGame,幾千格搬不動);排在 afk-warehouse 之後 → afterRender 在它的注入之後才跑 -->
+    <script src="afk-whbatch.js"></script>
+
     <!-- 迷你遊戲（我方自製） -->
     <script src="afk-dograce.js"></script>
     <!-- PWA / SW / 統計 / 品牌（skin 固定排最後） -->
