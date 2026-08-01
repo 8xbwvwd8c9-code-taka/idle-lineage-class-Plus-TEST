@@ -52,9 +52,9 @@
     //   id = 外掛檔名去掉 afk- 前綴；def:false 才預設關。infra(afk-ui/extradata/sw/toggles)刻意不列＝不可關。
     //
     //   🚨 **檔頭就早退的外掛（`if (!enabled('x')) return;`）一定要列在這裡**，否則會變成死結：
-    //      關掉 → 下次載入在 register 之前就 return → 面板上整項消失 → 玩家再也開不回來。
-    //      2026-08-02 玩家實際踩到（lzcache 關掉後找不到那個設定項，而它正是讓結算快好幾倍的那支）。
+    //      關掉 → 下次載入在 register 之前就 return → 面板上整項消失 → 玩家再也開不回來（踩過）。
     //      判準：外掛裡的 `AFK_TOGGLES.register` 若排在早退之後，它的 id 就必須出現在這張表。
+    //      有 scripts/check-toggle-deadend.mjs 靜態擋。
     [
         { id: 'mobile', name: '手機版面', desc: '手機專用版面：底部分頁切換、浮動日誌、避開頂端橫幅', group: '遊戲介面' },
         { id: 'mobname', name: '怪物名稱顯示', desc: '怪物名字要一直顯示、只在鎖定時顯示，還是滑過才顯示', group: '遊戲介面' },
@@ -81,7 +81,8 @@
         { id: 'autobuy', name: '自動購買魔法屏障', desc: '魔法屏障卷軸用完自動買', group: '自動化' },
         { id: 'training', name: '木人場', desc: '木人場：實際打一段時間量出你的每秒傷害（自動化分頁開啟）', group: '遊戲玩法' },
         { id: 'bossring', name: '傳送控制戒指自動找 BOSS', desc: '傳送控制戒指放背包就生效（不必裝備）；場上沒 BOSS 就自動用瞬移卷軸找一隻', group: '自動化' },
-        { id: 'lzcache', name: '存檔解壓快取', desc: '減少讀存檔與血盟資料的重複處理，戰鬥比較不卡、離線結算快好幾倍', group: '系統與其他' },
+        // ⚠️ 名稱避開「解壓」「壓縮」字樣:玩家會誤判成壓縮功能而關掉它（回報過）。
+        { id: 'lzcache', name: '資料記憶體暫存', desc: '戰鬥比較不卡、離線結算快好幾倍；會多用一點記憶體', group: '系統與其他' },
         { id: 'reissueid', name: '換發身分證', desc: '⚠️ 進階工具，平常用不到：把每個角色換成各自獨立的身分（複製出來的角色互相打架時才需要）。會改寫全部存檔且無法復原。', group: '存檔工具', parent: 'storage' },
         { id: 'pwa', name: '安裝成 App / 離線快取', desc: '把遊戲裝成手機／電腦上的 App，圖片存在本機不用每次重抓', group: '系統與其他' },
         { id: 'storage', name: '設定選單', desc: '首頁的 ⚙ 設定選單，可檢查存檔大小', group: '系統與其他' },
