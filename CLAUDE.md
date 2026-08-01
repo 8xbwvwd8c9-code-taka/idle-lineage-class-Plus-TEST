@@ -144,3 +144,28 @@ node fix-ui.js
 如需修改其他檔案，全部在 JavaScript 內完成，不要使用 PowerShell 拼接程式碼。
 
 此規則為強制規範，不得以 node -e、PowerShell 字串拼接、Base64 或其他方式繞過。若需要產生腳本，一律提供完整 .js 檔案內容。
+===========================
+Monkey Patch Policy
+===========================
+
+若需修改遊戲流程：
+
+優先：
+
+Monkey Patch
+
+其次：
+
+Hook
+
+最後：
+
+Core Patch
+
+不得直接修改 upstream 原始碼。
+
+若 monkey-patch 超過三層以上，
+
+請提出 Hook Manager 重構方案，
+
+不要繼續包裝原函式。
