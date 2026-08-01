@@ -133,16 +133,22 @@
             + '<div><div style="font-size:17px;font-weight:700;">🎚️ 外掛開關</div>'
             + '<div style="font-size:12px;color:#94a3b8;margin-top:3px;">某個外掛出問題時，先關掉它就能用原版繼續玩，作者修好再打開。改完按「重新整理」生效。</div></div>'
             + '<button id="afk-tg-close" style="flex:none;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:6px 12px;cursor:pointer;">關閉</button></div>'
-            + '<div style="padding:10px 14px;flex:1 1 auto;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;">';
+            // 「只看我改過的」：玩家關掉某項之後往往忘了自己關過什麼（回報過），要他從幾十項裡捲著找出來不合理。
+            + '<div style="padding:9px 14px 0;flex:0 0 auto;"><button id="afk-tg-onlychanged"'
+            + ' style="background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;">'
+            + '只看我改過的（' + changedCount() + '）</button></div>'
+            + '<div id="afk-tg-list" style="padding:10px 14px;flex:1 1 auto;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;">'
+            + '<div id="afk-tg-empty" style="display:none;color:#94a3b8;padding:14px;text-align:center;">目前全部都是預設值。</div>';
 
         if (!registry.length) {
             html += '<div style="color:#94a3b8;padding:14px;text-align:center;">目前沒有任何外掛登錄開關。</div>';
         } else {
             Object.keys(groups).forEach(function (g) {
-                html += '<div style="font-size:12px;color:#7dd3fc;font-weight:700;margin:12px 4px 6px;">' + esc(g) + '</div>';
+                html += '<div data-tggroup="' + esc(g) + '" style="font-size:12px;color:#7dd3fc;font-weight:700;margin:12px 4px 6px;">' + esc(g) + '</div>';
                 groups[g].forEach(function (r) {
                     var on = api.enabled(r.id);
-                    html += '<label style="display:flex;align-items:center;gap:12px;padding:9px 10px;border:1px solid #1e293b;border-radius:10px;margin-bottom:6px;background:#0b1222;' + (r.parent ? 'margin-left:22px;' : '')
+                    html += '<label data-tgrow="' + esc(r.id) + '" data-tggrp="' + esc(g) + '" data-tgchanged="' + (isChanged(r) ? '1' : '0') + '"'
+                        + ' style="display:flex;align-items:center;gap:12px;padding:9px 10px;border:1px solid #1e293b;border-radius:10px;margin-bottom:6px;background:#0b1222;' + (r.parent ? 'margin-left:22px;' : '')
                         + (r.locked ? 'cursor:not-allowed;opacity:.6;' : 'cursor:pointer;') + '">'
                         + '<input type="checkbox" data-tgid="' + esc(r.id) + '" ' + (on ? 'checked' : '') + (r.locked ? ' disabled' : '')
                         + ' style="width:18px;height:18px;flex:none;accent-color:#38bdf8;">'
@@ -177,6 +183,43 @@
             note.style.display = 'block';
         });
         card.querySelector('#afk-tg-reload').addEventListener('click', function () { try { location.reload(); } catch (e) { close(); } });
+
+        // 只看我改過的：切換時才重算一次（勾選當下不即時隱藏那一列，不然剛按到的東西會在眼前消失）
+        var onlyChanged = false, ocBtn = card.querySelector('#afk-tg-onlychanged');
+        ocBtn.addEventListener('click', function () {
+            onlyChanged = !onlyChanged;
+            var n = 0;
+            card.querySelectorAll('label[data-tgrow]').forEach(function (row) {
+                var r = find(row.getAttribute('data-tgrow'));
+                var show = !onlyChanged || (r && isChanged(r));
+                row.style.display = show ? 'flex' : 'none';   // ⚠ 不可設成 ''：那會把行內樣式的 display:flex 一起清掉，整列版面散開
+                if (show && onlyChanged) n++;
+            });
+            card.querySelectorAll('[data-tggroup]').forEach(function (h) {   // 整組都被濾掉就連標題一起收
+                var g = h.getAttribute('data-tggroup');
+                var any = [].slice.call(card.querySelectorAll('label[data-tggrp="' + g.replace(/"/g, '\\"') + '"]'))
+                    .some(function (row) { return row.style.display !== 'none'; });
+                h.style.display = any ? '' : 'none';
+            });
+            card.querySelector('#afk-tg-empty').style.display = (onlyChanged && n === 0) ? '' : 'none';
+            ocBtn.textContent = onlyChanged ? '看全部（' + n + ' 項改過）' : '只看我改過的（' + changedCount() + '）';
+            ocBtn.style.background = onlyChanged ? '#0e7490' : '#1e293b';
+            ocBtn.style.color = onlyChanged ? '#e0f2fe' : '#cbd5e1';
+        });
+    }
+
+    // 「改過」＝存過設定而且跟預設不同。用存進去的值判斷、不是用 enabled()：
+    //   子選項在父項關掉時 enabled() 一律是 false，拿它比就會把玩家沒碰過的東西也算成改過。
+    function isChanged(r) {
+        var v = null;
+        try { v = localStorage.getItem(LS + r.id); } catch (e) { return false; }
+        if (v === null) return false;
+        return (v === '1') !== !!r.def;
+    }
+    function changedCount() {
+        var n = 0;
+        registry.forEach(function (r) { if (isChanged(r)) n++; });
+        return n;
     }
 
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
