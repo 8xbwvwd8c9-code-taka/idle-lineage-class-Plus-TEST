@@ -586,22 +586,22 @@
     <!-- ═══════════ 加掛版外掛層（核心永遠是原作者原版；我們的功能全部是外掛疊上去） ═══════════ -->
     <!-- 此區塊由 scripts/sync-upstream.mjs 於「拉上游 index.html 後」自動注入到 </body> 之前。?v= 由 stamp-code-versions 補。 -->
     <!-- afk-toggles 必須最先載入：外掛開關中樞（逃生門，自己不可被關；某支外掛壞掉時玩家關掉它就能用原版繼續玩） -->
-    <script src="afk-toggles.js?v=dc96f83e34"></script>
+    <script src="afk-toggles.js?v=3568ca6f4e"></script>
     <!-- afk-banner：非官方轉載橫幅讓位（基礎設施、無開關；不可掛在 afk-mobile 裡，玩家關掉手機版面就會整個頂端被蓋住） -->
     <script src="afk-banner.js?v=29fa2d5746"></script>
     <!-- 存檔解壓快取：必須排在所有會讀 localStorage 的外掛之前（核心每殺一隻怪都重解壓一次血盟狀態） -->
-    <script src="afk-lzcache.js?v=f687c0e2f8"></script>
+    <script src="afk-lzcache.js?v=1b86b3d102"></script>
     <!-- afk-synccompress：存檔即時壓縮（預設關）——開啟後把 _lzSet 換回同步壓縮，根治登出/多開後存檔未壓縮爆滿。緊接 lzcache、在任何會存檔的外掛之前 -->
-    <script src="afk-synccompress.js?v=e607fb58aa"></script>
+    <script src="afk-synccompress.js?v=920a9aa04d"></script>
     <!-- afk-clanroster：血盟名冊瘦身——名冊只增不減（上限一萬筆），而野外 PVP 每生一個對手就整包讀改寫一次，越玩越慢。排在 synccompress 之後（它包 _lzSet，我們包 _clanWriteState，互不干擾） -->
-    <script src="afk-clanroster.js?v=05c9123c51"></script>
+    <script src="afk-clanroster.js?v=7d1358ef78"></script>
     <!-- afk-allyslim：傭兵快照瘦身——傭兵是來源角色的深拷貝，隊長存檔裡每個傭兵都各帶一份廢品標記等用不到的資料（實測佔存檔三成）。包 saveGame，存檔前清空 -->
-    <script src="afk-allyslim.js?v=b2ab599698"></script>
+    <script src="afk-allyslim.js?v=6b4a8e1e98"></script>
     <!-- 共用基礎：自製彈窗/確認、dex/wiki 共用資料表（其他外掛依賴，排前面） -->
     <script src="afk-ui.js?v=42afb5c84f"></script>
     <script src="afk-extradata.js?v=a069862188"></script>
     <!-- 離線快速結算（自己 monkey-patch 包核心 saveGame/loadGame/changeMap/killMob/gainItem；搭配 maybeSpawnMobs 補丁） -->
-    <script src="afk-offline.js?v=8df931a3b5"></script>
+    <script src="afk-offline.js?v=70b73ef392"></script>
     <!-- 手機版面 / 返回鍵 -->
     <script src="afk-mobile.js?v=a4fce4637d"></script>
     <script src="afk-backnav.js?v=a02389afc7"></script>
@@ -616,13 +616,13 @@
     <!-- 設定選單 / 存檔 / 診斷 / 離線紀錄 -->
     <script src="afk-storage.js?v=302890a0df"></script>
     <!-- 整包備份／還原（本機檔案）：入口掛在 afk-storage 的設定選單裡，必須排在它之後 -->
-    <script src="afk-fullsave.js?v=1919a8f973"></script>
+    <script src="afk-fullsave.js?v=e6c111818d"></script>
     <!-- 存檔空間警告：localStorage 用量 >80% 時首頁紅色警告(唯讀;與 afk-storage 同一套估算) -->
     <script src="afk-quotawarn.js?v=ad30a6f1d1"></script>
     <!-- 首頁公告卡（通用框架：檔頭 NOTICE 設成 null 就不顯示，要發公告時填一組設定即可） -->
     <script src="afk-notice.js?v=22a53935d8"></script>
     <script src="afk-history.js?v=06586ebde4"></script>
-    <script src="afk-reissueid.js?v=9f605129a1"></script>
+    <script src="afk-reissueid.js?v=b6195567f1"></script>
     <script src="afk-diag.js?v=5a937fd41b"></script>
     <script src="afk-powersave.js?v=a0bfd585c3"></script>
     <!-- 遊戲內小工具 -->
@@ -640,7 +640,7 @@
     <script src="afk-invlist.js?v=4e1ef85ea8"></script>
     <script src="afk-eqlist.js?v=7a7533b7ce"></script>
     <script src="afk-npclist.js?v=f46b6af71a"></script>
-    <script src="afk-mobname.js?v=41e8d6c4a6"></script>
+    <script src="afk-mobname.js?v=d74c25c2c9"></script>
     <script src="afk-trackinfo.js?v=cd22475c18"></script>
     <script src="afk-relicguard.js?v=fb3d923c3e"></script>
     <!-- 快速強化目標上限 +12→+15（包 buildQuickEnhanceHeader 補下拉選項） -->
@@ -650,7 +650,7 @@
     <!-- 碧恩賦予屬性一鍵衝到指定階段/星數（包 renderBianAttr，批次呼叫 doBianAttr） -->
     <script src="afk-attrbatch.js?v=b7dedeb426"></script>
     <!-- 詛咒卷軸一鍵弱化＋補回滿強化裝備的入口（包 openModal，批次呼叫 executeCurseDeEnhance） -->
-    <script src="afk-cursebatch.js?v=9be2c09347"></script>
+    <script src="afk-cursebatch.js?v=311de50da6"></script>
     <!-- 手機戰鬥框下方鏡射整條狀態欄：必須排在 afk-trackinfo 之後（要含它補的「🔍 追蹤」那格） -->
     <script src="afk-battlebuffs.js?v=ab89242f57"></script>
     <script src="afk-toast.js?v=f6bc41ad16"></script>
@@ -659,14 +659,14 @@
     <!-- 關閉物品懸停資訊框（預設關;嫌 hover 擋路的人自行開啟;不印 hooks OK 故不在 smoke need 內） -->
     <script src="afk-notip.js?v=7cfb049009"></script>
     <!-- afk-dollcursor：關閉魔法娃娃游標（預設關）——包 applyDollCursor；手機上那顆「點一下留下的光點」也是同一個東西，一起關 -->
-    <script src="afk-dollcursor.js?v=c4b88eb0c1"></script>
+    <script src="afk-dollcursor.js?v=dd9163f19b"></script>
     <!-- afk-anyclass：去除裝備職業限制（預設關）——包 checkCanEquip，執行期間暫時放行職業那幾關 -->
     <script src="afk-anyclass.js?v=8589f127b1"></script>
     <!-- 傳統模式(偽)/自動衝裝：需搭配 scripts/apply-core-patches.mjs 的 gainItem _tEn 鉤子 -->
     <script src="afk-traditional.js?v=a367c9c073"></script>
     <script src="afk-warehouse.js?v=db1cbe6a5e"></script>
     <!-- 倉庫批次存取:勾選/全選一次搬完(核心是一件一件搬、每件都 saveGame,幾千格搬不動);排在 afk-warehouse 之後 → afterRender 在它的注入之後才跑 -->
-    <script src="afk-whbatch.js?v=6f424c9b04"></script>
+    <script src="afk-whbatch.js?v=5a09745cd2"></script>
     <!-- 迷你遊戲（我方自製） -->
     <script src="afk-dograce.js?v=6e83ec4926"></script>
     <!-- PWA / SW / 統計 / 品牌（skin 固定排最後） -->
