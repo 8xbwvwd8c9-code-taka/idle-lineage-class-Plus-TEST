@@ -57,6 +57,7 @@
     //      有 scripts/check-toggle-deadend.mjs 靜態擋。
     [
         { id: 'mobile', name: '手機版面', desc: '手機專用版面：底部分頁切換、浮動日誌、避開頂端橫幅', group: '遊戲介面' },
+        { id: 'npclabel', name: '村莊名牌不出界', desc: '村莊裡站得靠邊的 NPC，名字不會被畫面邊緣切掉', group: '遊戲介面' },
         { id: 'mobname', name: '怪物名稱顯示', desc: '怪物名字要一直顯示、只在鎖定時顯示，還是滑過才顯示', group: '遊戲介面' },
         { id: 'statpts', name: '能力值來源分解', desc: '能力值旁列出「初始／升級／藥水」各給了多少點', group: '遊戲介面' },
         { id: 'itemsearch', name: '背包名稱搜尋', desc: '背包分頁加搜尋框，打字就找得到東西', group: '遊戲介面' },
