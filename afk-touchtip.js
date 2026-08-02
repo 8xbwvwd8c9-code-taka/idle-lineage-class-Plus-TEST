@@ -66,9 +66,9 @@
         return;
     }
 
-    var timer = null, sx = 0, sy = 0, guardUntil = 0;
+    var timer = null, sx = 0, sy = 0, guardUntil = 0, pressEl = null;
 
-    function clearTimer() { if (timer) { clearTimeout(timer); timer = null; } }
+    function clearTimer() { if (timer) { clearTimeout(timer); timer = null; } pressEl = null; }
 
     function fireMouseMove(target, x, y) {
         try {
@@ -149,9 +149,12 @@
         var s = document.createElement('style');
         s.id = 'afk-touchtip-style';
         // iOS Safari 長按會跳原生「拷貝/查詢」callout 蓋住資料框,並把圖示/文字選起來
-        //   帶 title 的按鈕同理(那條路也是長按才看得到);只擋 callout,不動一般文字的選取
+        //   帶 title 的元素同理(那條路也是長按才看得到);只擋 callout 與圖片拖曳,不動一般文字的選取。
+        //   ⚠️ 一定要連 `[title] img` 一起擋:狀態圖示是 `<div title><img></div>`,長按時跳出來的
+        //     「下載圖片/拷貝圖片」選單是**圖片**發出來的,只擋外層那個 div 沒有用(玩家回報)。
         s.textContent = HOST_SEL + '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}'
-            + 'button[title],a[title],.btn[title]{-webkit-touch-callout:none;}';
+            + '[title]{-webkit-touch-callout:none;}'
+            + '[title] img{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none;}';
         (document.head || document.documentElement).appendChild(s);
     }
 
@@ -168,6 +171,7 @@
         sx = t.clientX; sy = t.clientY;
         var host = e.target.closest(HOST_SEL);
         if (host && !host.closest(EXCLUDE_SEL)) {
+            pressEl = host;
             timer = setTimeout(function () { show(host, sx, sy); }, LP_MS);
             return;
         }
@@ -176,6 +180,7 @@
         if (!tEl || tEl.closest(EXCLUDE_SEL)) return;
         var txt = (tEl.getAttribute('title') || '').trim();
         if (!txt) return;
+        pressEl = tEl;
         timer = setTimeout(function () { showTitle(tEl, txt, sx, sy); }, LP_MS);
     }, { passive: true, capture: true });   // 不 preventDefault → 標 passive,不拖累捲動
 
@@ -188,10 +193,14 @@
 
     document.addEventListener('touchend', clearTimer, { passive: true, capture: true });
     document.addEventListener('touchcancel', clearTimer, { passive: true, capture: true });
-    // 捲動(清單自己捲、頁面捲)一律放棄長按並收框;scroll 不冒泡,要用 capture 才收得到
-    // ⚠ 捲動事件量很大:先看便宜的旗標,沒叫出過框就什麼都不做,不要每次都查 DOM
-    document.addEventListener('scroll', function () {
-        clearTimer();
+    // 捲動時收掉「已經顯示的」框(內容在框底下跑掉了);scroll 不冒泡,要用 capture 才收得到。
+    // ⚠ 捲動事件量很大:先看便宜的旗標,沒叫出過框就什麼都不做,不要每次都查 DOM。
+    // 🚨 **不可無條件取消「還在按著的長按」**:戰鬥中系統日誌每寫一行就自動捲到底(#sys-log 會發
+    //    scroll 事件),那不是玩家在捲 —— 無條件清掉會讓長按看說明在戰鬥中隨機失敗(玩家回報
+    //    「有時候按了沒反應」)。手指真的移動有 touchmove 會擋,這裡只在「捲的那個容器就包著
+    //    你按住的東西」時才取消(＝手指底下的東西真的位移了)。
+    document.addEventListener('scroll', function (e) {
+        if (timer && pressEl && e.target && e.target.contains && e.target.contains(pressEl)) clearTimer();
         if (shown && tipVisible()) hideTip();
         if (titleShown) hideTitle();
     }, { passive: true, capture: true });
@@ -209,6 +218,15 @@
     document.addEventListener('mousedown', guard, true);
     document.addEventListener('mouseup', guard, true);
     document.addEventListener('click', guard, true);
+
+    // 🚨 長按我們接手的元素時,擋掉瀏覽器自己的長按選單(Android Chrome 的「下載圖片/拷貝圖片」、
+    //    iOS 的分享選單)。CSS 的 -webkit-touch-callout 只有 iOS 吃,Android 一定要攔 contextmenu。
+    //    只攔「我們真的會顯示說明」的那些元素,其餘(例如想長按複製文字)完全不動。
+    //    本檔在非觸控裝置已提早 return,所以桌機的右鍵選單不受影響。
+    document.addEventListener('contextmenu', function (e) {
+        if (!e.target || !e.target.closest) return;
+        if (e.target.closest(HOST_SEL + ',[title]')) e.preventDefault();
+    }, true);
 
     injectCSS();
     console.log('[AFK-touchtip] hooks OK — 長按 .tip-host 顯示原版資料框、長按帶 title 的元素顯示其說明(倉庫清單除外,由 afk-warehouse 自理)。');
