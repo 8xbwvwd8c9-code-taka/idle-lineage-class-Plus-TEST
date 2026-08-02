@@ -18,14 +18,14 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(58 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(59 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
 | `afk-toggles.js` | 外掛開關中樞(最先載;逃生門,自己不可關) |
 | `afk-banner.js` | 非官方轉載橫幅讓位(量橫幅→`--orig-bar-h`/`body.afk-bar`→位移全螢幕容器+桌機/平板彈窗讓位;基礎設施,無開關) |
 | `afk-synccompress.js` | 存檔即時壓縮(預設關;把 `_lzSet` 換回同步壓縮,根治登出/多開後存檔未壓縮爆滿;代價=存檔當下多花 0.02~0.4 秒) |
-| `afk-lzcache.js` | 大資料重複處理的快取,兩層:①存檔解壓(同一份壓縮字串只解一次;離線結算 4×) ②血盟 Buff 查詢(`getClanBuffStats`——解壓被快取後剩下的成本是每次重 `JSON.parse` 242KB 血盟資料＋整份正規化,`recomputeStats` 每次都會問一次) |
+| `afk-lzcache.js` | 大資料重複處理的快取,三層:①存檔解壓(同一份壓縮字串只解一次;離線結算 4×) ②血盟 Buff 查詢(`getClanBuffStats`——解壓被快取後剩下的成本是每次重 `JSON.parse` 242KB 血盟資料＋整份正規化,`recomputeStats` 每次都會問一次) ③血盟狀態讀取(`_clanReadStateResult`——野外圖每生一個 PVP 對手、每殺一隻怪問一次要不要開團戰都會整包重讀,①蓋不到它因為結算期間存的多半是未壓縮明文。**快取存字串不存物件、每次回傳新物件**:`_clanWithLock` 的 mutator 會就地改它且有 commit:false 改完不寫回的路徑,共用同一個物件會讓本該丟掉的修改默默留下。寫入後用 `_saveUnwrap` 拆出已正規化文字預熱,命中率 3745/3746;跳過正規化的前提是它冪等,第一次填快取時自驗,不過就整層自我停用。實測線上 90 秒 398ms→135ms、離線每次 357→231µs) |
 | `afk-clanroster.js` | 血盟名冊瘦身(核心把「遇過的玩家型 NPC」逐一登記在血盟共用桶、**只增不減**、上限一萬筆;而野外 PVP 每生成一個對手就整包讀改寫一次 → 越玩越慢。改成盟主全留、每盟留最近 20 個成員、無血盟路人留最近 200 個。實測玩家存檔 6,189 筆→620 筆、每離線小時 20.0s→3.4s) |
 | `afk-allyslim.js` | 傭兵快照瘦身(傭兵＝來源角色的深拷貝,隊長存檔裡每個傭兵都各帶一份**沒人讀**的資料;實測三位玩家全部存檔位未壓縮 5,299KB 中傭兵快照佔 1,644KB,光廢品標記就 824KB。清空 junkPrefs/pvpAlignLock/pandoraMarket2/_offStats/autoSellRules/lastMapByCat 六個欄位,存檔小 33~38%。**新增欄位前要過三關**:js/02 整份沒有(player=ally 視窗只跑 recomputeStats)、js/06 整份沒有、全 repo 只以 `player.` 前綴出現;`config` 是反例不能清。清空不 delete——上游哪天加讀取,`{}` 只是空的、undefined 會炸) |
 | `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層) |
@@ -36,6 +36,7 @@
 | `afk-battlehud.js` | 手機戰鬥狀態列(取代上游只有 HP/MP 的 #mobile-vitals;自己量橫幅) |
 | `afk-mapbar.js` | 手機冒險地圖標題列壓成兩排(純 CSS,自己判手機) |
 | `afk-nozoom.js` | 取消雙擊放大(觸控裝置;`body,body *` touch-action:manipulation,捏合縮放保留) |
+| `afk-statusicon.js` | 手機狀態圖示縮小一半(純 CSS·28→14px、gap 4→2px、隊友藍點 6→4px)。狀態列是絕對定位浮在戰鬥畫面上的,桌機戰鬥區寬、28px 只佔一角;手機整個戰鬥區才 346px,22 個狀態就排成 346×92px 把怪物與角色蓋掉大半(實測)。只用上游那條窄 MQ、不做平板路徑——這是「窄畫面排版優化」而非「手機殼套上了就該有」(判準見 docs/mobile.md),同 afk-mapbar |
 | `afk-slotinfo.js` | 選角卡片疊「掛哪張圖/掛多久」(讀 afk-offline 的 afk_map_/afk_ts_,唯讀) |
 | `afk-loadslots.js` | 卡片式選角擴到 16 格(搭配補丁3) |
 | `afk-dex.js` | 掉落查詢(五張掉落表+特殊掉落 SPECIAL_BLOCKS;`?view=dex` 獨立頁) |

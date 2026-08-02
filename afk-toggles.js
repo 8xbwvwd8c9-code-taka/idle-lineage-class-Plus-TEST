@@ -67,6 +67,7 @@
         { id: 'mapbar', name: '手機地圖列壓縮', desc: '冒險地圖的標題列壓成兩排，少佔畫面', group: '遊戲介面' },
         { id: 'battlehud', name: '手機戰鬥狀態列', desc: '戰鬥畫面上方多一排：等級、防禦、金幣、經驗與血魔量', group: '遊戲介面' },
         { id: 'nozoom', name: '手機取消雙擊放大', desc: '連點兩下不會放大畫面（兩指縮放照常）', group: '遊戲介面' },
+        { id: 'statusicon', name: '手機狀態圖示縮小', desc: '手機上的狀態圖示縮成一半，不會蓋住戰鬥畫面', group: '遊戲介面' },
         { id: 'battlebuffs', name: '手機戰鬥狀態欄', desc: '戰鬥框下方直接顯示增益、異常與魔物追蹤', group: '遊戲介面' },
         { id: 'trackinfo', name: '魔物追蹤剩餘時間', desc: '狀態欄顯示正在追蹤哪隻怪、還剩多久', group: '遊戲介面' },
         { id: 'relicguard', name: '快速廢品不選遺物', desc: '背包「快速廢品」按全選時自動跳過遺物', group: '遊戲介面' },
