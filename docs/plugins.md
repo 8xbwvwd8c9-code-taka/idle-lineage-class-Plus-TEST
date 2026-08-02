@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(59 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(60 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -73,6 +73,7 @@
 | `afk-cursebatch.js` | 詛咒卷軸一鍵弱化(包 openModal 掛入口;**不看 `isMaxEnhanced`**——上游滿強化就整顆強化鈕消失,連帶讓詛咒卷軸沒入口。批次同樣靠靜音副作用迴圈呼叫 executeCurseDeEnhance;背包堆疊要**自己先拆一件**,否則核心每次呼叫各拆一件變成 N 件各 -1) |
 | `afk-retrial.js` | 試煉批次兌換(試煉道具持續掉落·已完成也照掉;面板自訂數量重複兌換;試煉狀態只讀不寫;包 trialItemActive/trialQHTML/build50TrialHTML) |
 | `afk-anyclass.js` | 去除裝備的職業與性別限制(**預設關**;包核心唯一的裝備資格入口 `checkCanEquip`,含遺物)。作法是**只在它執行的那一瞬間**拿掉兩道閘、跑完立刻還原:①職業＝`reqAllowsClass` 與五支 `*EquipOk` 一律放行 ②性別＝把該件的 `d.reqAvatar` 暫時清空(核心是寫死在 checkCanEquip 裡的 if,沒有函式可換)。遺物/負重強化/劍術精通例外全照作者原邏輯,我方不重寫規則。⚠️ **不可永久替換 `reqAllowsClass`**:它同時管職業限定藥水(慎重/勇敢/精靈餅乾)與物品資訊框的「適用職業」圖示,永久換掉會連那些一起解除;`d.reqAvatar` 同理是 DB 共用資料,`finally` 一定放回去。⚠️ **`DB` 是 `const DB`(js/00)、不在 window 上** —— 寫 `window.DB` 會是 undefined 而整段安靜不生效(踩過:職業解除了、性別那 4 件還是穿不上),要用 `typeof DB !== 'undefined'`。連帶效果(同一支判定的必然結果):飾品商店會列出跨職業飾品、傭兵也能穿隊長給的跨職業裝備、關掉後讀檔核心會把穿不上的自動卸回背包(作者原有機制,訊息寫「因負重強化改版」) |
+| `afk-locksafe.js` | 上鎖的裝備不會被潘朵拉的收購 NPC／遺物布告欄拿走。**上游漏判**:js/24 的 `_findMatches` 只比對 id/強化值/數量,沒看 `lock` → 背包裡上鎖那件會被直接交易掉(已重現:上鎖的亞連被金幣收購員收走、無任何警告)。這與核心自己在 js/04 寫的「鎖定件不列入,與全專案其他破壞性路徑一致」相反,故認定是漏掉不是設計。挑選邏輯在 IIFE 內拿不到,改包**全域入口**(performWanderingBuyerTrade / pandoraExchangeRelic ＋兩支畫面函式,畫面才不會先說可交、按下去又說沒有),執行期間把上鎖物品從 player.inv 暫時抽掉。🚨 還原要以「核心跑完後的 player.inv」為準重組(核心成交時是 `player.inv = filter(...)` 換新陣列):上鎖的一律留、沒上鎖的看核心有沒有拿走、核心新增的補最後——無腦還原舊陣列會讓剛賣掉的東西復活。⚠️ **`player` 是 `let player`(js/01)、不在 window 上**,寫 window.player 會整段安靜失效(wrapper 掛得好好的卻完全沒作用,踩過;同 anyclass 的 DB)。倉庫不處理:whDeposit 本來就擋下上鎖物品存入 |
 | `afk-traditional.js` | 傳統模式(偽)/自動衝裝(掉落自帶強化值;靠補丁2 的 `__afkTradRollEn` 鉤子) |
 | `afk-warehouse.js` | 倉庫增強(魔法書標`[已學習]`/`[無法學習]`並各給底色——判定一律用核心那兩條(`player.skills` 有沒有它、`skillReqLv()` 是否 undefined),不自己判職業表;金幣全存/全取、遺物與席琳遺骸分類、**只列可穿＋不可穿標紅**;可穿判定一律呼叫核心 `checkCanEquip`,過濾包在 `whMatchFilter`＋`whMatchSearch` 兩支上(搜尋不走 filter),核心的「沒有物品」空訊息才會正確) |
 | `afk-whbatch.js` | 倉庫批次存取(**預設關**——會改掉「點清單」原本的意思;包核心函式型:照樣安裝 wrapper、每次重繪問 `enabled()`,關掉就收乾淨注入的 UI 並透明放行,故開關即時生效且仍印 hooks OK。⚠️ `register` 必須早於第一次 `enabled()`:找不到登錄項時預設值一律回 true(afk-toggles.js:39),先問就把 def:false 問成 true。「🗂️ 批次」鈕→點清單=勾選、全選、一次搬完;整批共用一次 `whTxnSnapshot`/`whTxnCommit`＝核心 `whOneClickDeposit` 的既有模式,實測 4998 格倉庫由 145ms/件 → 0.1ms/格。搬移規則逐條比照核心 whDeposit/whWithdraw,唯一差別是一律整疊。⚠️ **不可用 uid 當索引**:玩家倉庫真的存在「兩格共用同一 uid」(4998 格裡 17 組),uid→物品的 map 只留最後一格,另一格會被連同數量一起刪掉＝真實遺失(踩過,少 35 件);一律掃來源陣列比對勾選集合。同 sig 查找改 Map(核心 `_whStackFind` 是線性 find,N 筆就 O(N²)、幾千格會卡住)) |
