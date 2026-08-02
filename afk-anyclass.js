@@ -61,7 +61,41 @@
       }
     };
 
+    patchTrueShanna();
     console.log('[AFK-anyclass] hooks OK — 裝備職業/性別限制解除（預設關，於外掛開關面板開啟）。');
+  }
+
+  // ── 真夏納變身:跨職業武器也要有攻速/硬直 ────────────────────────────────
+  // 核心的真夏納速度表是「逐職業一份」,而每一份只列**那個職業原本能用的武器種類**
+  //   (js/02 SHANNA_APM_PROFILES:龍騎士那份沒有魔杖,因為原版龍騎士拿不到魔杖)。
+  //   本外掛讓他拿得到之後,那個組合在核心眼中是不存在的 → apm/hitstun 回 null →
+  //   變身資訊連「攻擊間隔」「受擊硬直」兩行都不顯示,退回角色自己的速度(實測龍騎士拿魔杖
+  //   每分 51.4 下,而長劍是 124 下),看起來就像沒拿武器(玩家回報)。
+  //
+  // 補法:只在原函式「查不到值」時,改用核心自己那張全職業共用的逐武器表 TRUE_SHANNA_APM 補上,
+  //   硬直與走速的算式原封不動抄核心同一行 —— 等於把「可用武器家族」那道閘打開,速度數值仍由核心決定。
+  //   ⚠️ 這會改到平衡(龍騎士拿魔杖 51.4→124),所以跟著 anyclass 這個開關走:關掉就完全是原版。
+  //   ⚠️ TRUE_SHANNA_APM / SHANNA_DAGGER_LONG_HITSTUN 都是 `const`,**不在 window 上**(同 DB/player),
+  //      一律用 typeof 探,寫 window.X 會安靜失效。
+  function patchTrueShanna() {
+    if (typeof window.trueShannaSpeedForActor !== 'function' || window.trueShannaSpeedForActor.__afkAnyClass) return;
+    if (typeof TRUE_SHANNA_APM === 'undefined') {
+      console.warn('[AFK-anyclass] 找不到真夏納速度表，跨職業武器的變身速度維持原版（其餘功能不受影響）。');
+      return;
+    }
+    var origTS = window.trueShannaSpeedForActor;
+    window.trueShannaSpeedForActor = function () {
+      var r = origTS.apply(this, arguments);
+      if (!on() || !r || r.apm != null) return r;          // 沒開／本來就查得到 → 原樣
+      var fam = r.family;
+      if (!fam || TRUE_SHANNA_APM[fam] == null) return r;   // 空手、或連核心那張表都沒有的家族 → 維持原版
+      r.apm = TRUE_SHANNA_APM[fam];
+      var longStun = (typeof SHANNA_DAGGER_LONG_HITSTUN !== 'undefined') && SHANNA_DAGGER_LONG_HITSTUN.has(r.avatar);
+      r.hitstun = (fam === '匕首' && longStun) ? 2.6 : 2.1;   // 抄 js/02 同一行
+      r.wlk = (fam === '單手劍') ? 15 : 16;                   // 抄 js/02 同一行
+      return r;
+    };
+    window.trueShannaSpeedForActor.__afkAnyClass = true;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
