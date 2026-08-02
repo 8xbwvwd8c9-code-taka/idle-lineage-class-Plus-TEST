@@ -754,7 +754,7 @@
 
   // ===== 強化機制(本檔維護) ================================================
   var ENHANCE_SECTIONS = [
-    { t: '強化（把裝備 +1 升級）', blocks: [
+    { t: '強化', blocks: [
       { t: 'p', p: '用「施法卷軸」強化：武器、盔甲、飾品各用對應的一種。<b>上限：武器／防具 +15、飾品 +5</b>。' },
       { t: 'p', p: '<b>安定值（safe）以下 100% 成功</b>，到達安定值起才會失敗，<b>失敗＝裝備直接消失（爆裝）</b>。安定值：武器多為 6（少數高階 0）、防具 0／4／6、飾品 0。' },
       { t: 'tbl', h: ['達安定值後', '成功率'], rows: [
@@ -810,7 +810,7 @@
       '在「傲慢之塔入口」進塔。玩法有兩種：一層層往上「攀登」，或選定一段「樓層區間」固定刷。',
       '想<b>停在同一段練</b>的人請看下面的「樓層區間」——<b>攀登模式沒辦法停在某一層</b>，清掉那層就會被帶上去。'
     ]},
-    { t: '攀登（一層一層往上）', lines: [
+    { t: '攀登', lines: [
       '從入口開始攀登，自 <b>2 樓</b>起。每層要打掉「往上層的樓梯」（逢 10 的倍數樓打的是該樓頭目），打掉就<b>自動前進到下一層</b>。',
       '<b>沒辦法停在某一層慢慢練</b>：只要清掉那層的樓梯／頭目就會立刻被帶上樓。想固定刷某段請改用「樓層區間」。',
       '塔共 <b>100 樓</b>：一路攀到頂、在 <b>100 樓</b>打贏最終頭目「邪惡的鐮刀死神」後會結算、送回入口。',
@@ -2900,7 +2900,7 @@
         { label: '💍 飾品', opts: pick(function (g) { return accKeys[g.k]; }) },
         { label: '✨ 特殊', opts: pick(function (g) { return !wpnKeys[g.k] && !armKeys[g.k] && !accKeys[g.k]; }) }
       ] },
-      { k: 'cls', n: '職業（誰穿得上）', mode: 'or', groups: [{ label: '', opts: clsOpts }] },
+      { k: 'cls', n: '職業', mode: 'or', groups: [{ label: '', opts: clsOpts }] },
       { k: 'rar', n: '稀有度', mode: 'or', groups: [{ label: '', opts: EQ_RARITY.map(function (r) { return [r[0], r[1], eqCount('rar', r[0])]; }) }] },
       { k: 'tag', n: '特性', mode: 'and', hint: '這一組多選＝要全部符合', groups: [{ label: '', opts: EQ_TAGS.map(function (t) { return [t[0], t[1], eqCount('tag', t[0])]; }).filter(function (o) { return o[2] > 0; }) }] },
       { k: 'set', n: '套裝', mode: 'or', groups: [{ label: '', opts: Object.keys(_eqCnt.set).sort(function (a, b) { return _eqCnt.set[b] - _eqCnt.set[a]; }).map(function (s) { return [s, eqSetName(s), _eqCnt.set[s]]; }) }] },
@@ -2909,7 +2909,7 @@
       { k: 'ac', n: '防禦力', type: 'min', hint: '數字越大防禦越好（裝備上寫的是 −N）' },
       { k: 'hit', n: '命中', type: 'min' }
     ];
-    if (ridx && ridx.regions.length) facets.push({ k: 'region', n: '掉落區域（怪物掉落）', mode: 'or', groups: [{ label: '', opts: ridx.regions.map(function (r) { return [r, r, eqCount('region', r)]; }) }] });
+    if (ridx && ridx.regions.length) facets.push({ k: 'region', n: '掉落區域', mode: 'or', groups: [{ label: '', opts: ridx.regions.map(function (r) { return [r, r, eqCount('region', r)]; }) }] });
     return facets;
   }
   function renderEquip() {
