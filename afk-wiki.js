@@ -1390,11 +1390,10 @@
     return p.join('・');
   }
   function mapTitleOf(v) { return (window.AFK_EXTRA && AFK_EXTRA.mapName) ? AFK_EXTRA.mapName(v) : v; }   // 統一委派 afk-extradata 共用地圖名解析
-  // 🗺️ 村莊／地圖名前面補「領域」(＝地圖選單左側那層分組),玩家照著才找得到路;名稱本身已含領域名(奇岩城鎮…)就不疊字
+  // 🗺️ 村莊／地圖名前面補「領域」(＝地圖選單左側那層分組),玩家照著才找得到路;規則統一委派 afk-extradata
   function withRegion(mapId, name) {
-    var r = '';
-    try { r = (window.AFK_EXTRA && AFK_EXTRA.mapRegion) ? AFK_EXTRA.mapRegion(mapId) : ''; } catch (e) {}
-    return (r && String(name).indexOf(r) < 0) ? (r + '·' + name) : name;
+    try { if (window.AFK_EXTRA && AFK_EXTRA.mapNameWithRegion) return AFK_EXTRA.mapNameWithRegion(mapId, name); } catch (e) {}
+    return name;
   }
   var CASTLE_EXTRA_CITY = { windwood_dungeon: '風木城' };   // 🏰 攻城後開放的城堡狩獵區 → 要攻下哪座城(作者新增別的城堡狩獵區時補這裡;掉落查詢 afk-dex 亦有一份)
   function renderMap() {

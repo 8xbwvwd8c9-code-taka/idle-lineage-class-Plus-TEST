@@ -136,7 +136,8 @@
   // CASTLE_EXTRA 類地圖(如風木地監)只有 getCastleAreas() 動態才有中文名、靜態表查不到,在這補上
   // 地圖 id → 中文名：統一委派 afk-extradata 的共用解析(唯一一份,涵蓋隱藏區/攀登/遺忘之島/攻城/村莊…)
   // 出沒地圖帶「領域」前綴(地圖改版後新人找圖用):「領域·地圖名」;委派共用解析,讀不到 helper 才退回純名
-  function mapNameOf(id) { try { return (window.AFK_EXTRA && AFK_EXTRA.mapNameWithRegion) ? AFK_EXTRA.mapNameWithRegion(id) : ((window.AFK_EXTRA && AFK_EXTRA.mapName) ? AFK_EXTRA.mapName(id) : id); } catch (e) { return id; } }
+  // [name] 給村莊用:要冠領域的是 DB.towns 的名字(與 mapName 偶有出入),省略就用 mapName 自己解析
+  function mapNameOf(id, name) { try { return (window.AFK_EXTRA && AFK_EXTRA.mapNameWithRegion) ? AFK_EXTRA.mapNameWithRegion(id, name) : ((window.AFK_EXTRA && AFK_EXTRA.mapName) ? AFK_EXTRA.mapName(id) : (name || id)); } catch (e) { return name || id; } }
   // 隱藏地圖(hidden_*)→ 進入方式說明:這些圖不在地圖選單,要在母樓層手動施放傳送術/用瞬間移動卷軸進入。key 用 mapNameOf(與 h.maps 同一套解析,確保對得上)。lazy 建一次。
   var _hiddenEntry = null;
   function hiddenEntryOf(mapName) {
@@ -198,7 +199,8 @@
     for (var id in DB.mobs) {
       var mob = DB.mobs[id];
       // 去重:原作者的地圖怪物清單可能把同一隻怪列兩次(如 windwood 重複列杜賓狗),否則出沒地圖會出現兩個同名
-      var maps = (mobToMaps[id] || []).map(mapNameOf).filter(function (n, i, a) { return a.indexOf(n) === i; });
+      // ⚠ 不可寫 .map(mapNameOf):Array.map 會把 index 當第二個參數餵進去(＝村莊名覆寫)，地圖名會變成數字
+      var maps = (mobToMaps[id] || []).map(function (mid) { return mapNameOf(mid); }).filter(function (n, i, a) { return a.indexOf(n) === i; });
       // 合併「全部掉落表」——必須與原作 _auditMobDrops 讀的「同一組」表,否則他統計查得到、我們查不到(戰士印記那批踩過)。
       // 目前 6 張:MOB_DROPS、黑暗武器(DARK_WEAPON_DROPS)、三階黑精靈水晶(DARK_CRYSTAL_DROPS)、龍騎士(DRAGON_DROPS)、戰士印記(WARRIOR_DROPS)、記憶水晶(MEM_DROPS·幻術士法術書)。
       // 都用「怪物名」當 key、格式 [[id,%]]。任何表裡的職業限定試煉道具(TRIAL_ITEM_CLASS)一律附註「🔒僅X」;非限定道具(書板/鎖鏈劍/戰士印記/記憶水晶等全職可掉)→trialClassNote 回 null、不附註。
@@ -446,7 +448,8 @@
       if (typeof DB === 'undefined' || !DB.towns) return;
       for (var tid in DB.towns) {
         var t = DB.towns[tid]; if (!t || !t.npcs) continue;
-        t.npcs.forEach(function (n) { if (n && n.id && !_npcInfo[n.id]) _npcInfo[n.id] = { name: n.n, town: t.n }; });
+        var tn = mapNameOf(tid, t.n);   // 帶「領域·」才知道要去地圖選單哪一組找(與小百科「製作」分頁同一種寫法)
+        t.npcs.forEach(function (n) { if (n && n.id && !_npcInfo[n.id]) _npcInfo[n.id] = { name: n.n, town: tn }; });
       }
     } catch (e) {}
   }
@@ -565,7 +568,7 @@
   var _trialBy = null;   // itemId -> 來源說明
   // NPC 名 → 所在村莊名(掃 DB.towns,作者搬 NPC 自動跟上);查不到回空字串、顯示端不加括號
   function npcTownName(npc) {
-    try { for (var tid in DB.towns) { var tw = DB.towns[tid]; if ((tw.npcs || []).some(function (n) { return n && n.n === npc; })) return tw.n || ''; } } catch (e) {}
+    try { for (var tid in DB.towns) { var tw = DB.towns[tid]; if ((tw.npcs || []).some(function (n) { return n && n.n === npc; })) return tw.n ? mapNameOf(tid, tw.n) : ''; } } catch (e) {}
     return '';
   }
   function npcWithTown(npc) { var t = npcTownName(npc); return (npc || '') + (t ? '（' + t + '）' : ''); }

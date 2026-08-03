@@ -60,9 +60,12 @@
       return '';
     },
     // ── 地圖名前面帶「領域」(地圖改版後給新人找圖用):「領域·地圖名」；無領域就只回名 ──
-    mapNameWithRegion: function (id) {
-      var nm = this.mapName(id), reg = this.mapRegion(id);
-      return (reg && reg !== nm) ? (reg + '·' + nm) : nm;   // 領域名與地圖名相同(如領域主圖)就不重複疊字
+    //   [name] 可指定要被冠上領域的名稱(村莊那邊用 DB.towns 的名字,與 mapName 偶有出入),省略就用 mapName。
+    //   ⚠ 名稱裡已經出現過領域名就不再冠(「古魯丁地監1樓」不寫成「古魯丁·古魯丁地監1樓」)——
+    //     只比對「完全相同」會漏掉這種疊字,42 個地圖都中。
+    mapNameWithRegion: function (id, name) {
+      var nm = name || this.mapName(id), reg = this.mapRegion(id);
+      return (reg && String(nm).indexOf(reg) < 0) ? (reg + '·' + nm) : nm;
     },
 
     // ── 物品取得方式(特殊、可控的取得鏈;一般抽獎/掉落不放這,交給掉落查詢動態呈現)──
