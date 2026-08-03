@@ -2677,9 +2677,9 @@
   // 特性標籤:玩家會拿來找裝備的「這件有沒有 X」。值由索引時算好(純欄位判斷,不掃說明文字)。
   var EQ_TAGS = [
     ['2h', '雙手武器'], ['1h', '單手武器'], ['ranged', '遠距離'], ['ele', '武器帶屬性'],
-    ['haste', '⚡ 影響攻速'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
+    ['haste', '⚡ 影響攻速'], ['move', '🏃 影響移動速度'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
     ['stat', '加能力值'], ['regen', '回 HP／MP'], ['maxhp', '加 HP／MP 上限'], ['res', '元素抗性'], ['imm', '免疫／抗異常'],
-    ['block', '有格擋'], ['wcap', '提高負重上限']
+    ['block', '有格擋'], ['wcap', '提高負重上限'], ['relicfind', '🏺 遺物尋寶']
   ];
   var EQ_RARITY = [['relic', '🏺 遺物'], ['legend', '✦ 傳說'], ['normal', '一般']];
   // 觸發特效:遊戲的觸發式欄位命名很雜(procXxx / xxxProc / 完全不含 proc 的具名旗標)。
@@ -2726,6 +2726,7 @@
       if (d.ranged || d.isBow) tags.push('ranged');
       if (d.ele) tags.push('ele');
       if (hi) tags.push('haste');
+      if (d.moveSpeedPct) tags.push('move');   // 負值(潛行者的祕密箱子 −100%)照樣收:刻意放慢移動來拖慢怪物重生是玩法之一,不是雷
       if (eqHasProc(d)) tags.push('proc');
       if (d.set) tags.push('set');
       if (!d.noEnhance && !d.isArrow) tags.push('enh');   // 箭矢一律沒有強化鈕(js/10 的條件含 !d.isArrow),雖然它們沒標 noEnhance
@@ -2736,6 +2737,7 @@
       if (eqHasImm(d)) tags.push('imm');
       if (d.block) tags.push('block');
       if (d.weightCap) tags.push('wcap');
+      if (d.relicDropX2) tags.push('relicfind');
       var rar = isRelicItem(d) ? 'relic' : (d.legend ? 'legend' : 'normal');
       var regions = (ridx && ridx.byItem[id]) ? ridx.byItem[id].regions : [];
       var it = {
@@ -2849,6 +2851,7 @@
     //   免得玩家得逐件展開才知道「為什麼這件符合」。
     var extra = '';
     if (it.haste && (sortK === 'spd' || (stt && (stt.sel.tag || []).indexOf('haste') >= 0))) extra = '⚡ ' + it.haste.txt;
+    else if (d.moveSpeedPct && stt && (stt.sel.tag || []).indexOf('move') >= 0) extra = '🏃 移動速度 ' + (d.moveSpeedPct > 0 ? '+' : '') + d.moveSpeedPct + '%';
     else if (stt && (stt.sel.region || []).length && it.f.region.length) {
       var rgs = it.f.region.slice(), pick = stt.sel.region[0], pi = rgs.indexOf(pick);
       if (pi > 0) { rgs.splice(pi, 1); rgs.unshift(pick); }   // 選了區域 → 排最前,截斷後也一眼對得上
