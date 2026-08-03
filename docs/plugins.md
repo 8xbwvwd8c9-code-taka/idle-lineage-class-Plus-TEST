@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(61 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(62 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -69,6 +69,7 @@
 | `afk-trackinfo.js` | 狀態欄顯示魔物追蹤剩餘時間(包 renderStatusEffects,補一格) |
 | `afk-battlebuffs.js` | 手機戰鬥框下方鏡射整條狀態欄(必須排在 afk-trackinfo 之後才含追蹤格) |
 | `afk-relicguard.js` | 快速廢品的「全選」跳過遺物(包 quickJunkSelectAll/buildQuickHeader) |
+| `afk-wpnfix.js` | 補上游漏掉的武器設定:分類表(包 `getWeaponTags`)＋物品欄位(載入時寫 `DB.items`)。**一律只在上游是空的時候才補**,作者填了自動讓路。現有 5 件(飛翼的混沌雙刀缺「雙刀」、猴子的金箍棒缺「單手鈍器」、滾燙巨劍缺 `eff:'cleave'`、青色火炎/熔岩噴嘴缺 `weakExpose`)。**判準=說明文字用「；」列出的特效清單**(那是承諾),不是風味文——掃風味文會一堆假陽性(「箭矢能穿透一切血肉」不是穿透特效) |
 | `afk-enhtarget.js` | 快速強化目標上限 +12→+15(包 buildQuickEnhanceHeader 補下拉;執行端本就鉗各裝備 enhanceCap) |
 | `afk-attrbatch.js` | 碧恩「賦予屬性」一鍵衝到指定階段/星數(包 renderBianAttr 加面板;把 doBianAttr 的副作用暫時靜音後迴圈呼叫→規則單一真相仍在核心;「這輪卷軸沒被扣」＝核心擋下,拿它的訊息當停止原因) |
 | `afk-cursebatch.js` | 詛咒卷軸一鍵弱化(包 openModal 掛入口;**不看 `isMaxEnhanced`**——上游滿強化就整顆強化鈕消失,連帶讓詛咒卷軸沒入口。批次同樣靠靜音副作用迴圈呼叫 executeCurseDeEnhance;背包堆疊要**自己先拆一件**,否則核心每次呼叫各拆一件變成 N 件各 -1) |
