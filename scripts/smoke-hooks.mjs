@@ -42,7 +42,7 @@ const logs = [];
 // afk-battlehud 桌機也會 init(只是 CSS 讓它不顯示)→ 放 need 即可;它取代的是核心手機版 #mobile-vitals。
 // afk-touchtip 只在觸控裝置 init(桌機有 hover,本來就不該掛)→ 桌機那輪永遠等不到,必須放手機輪。
 const needMobileOnly = ['[AFK-touchtip]'];
-const need = ['[AFK]', '[AFK-banner]', '[AFK-lzcache]', '[AFK-synccompress]', '[AFK-clanroster]', '[AFK-allyslim]', '[AFK-dollcursor]', '[AFK-mobile]', '[AFK-backnav]', '[AFK-battlehud]', '[AFK-mapbar]', '[AFK-nozoom]', '[AFK-statusicon]', '[AFK-trackinfo]', '[AFK-relicguard]', '[AFK-wpnfix]', '[AFK-enhtarget]', '[AFK-retrial]', '[AFK-attrbatch]', '[AFK-cursebatch]', '[AFK-battlebuffs]', '[AFK-slotinfo]', '[AFK-dex]', '[AFK-wiki]', '[AFK-syncinfo]', '[AFK-statpts]', '[AFK-statlist]', '[AFK-pwa]', '[AFK-storage]', '[AFK-fullsave]', '[AFK-quotawarn]', '[AFK-notice]', '[AFK-history]', '[AFK-reissueid]', '[AFK-diag]', '[AFK-mobname]', '[AFK-npclabel]', '[AFK-training]', '[AFK-junkmgr]', '[AFK-bossskip]', '[AFK-mercguard]', '[AFK-itemsearch]', '[AFK-eqlist]', '[AFK-npclist]', '[AFK-whbatch]', '[AFK-anyclass]', '[AFK-locksafe]', '[AFK-skin]'];
+const need = ['[AFK]', '[AFK-banner]', '[AFK-lzcache]', '[AFK-synccompress]', '[AFK-clanroster]', '[AFK-allyslim]', '[AFK-dollcursor]', '[AFK-mobile]', '[AFK-backnav]', '[AFK-battlehud]', '[AFK-mapbar]', '[AFK-nozoom]', '[AFK-statusicon]', '[AFK-trackinfo]', '[AFK-relicguard]', '[AFK-wpnfix]', '[AFK-enhtarget]', '[AFK-retrial]', '[AFK-attrbatch]', '[AFK-cursebatch]', '[AFK-battlebuffs]', '[AFK-slotinfo]', '[AFK-dex]', '[AFK-wiki]', '[AFK-syncinfo]', '[AFK-statpts]', '[AFK-statlist]', '[AFK-pwa]', '[AFK-storage]', '[AFK-fullsave]', '[AFK-quotawarn]', '[AFK-notice]', '[AFK-history]', '[AFK-reissueid]', '[AFK-diag]', '[AFK-mobname]', '[AFK-npclabel]', '[AFK-training]', '[AFK-junkmgr]', '[AFK-bossavoid]', '[AFK-mercguard]', '[AFK-itemsearch]', '[AFK-eqlist]', '[AFK-npclist]', '[AFK-whbatch]', '[AFK-anyclass]', '[AFK-locksafe]', '[AFK-skin]'];
 const seen = (list) => list.every((n) => logs.some((l) => l.includes(n) && l.includes('hooks OK')));
 
 // ⚠ 不用 waitUntil:'networkidle':作者新版(.49 起)加了背景音樂 assets/bgm/*.mp3，<audio> 媒體串流會讓網路
@@ -57,46 +57,49 @@ const _deadline = Date.now() + 20000;   // 最多等 20 秒讓全部外掛初始
 while (Date.now() < _deadline && !seen(need)) await page.waitForTimeout(200);
 await page.waitForTimeout(300);   // 緩衝:讓 hooks 之後的索引(dex/wiki)與 AFK_EXTRA 建好,再做地圖翻譯檢查
 
-// 🚫 跳過指定頭目(afk-bossskip):驗「濾掉的王真的不會生出來」。
-//   為什麼非驗不可:這支的作法是在 spawnMob 跑之前把 DB.maps[地圖] 換成濾過的池。上游哪天把
-//   `let pool = DB.maps[mapState.current]` 換成別的資料源,wrapper 照掛、池照換,但核心根本不讀它
-//   → 跳過清單完全失效、零錯誤訊息,玩家只會覺得「怎麼還是遇到牠」。hooks OK 也照樣印。
-//   這是唯一能在上游改版當天就抓到的檢查,所以驗的是「行為」而不是「有沒有掛上」。
-//   ⚠ smoke 停在主選單(沒載入角色),但 player 是物件、currentSlot=1、spawnMob 可直接呼叫(實測),
-//     配合 mapState.forceBoss 每次強制出王 → 結果是確定性的,不靠野外 1% 的自然機率。
-const bossSkipProblems = await page.evaluate(() => {
+// 🚫 只迴避指定頭目(afk-bossavoid):驗「沒挑到的王真的不會觸發瞬移逃離」。
+//   為什麼非驗不可:這支的作法是在 autoActions 跑之前,把玩家沒挑到的 BOSS 實例暫時標上 noAutoTeleport,
+//   借上游那行 `mobs.some(m => m && m.boss && !m.noAutoTeleport)` 自己少看到牠們。上游哪天改掉那行的
+//   寫法(不看這個旗標、或改用別的判斷),wrapper 照掛、旗標照標,但條件根本不讀它 → 變回「全部都躲」,
+//   零錯誤訊息、hooks OK 照印,玩家只會覺得「怎麼連我沒選的也躲」。
+//   ⚠ smoke 停在主選單(沒載入角色),但 player 是物件、currentSlot=1、autoActions 可直接呼叫(實測);
+//     把 useItem 換成計數器就能確定性地看出「有沒有觸發瞬移」,不必真的消耗卷軸。
+const bossAvoidProblems = await page.evaluate(() => {
   const bad = [];
+  const origUse = window.useItem;
   try {
-    if (!window.AFK_BOSSSKIP) return ['AFK_BOSSSKIP 不存在(外掛沒載入或被關掉)'];
-    const MAP = 'dragon_valley', TARGET = '飛龍', N = 200;
-    const before = DB.maps[MAP] && DB.maps[MAP].length;
-    const run = () => {
-      const tally = {};
-      let empty = 0;
-      mapState.current = MAP;
-      mapState.mobs = [null, null, null, null, null];
-      mapState.spawnAt = [null, null, null, null, null];
-      for (let i = 0; i < N; i++) {
-        mapState.mobs[0] = null;
-        mapState.forceBoss = true;
-        spawnMob(0);
-        const m = mapState.mobs[0];
-        if (!m) { empty++; continue; }
-        tally[m.n] = (tally[m.n] || 0) + 1;
-      }
-      return { tally, empty };
+    if (!window.AFK_BOSSAVOID) return ['AFK_BOSSAVOID 不存在(外掛沒載入或被關掉)'];
+    const MAP = 'dragon_valley', PICK = 'blackelder', OTHER = 'wyvern';
+    let calls = 0;
+    window.useItem = function () { calls++; return true; };
+    const tp = document.getElementById('set-teleport');
+    if (!tp) return ['找不到上游的「迴避頭目」勾選框 #set-teleport(上游改了 id?)'];
+    tp.checked = true;
+    mapState.current = MAP;
+    player.inv = player.inv || [];
+    if (!player.inv.some((i) => i && i.id === 'scroll_teleport')) player.inv.push({ id: 'scroll_teleport', uid: 'smoke_tp', cnt: 9 });
+    const put = (id) => {
+      const d = DB.mobs[id];
+      mapState.mobs = [{ ...d, curHp: d.hp, uid: 'smoke_' + id, _born: 1, _magCd: {}, st: (typeof newMobStatus === 'function' ? newMobStatus() : {}) }, null, null, null, null];
     };
-    AFK_BOSSSKIP.set([]);
-    const off = run();
-    if (!off.tally[TARGET]) bad.push(`對照組:沒設跳過清單時 ${TARGET} 也沒出現 ${N} 次中 0 次(地圖池或強制出王的機制變了?)`);
-    AFK_BOSSSKIP.set(['wyvern']);
-    const on = run();
-    if (on.tally[TARGET]) bad.push(`跳過清單失效:已把${TARGET}列入跳過,${N} 次強制出王仍出現 ${on.tally[TARGET]} 次(上游是不是換掉了 spawnMob 的怪物池來源?)`);
-    if (on.empty) bad.push(`濾掉之後有 ${on.empty} 次生不出怪(該補地圖排除清單或保險條件)`);
-    if (DB.maps[MAP].length !== before) bad.push(`DB.maps.${MAP} 被污染:${before} → ${DB.maps[MAP].length}(濾過的池沒還原回去)`);
-    AFK_BOSSSKIP.set([]);
+    const run = (id) => { put(id); calls = 0; autoActions(); return calls; };
+
+    AFK_BOSSAVOID.set(MAP, []);                       // 沒挑 = 上游今天的行為(全部躲)
+    if (!run(OTHER)) bad.push(`對照組:沒挑任何頭目時 ${DB.mobs[OTHER].n} 也沒觸發瞬移(上游的迴避頭目分支變了?)`);
+
+    AFK_BOSSAVOID.set(MAP, [PICK]);                   // 只挑了黑長者
+    if (!run(PICK)) bad.push(`挑到的 ${DB.mobs[PICK].n} 沒有觸發瞬移(縮小範圍把該躲的也擋掉了)`);
+    const n = run(OTHER);
+    if (n) bad.push(`沒挑到的 ${DB.mobs[OTHER].n} 仍觸發了 ${n} 次瞬移(上游是不是改掉了 autoActions 裡看 noAutoTeleport 的那行?)`);
+
+    const left = mapState.mobs.filter((m) => m && m.noAutoTeleport).length;
+    if (left) bad.push(`autoActions 跑完還有 ${left} 隻怪殘留 noAutoTeleport(旗標沒還原,會被寫進存檔並影響離線收益估算)`);
+
+    AFK_BOSSAVOID.set(MAP, []);
+    tp.checked = false;
     mapState.mobs = [null, null, null, null, null];
-  } catch (e) { bad.push('跳過頭目檢查本身出錯:' + e.message); }
+  } catch (e) { bad.push('迴避頭目檢查本身出錯:' + e.message); }
+  finally { window.useItem = origUse; }
   return bad;
 });
 
@@ -323,11 +326,12 @@ if (!allOK) {
   process.exit(1);
 }
 
-if (bossSkipProblems.length) {
-  console.error('冒煙測試失敗:「跳過指定頭目」沒有真的擋住那隻王:');
-  for (const p of bossSkipProblems) console.error('  ' + p);
-  console.error('  判準:afk-bossskip 是在 spawnMob 之前把 DB.maps[地圖] 換成濾過的池,');
-  console.error('       上游一旦改從別的地方取怪物池,這支就會安靜失效(hooks OK 照印、無錯誤訊息)。');
+if (bossAvoidProblems.length) {
+  console.error('冒煙測試失敗:「只迴避指定頭目」沒有正確縮小迴避範圍:');
+  for (const p of bossAvoidProblems) console.error('  ' + p);
+  console.error('  判準:afk-bossavoid 是在 autoActions 之前把「沒挑到的 BOSS」暫時標成 noAutoTeleport,');
+  console.error('       借上游自己那行 some(m => m.boss && !m.noAutoTeleport) 少看到牠們;');
+  console.error('       上游一旦改掉那行的判斷方式,這支就會安靜失效(hooks OK 照印、無錯誤訊息)。');
   process.exit(1);
 }
 

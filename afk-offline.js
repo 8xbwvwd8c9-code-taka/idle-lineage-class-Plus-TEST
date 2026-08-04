@@ -918,6 +918,10 @@
         var tChk = document.getElementById('set-teleport');
         if (!(tChk && tChk.checked)) return false;                                   // 未勾選自動瞬移 → 照打
         if (!m || !m.boss || m.noAutoTeleport) return false;                         // 非 BOSS、或 noAutoTeleport(卡瑞/樓梯/傳送門)→ 不瞬移
+        // 🔌 玩家在這張圖只挑了某幾隻要躲 → 沒挑到的照打。線上是靠 afk-bossavoid 暫時改旗標讓 autoActions
+        //    自己少看到牠們;快速段不跑 autoActions(是本函式 1:1 重放),所以要在這裡主動問一次。
+        //    外掛沒載入/被關掉 → 問不到 → 維持上游原行為(全部躲)。
+        if (window.AFK_BOSSAVOID && AFK_BOSSAVOID.shouldAvoid && !AFK_BOSSAVOID.shouldAvoid(m)) return false;
         // 頂層條件照 autoActions(js/07):攻城區/純BOSS房 BOSS 即目標不逃;攀登/時空裂痕本就不走快速段;
         // 遺忘之島本島雖走快速段,但島上禁傳送(與線上一致)→ 這裡照 autoActions 一樣早退、照打
         if (isSiegeArea(mapState.current) || PURE_BOSS_MAPS.includes(mapState.current)) return false;

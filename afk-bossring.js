@@ -119,16 +119,8 @@
     }
     // 這張圖的怪物池有沒有可召的 BOSS:沒有的話 forceBoss 會被一般格白白消耗,外掛看「場上沒王」
     // 又再瞬移 → 無限迴圈狂燒卷軸(踩過)。無 BOSS 池的圖一律不動作。
-    //   玩家把這張圖的王「全部」列進 afk-bossskip 的跳過清單時同理:牠們不會生成,forceBoss 一樣被白白吃掉
-    //   → 先問 bossskip 還剩哪些召得到(它沒載入/被關掉就回不了,退回原本只看 DB.maps 的判斷=現況行為)。
     function mapHasBossPool() {
-        try {
-            if (window.AFK_BOSSSKIP && AFK_BOSSSKIP.spawnableBossIds) {
-                var ids = AFK_BOSSSKIP.spawnableBossIds(mapState.current);
-                if (ids) return ids.length > 0;
-            }
-            return (DB.maps[mapState.current] || []).some(function (id) { return DB.mobs[id] && DB.mobs[id].boss; });
-        } catch (e) { return false; }
+        try { return (DB.maps[mapState.current] || []).some(function (id) { return DB.mobs[id] && DB.mobs[id].boss; }); } catch (e) { return false; }
     }
     // 「自動找 BOSS 進行中」:核心「迴避頭目(瞬移卷軸)」以此互斥(找BOSS開著就抑制逃離,
     // 否則剛召來的王立刻被逃離瞬移走;比照 main 版核心的 _huntBoss 旗標)。

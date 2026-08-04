@@ -55,8 +55,8 @@
 | `afk-training.js` | 木人場(量真實 DPS;獨立 map id `afk_dummy`;隊員全員不死＝**判定前補到真實上限**不灌血量;HUD 兩檢視:來源長條圖(玩家/各傭兵/**每隻**寵物/**每種**召喚物)與每隻訓練怪;可選「MP 不消耗」,預設關) |
 | `afk-junkmgr.js` | 廢品標記管理(木人場鈕下方;列出/搜尋/多選刪除 `player.junkPrefs`,刪除同時取消背包同款標記;規則標記 `_ruleJunk` 刻意不列;虛擬捲動) |
 | `afk-mercguard.js` | 傭兵招募被擋下時跳彈窗(收核心自己吐的紅字原文,不重刻擋下條件;核心只寫系統日誌→玩家看不到) |
-| `afk-bossskip.js` | 跳過指定頭目(勾起來的王不再出現。**在 `spawnMob` 跑之前把 `DB.maps[地圖]` 換成濾掉那幾隻的副本、`finally` 換回來**——生完再拿掉要還原 uid/_born/席琳強化/出場特效一整串副作用;離線走同一支核心 `spawnMob` 故自動一致。不可跳的一律沿用上游旗子:軍王之室/純BOSS房/安塔瑞斯/攻城/裂痕/攀登樓層/遺忘之島整張圖排除、怪物層看 `noAutoTeleport`。⚠️ 上游若改掉 `let pool = DB.maps[…]` 的取法會**安靜失效**,靠 smoke 的行為斷言擋) |
-| `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5。`mapHasBossPool()` 會先問 afk-bossskip 還剩哪些王召得到——全被跳過又開著自動找王會無限燒瞬移卷軸;問不到就退回只看 `DB.maps`=原行為) |
+| `afk-bossavoid.js` | 只迴避指定頭目(上游「迴避頭目(瞬移卷軸)」原本全部都躲 → 改成**每張地圖各自挑要躲哪幾隻**,依存檔位分開;空清單=全部躲=上游原行為。**作法:在 `autoActions` 跑之前把「玩家沒挑到的 BOSS 實例」暫時標上 `noAutoTeleport`、`finally` 還原**,借上游自己那行 `mobs.some(m => m.boss && !m.noAutoTeleport)` 少看到牠們 → 不必動核心,而且「哪些地圖不能傳送」整套守衛仍由上游 `useItem` 自己套用(不必自己維護地圖清單)。⚠️ 還原**必須**在 finally:`mapState.mobs` 會序列化進存檔,殘留旗標會被 js/27 的離線收益估算讀到。離線快速段不跑 `autoActions`(自己 1:1 重放)→ `afk-offline.js` 的 `fastTeleportAwayBoss` 主動問 `AFK_BOSSAVOID.shouldAvoid`。⚠️ 上游若改掉那行的判斷方式會**安靜失效**,靠 smoke 的行為斷言擋) |
+| `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5——**開著自動找王時迴避頭目整組不生效**,連帶 afk-bossavoid 也等於沒作用,這是上游設計,不是 bug) |
 | `afk-itemsearch.js` | 背包名稱搜尋(包 renderTabs 重注入;純顯示層過濾) |
 | `afk-invlist.js` | 背包條列式(桌機手機通用;**本檔整片鋪底的 `background:...!important` 會蓋掉核心給的狀態底色**——「無法裝備/無法學習」的 `bg-red-950/40` 就這樣被吃掉過,已補回紅底＋左紅條,`.bg-red-950\/40` 與 `:has(.text-red-500)` 兩種選法各寫一條、不可併成 selector list) |
 | `afk-eqlist.js` | 裝備分頁條列式(隱藏 12 格圖形窗,露出原生部位條列) |
