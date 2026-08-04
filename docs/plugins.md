@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(62 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(63 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -55,7 +55,8 @@
 | `afk-training.js` | 木人場(量真實 DPS;獨立 map id `afk_dummy`;隊員全員不死＝**判定前補到真實上限**不灌血量;HUD 兩檢視:來源長條圖(玩家/各傭兵/**每隻**寵物/**每種**召喚物)與每隻訓練怪;可選「MP 不消耗」,預設關) |
 | `afk-junkmgr.js` | 廢品標記管理(木人場鈕下方;列出/搜尋/多選刪除 `player.junkPrefs`,刪除同時取消背包同款標記;規則標記 `_ruleJunk` 刻意不列;虛擬捲動) |
 | `afk-mercguard.js` | 傭兵招募被擋下時跳彈窗(收核心自己吐的紅字原文,不重刻擋下條件;核心只寫系統日誌→玩家看不到) |
-| `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5) |
+| `afk-bossskip.js` | 跳過指定頭目(勾起來的王不再出現。**在 `spawnMob` 跑之前把 `DB.maps[地圖]` 換成濾掉那幾隻的副本、`finally` 換回來**——生完再拿掉要還原 uid/_born/席琳強化/出場特效一整串副作用;離線走同一支核心 `spawnMob` 故自動一致。不可跳的一律沿用上游旗子:軍王之室/純BOSS房/安塔瑞斯/攻城/裂痕/攀登樓層/遺忘之島整張圖排除、怪物層看 `noAutoTeleport`。⚠️ 上游若改掉 `let pool = DB.maps[…]` 的取法會**安靜失效**,靠 smoke 的行為斷言擋) |
+| `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5。`mapHasBossPool()` 會先問 afk-bossskip 還剩哪些王召得到——全被跳過又開著自動找王會無限燒瞬移卷軸;問不到就退回只看 `DB.maps`=原行為) |
 | `afk-itemsearch.js` | 背包名稱搜尋(包 renderTabs 重注入;純顯示層過濾) |
 | `afk-invlist.js` | 背包條列式(桌機手機通用;**本檔整片鋪底的 `background:...!important` 會蓋掉核心給的狀態底色**——「無法裝備/無法學習」的 `bg-red-950/40` 就這樣被吃掉過,已補回紅底＋左紅條,`.bg-red-950\/40` 與 `:has(.text-red-500)` 兩種選法各寫一條、不可併成 selector list) |
 | `afk-eqlist.js` | 裝備分頁條列式(隱藏 12 格圖形窗,露出原生部位條列) |
