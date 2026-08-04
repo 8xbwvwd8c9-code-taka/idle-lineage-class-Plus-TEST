@@ -196,7 +196,6 @@
     wrap.innerHTML =
       '<div class="m-bav-box">'
       + '<div class="m-bav-head"><span id="m-bav-title">迴避哪些頭目</span><button type="button" id="m-bav-x">✕</button></div>'
-      + '<div class="m-bav-sub">不勾＝這張地圖的頭目全部迴避。</div>'
       + '<div id="m-bav-list"></div>'
       + '<div class="m-bav-foot"><button type="button" class="m-bav-btn" id="m-bav-clear">全部迴避</button></div>'
       + '</div>';
@@ -274,7 +273,6 @@
       '.m-bav-box{width:100%;max-width:420px;max-height:calc((100dvh - var(--orig-bar-h,0px)) * .9);display:flex;flex-direction:column;overflow:hidden;background:#0f172a;border:1px solid #475569;border-radius:12px;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.6);}',
       '.m-bav-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;font-size:15px;font-weight:bold;color:#fbbf24;border-bottom:1px solid #334155;}',
       '.m-bav-head button{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px;flex:none;}',
-      '.m-bav-sub{flex:none;padding:8px 14px;font-size:12px;color:#94a3b8;}',
       '#m-bav-list{flex:1;min-height:80px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;border-top:1px solid #1e293b;border-bottom:1px solid #1e293b;background:#0b1220;}',
       '.m-bav-row{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid #1e293b;cursor:pointer;user-select:none;-webkit-user-select:none;}',
       '.m-bav-row:hover{background:#152034;}',
