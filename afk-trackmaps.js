@@ -54,8 +54,8 @@
 
   if (window.AFK_TOGGLES) {
     AFK_TOGGLES.register({
-      id: 'trackmaps', name: '追蹤補上缺漏地圖', def: true, group: '遊戲介面',
-      desc: '魔物追蹤可以選黑暗妖精聖地、傲慢之塔2~10樓與六張隱藏區域'
+      id: 'trackmaps', name: '追蹤可選的地圖變多', def: true, group: '遊戲玩法',
+      desc: '可以追蹤黑暗妖精聖地、傲慢之塔2~10樓與象牙塔密室等隱藏區域'
     });
   }
 
