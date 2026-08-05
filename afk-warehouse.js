@@ -298,12 +298,32 @@
         (document.head || document.documentElement).appendChild(s);
     }
 
+    // 摺疊時把標題後半的「(點擊存入 ▶)」換成灰色的「(已收起)」:
+    //   ① 那句話在摺疊時是錯的指示 —— 清單都收起來了,根本沒東西可點。
+    //   ② 狀態是記住的,下次開倉庫會直接看到「背包」與「倉庫」兩行標題疊在一起、背包底下空空的,
+    //      不講清楚會被讀成「背包是空的」。
+    //   ③ 我們的 ▶ 箭頭跟原標題結尾的「存入 ▶」同一個符號,一行兩個 ▶ 很難看出哪個是摺疊狀態。
+    // 只換括號那段、名字沿用上游原字(不寫死「背包」),上游改字也跟著變。
+    function _foldLabel(head, folded) {
+        var lab = head.querySelector('.afk-wh-lab'); if (!lab) return;
+        var orig = head.dataset.afkLabel || '';
+        lab.textContent = '';
+        if (!folded) { lab.textContent = orig; return; }
+        var i = orig.indexOf('（');
+        lab.appendChild(document.createTextNode(i > 0 ? orig.slice(0, i) : orig));
+        var tag = document.createElement('span');
+        tag.textContent = '（已收起）';
+        tag.setAttribute('style', 'color:#94a3b8;font-weight:400;');
+        lab.appendChild(tag);
+    }
+
     function _foldApply(col, head, folded) {
         col.classList.toggle('afk-wh-invfold', folded);
         head.dataset.afkFold = folded ? '1' : '0';
         head.setAttribute('aria-expanded', folded ? 'false' : 'true');
         var caret = head.querySelector('.afk-wh-caret');
         if (caret) caret.textContent = folded ? '▶' : '▼';
+        _foldLabel(head, folded);
     }
 
     function _injectInvFold() {
@@ -316,6 +336,14 @@
         var caret = document.createElement('span');
         caret.className = 'afk-wh-caret';
         caret.style.cssText = 'display:inline-block;width:1em;';
+        // 標題是純文字時才接手內容(重建成 caret+文字兩段);上游哪天在標題裡放了元素就只加箭頭,不動它
+        if (!head.children.length) {
+            head.dataset.afkLabel = (head.textContent || '').trim();
+            head.textContent = '';
+            var lab = document.createElement('span');
+            lab.className = 'afk-wh-lab';
+            head.appendChild(lab);
+        }
         head.insertBefore(caret, head.firstChild);
         head.setAttribute('style', 'cursor:pointer;-webkit-user-select:none;user-select:none;padding:4px 0;');
         head.setAttribute('role', 'button');
