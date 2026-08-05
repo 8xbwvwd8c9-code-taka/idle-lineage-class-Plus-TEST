@@ -295,7 +295,7 @@
     injectCss();
     injectEntry();
     // 勾選框那一列是靜態 DOM，但換地圖/換角色時按鈕文字要跟著變；順便兜「入口被重繪洗掉」的情況。
-    setInterval(function () { if (!injectEntry()) return; syncButton(); }, 1500);
+    setInterval(function () { if (document.hidden) return; if (!injectEntry()) return; syncButton(); }, 1500);   // 純 DOM,背景分頁跳過(迴避邏輯在 autoActions wrapper,不受影響)
     try { console.log('[AFK-bossavoid] hooks OK — 只迴避指定頭目已啟用。'); } catch (e) {}
   }
 
