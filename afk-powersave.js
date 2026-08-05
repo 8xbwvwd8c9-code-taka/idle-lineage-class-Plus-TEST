@@ -59,10 +59,10 @@
     var NOFX_CSS = [
         /* 全遊戲每張 <img> 的常駐濾鏡：任一張 8fps 換幀都整層重算，是最大範圍的 GPU 熱點 */
         '#game-screen img, #creation-screen img, #battle-view img { filter: none; }',
-        /* 鎖定紅光暈疊在 8fps 換幀的 sprite 上 → 拔掉，改用便宜的外框標示鎖定中的怪 */
+        /* 鎖定紅光暈疊在 8fps 換幀的 sprite 上 → 拔掉。不補任何替代標示：打誰不影響操作，
+           要看正在打誰有 afk-mobname 的「鎖定中常駐顯示」，在怪圖上加框反而礙眼。 */
         '#battle-view.has-bg .mob-target.active .mob-img-inner { filter: none; }',
         '#battle-view.has-bg .mob-target.active .mob-img-inner.mob-shadow-tint { filter: brightness(0); }',
-        '#battle-view.has-bg .mob-target.active { outline: 2px solid rgba(239,68,68,.75); outline-offset: -2px; }',
         /* 物品/怪物光暈：drop-shadow 動畫每幀重算；靜態多層光也一併拔（背包開著就是整片） */
         '.legend-glow, .mana-glow, .relic-glow, .bless-glow, .curse-glow, .ancient-glow,',
         '.anc-bless-glow, .ancient-glow-strong, .bless-glow-strong, .tri-glow,',
@@ -145,7 +145,7 @@
         //   音樂/音效無頭環境量不到(沒有使用者手勢→不會播),排最後是依「音訊解碼常駐且切背景不停」推估。
         var opts = [
             { k: 'noanim', name: '關閉戰鬥動畫', desc: '怪物/玩家/傭兵/寵物/召喚的逐幀動畫停止（傷害/戰鬥數值不變）' },
-            { k: 'nofx', name: '關閉光暈與濾鏡', desc: '裝備與怪物的發光、畫面濾鏡等裝飾效果關閉（鎖定改用紅框標示）' },
+            { k: 'nofx', name: '關閉光暈與濾鏡', desc: '裝備與怪物的發光、畫面濾鏡等裝飾效果關閉' },
             { core: 'vfx', name: '關閉戰鬥特效', desc: '不再播放技能與攻擊的特效動畫' },
             { k: 'lowfps', name: '降低畫面更新頻率', desc: '畫面更新節流到約 8fps（遊戲邏輯照跑，只是畫面較不即時）' },
             { core: 'vfxnum', name: '關閉傷害數字', desc: '不再跳出傷害/治療的浮動數字' },
