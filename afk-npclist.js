@@ -93,6 +93,21 @@
         _townNpcSprites.length = 0;
     }
 
+    // 🩹 回到前景時重建一次清單:手機在背景待久了,瀏覽器會把圖片的解碼資料丟掉,回來重繪只剩「白色人形」
+    //   (形狀還在、顏色沒了 → 是瀏覽器層的貼圖被回收,不是我們的 DOM 壞掉;所以清快取沒用、整個 App 重開才好)。
+    //   玩家手動換個村莊再回來就會恢復——因為那會重跑 render、換掉一批新的 <img>;這裡把同一件事自動做掉。
+    //   只在「人在村莊畫面」時做,其餘狀態重跑 render 沒有意義。
+    function refreshOnResume() {
+        if (document.hidden) return;
+        if (!document.getElementById('afk-npclist')) return;
+        var tv = document.getElementById('town-view'); if (!tv || tv.classList.contains('hidden')) return;
+        var cur = (typeof mapState !== 'undefined' && mapState) ? mapState.current : null;
+        if (!cur || typeof DB === 'undefined' || !DB.towns || !DB.towns[cur]) return;
+        try { window.renderTownNPCMap(cur); } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', refreshOnResume);
+    window.addEventListener('pageshow', refreshOnResume);
+
     var _orig = window.renderTownNPCMap;
     window.renderTownNPCMap = function (townId) {
         var r = _orig.apply(this, arguments);
