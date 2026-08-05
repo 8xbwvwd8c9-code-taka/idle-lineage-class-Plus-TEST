@@ -16,7 +16,7 @@
 
     // ── 🗺️ 統一地圖名解析（唯一一份；afk-dex / afk-wiki / js/offline.js(核心) / afk-slotinfo 都呼叫這份）──
     //   涵蓋：風木地監、遺忘之島、時空裂痕、隱藏狩獵區域(HIDDEN_AREA_NAMES)、攀登(pride_fN / pride_a_b)、
-    //   選單地圖(MAP_CATEGORIES)、攻城(SIEGE_CITY)、村莊(DB.towns)；查不到回 id。
+    //   選單地圖(MAP_REGIONS 的 t 優先，其次 MAP_CATEGORIES)、攻城(SIEGE_CITY)、村莊(DB.towns)；查不到回 id。
     //   ⭐ 以後作者新增「不在 MAP_CATEGORIES 的地圖類型」只要改這一處，四支外掛同時生效（免再逐份補）。
     //   讀的是遊戲執行期全域，外掛載入順序不影響（呼叫時才求值）。
     mapName: function (id) {
@@ -36,6 +36,14 @@
         }
         var pf = /^pride_f(\d+)$/.exec(id); if (pf) return '傲慢之塔 ' + pf[1] + ' 樓';
         var pr = /^pride_(\d+)_(\d+)$/.exec(id); if (pr) return '傲慢之塔 ' + pr[1] + '~' + pr[2] + ' 樓（直接挑戰）';
+        // 🗺️ MAP_REGIONS 的 t 優先於 MAP_CATEGORIES：地圖改版後選單顯示的是前者(較精確,如「奇岩城鎮/奇岩周邊」都叫「奇岩」)，
+        //    照後者顯示會與玩家在選單看到的對不起來，兩張不同的圖還會顯示成同一個名字。
+        if (typeof MAP_REGIONS !== 'undefined') {
+          for (var ri = 0; ri < MAP_REGIONS.length; ri++) {
+            var rms = MAP_REGIONS[ri].maps || [];
+            for (var rj = 0; rj < rms.length; rj++) if (rms[rj].v === id && rms[rj].t) return rms[rj].t;
+          }
+        }
         if (typeof MAP_CATEGORIES !== 'undefined') {
           for (var c in MAP_CATEGORIES) { var l = MAP_CATEGORIES[c]; for (var i = 0; i < l.length; i++) if (l[i].v === id) return l[i].t; }
         }
@@ -60,11 +68,13 @@
       return '';
     },
     // ── 地圖名前面帶「領域」(地圖改版後給新人找圖用):「領域·地圖名」；無領域就只回名 ──
-    //   [name] 可指定要被冠上領域的名稱(村莊那邊用 DB.towns 的名字,與 mapName 偶有出入),省略就用 mapName。
+    //   [name] 只是 mapName 查不到時的備援(村莊那邊傳 DB.towns 的名字);查得到一律以 mapName 為準,
+    //   否則村莊會退回 DB.towns 的舊名(「奇岩」)、跟地圖選單的「奇岩城鎮」對不起來。
     //   ⚠ 名稱裡已經出現過領域名就不再冠(「古魯丁地監1樓」不寫成「古魯丁·古魯丁地監1樓」)——
     //     只比對「完全相同」會漏掉這種疊字,42 個地圖都中。
     mapNameWithRegion: function (id, name) {
-      var nm = name || this.mapName(id), reg = this.mapRegion(id);
+      var nm = this.mapName(id); if (nm === id && name) nm = name;
+      var reg = this.mapRegion(id);
       return (reg && String(nm).indexOf(reg) < 0) ? (reg + '·' + nm) : nm;
     },
 
