@@ -246,6 +246,11 @@ const untranslatedMaps = await page.evaluate(() => {
   return out;
 });
 
+// 🌓 色彩配置宣告:index.html 必須讓 :root 的 color-scheme 是 dark。沒有的話 Android Chrome 的
+//   「自動深色主題」會自己疊一層反轉,逐張圖判定 → 部分 NPC/怪物 sprite 變成白色人形(玩家回報過)。
+//   症狀完全不像我們的 bug(重繪/重登/清快取都無效、重裝才好),沒有這道檢查掉了不會有人發現。
+const colorScheme = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
+
 // 🔌 桌機外掛入口區塊(afk-skin 的 #afk-plugin-panel):整塊絕對定位在左欄「版本號正上方」。
 //   座標是照上游 4:3 舞台的百分比放的 → 上游改首頁版面(標題變高、搬 #login-meta-layer、換舞台元素)時,
 //   入口不會消失、只會疊到標題/版號上或被舞台的 overflow:hidden 切掉,肉眼不掃根本看不出來。
@@ -376,6 +381,13 @@ if (tabletProblems.length) {
 if (untranslatedMaps.length) {
   console.error('冒煙測試失敗:掉落查詢有地圖名未翻譯(會顯示英文 id),請補進 afk-extradata.js 的 AFK_EXTRA.mapName:');
   for (const [id, nm] of untranslatedMaps) console.error(`  ${id}  ->  ${nm}`);
+  process.exit(1);
+}
+
+if (!/dark/.test(colorScheme)) {
+  console.error(`冒煙測試失敗::root 的 color-scheme 是「${colorScheme}」,不是 dark。`);
+  console.error('  後果:Android Chrome 的自動深色主題會把部分 sprite 反成白色人形,而且重繪/重登/清快取都無效。');
+  console.error('  修法:scripts/afk-plugin-block.html 裡那行 <style>:root{color-scheme:dark}</style> 要在,並同步進 index.html。');
   process.exit(1);
 }
 
