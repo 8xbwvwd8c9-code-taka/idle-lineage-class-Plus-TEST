@@ -293,6 +293,15 @@
   }
 
   // 產生轉移碼:上傳整包 → 顯示六碼 + 複製鈕
+  // fetch 直接拋 TypeError＝連線根本沒建立(不是伺服器回錯)。最常見的是 DNS 過濾/廣告封鎖把
+  //   catbox 整個域名擋掉 —— 那時瀏覽器只給一句 "Failed to fetch",玩家不會聯想到是自己開的 DNS
+  //   (2026-08-05 玩家實測 AdGuard DNS 會擋,關掉就通)。
+  function netErrMsg(e) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return '沒有網路連線。';
+    if (e instanceof TypeError) return '連不上轉移服務，你的 DNS 或廣告封鎖可能把它擋掉了。';
+    return null;
+  }
+
   function doGenerate() {
     var btn = document.getElementById('m-fsv-gen');
     if (btn) { btn.disabled = true; btn.textContent = '上傳中…'; }
@@ -303,8 +312,8 @@
       if (box) box.classList.add('show');
       note('✅ 到另一台裝置輸入這六碼就搬過去了（24 小時內有效）。');
     }).catch(function (e) {
-      var off = (typeof navigator !== 'undefined' && navigator.onLine === false);
-      note('❌ ' + (off ? '沒有網路連線。' : '產生轉移碼失敗（' + (e && e.message || e) + '）。')
+      // 丟出來的 Error 自己就寫清楚是哪一步壞了(上傳失敗（500）/打包失敗：…)→ 直接用,不要再包一層
+      note('❌ ' + (netErrMsg(e) || ((e && e.message || '產生轉移碼失敗') + '。'))
         + '\n可以改用上面的「匯出備份」存成檔案再自己傳過去。', true);
     }).then(function () {
       if (btn) { btn.disabled = false; btn.textContent = '🔑 產生轉移碼'; }
@@ -327,8 +336,8 @@
     }).catch(function (e) {
       // 🚨 只講「可能看錯」,不要自己拿相近字元重試——那可能抓到別人的存檔並覆蓋玩家進度
       if (e && e.message === 'NOTFOUND') note('❌ 找不到這組轉移碼。可能是打錯了（注意 0 和 o、1 和 l），或是已經超過 24 小時。', true);
-      else if (typeof navigator !== 'undefined' && navigator.onLine === false) note('❌ 沒有網路連線。', true);
-      else note('❌ 讀取失敗（' + (e && e.message || e) + '）。可以改請對方用「匯出備份」存成檔案傳給你。', true);
+      else note('❌ ' + (netErrMsg(e) || ((e && e.message || '讀取失敗') + '。'))
+        + '\n可以改請對方用「匯出備份」存成檔案傳給你。', true);
     }).then(function () { if (btn) btn.disabled = false; });
   }
   function openModal() {
