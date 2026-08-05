@@ -7,6 +7,7 @@
  *   ④ 觸控裝置長按倉庫/背包清單物品 → 顯示物品資料(核心只有 hover tooltip,手機看不到)。
  *   ⑤ 「只列可穿」勾選 ＋ 穿不了的列標紅(核心倉庫兩欄只印物品全名,完全看不出本職業能不能穿,
  *      四個角色共用一個倉庫時尤其難挑)。判定一律走核心 checkCanEquip,不自己重寫職業規則。
+ *   ⑥ 背包區塊可摺疊(手機:兩份清單上下疊、整個視窗一起捲,背包擋在倉庫前面)。
  *
  * 作法:包 whSubCatOptions/whMatchFilter/whMatchSearch/renderWarehouseNPC 四支全域;缺任一→console.warn 後停用。
  */
@@ -275,6 +276,59 @@
             });
         });
     }
+    // ── 背包區塊可摺疊 ──────────────────────────────────────────
+    // 手機版面下上游把兩個清單的限高解掉(css/style.css 手機 MQ 內
+    // `#warehouse-window-content #wh-inv-list,#wh-store-list{max-height:none!important}`),
+    // 兩份清單改成上下疊、整個視窗一起捲 → 背包 88 件就有 3,300px,要看倉庫得先滑過整個背包。
+    // 摺起背包,倉庫才會直接出現在畫面上。
+    //
+    // 「現在是不是那個版面」直接問清單的 computed max-height,不看 body class 也不複製那條 media query:
+    //   body.m-mobile 由可被玩家關掉的 afk-mobile 掛(關掉就判成桌機);複製 media query 則是上游改了
+    //   我們這邊會安靜失效。max-height 有沒有被解掉,正是「會不會擋住倉庫」的直接成因。
+    var LS_FOLD = 'afk_wh_invfold';
+    function _foldRead() { try { return localStorage.getItem(LS_FOLD) === '1'; } catch (e) { return false; } }
+    function _foldWrite(v) { try { localStorage.setItem(LS_FOLD, v ? '1' : '0'); } catch (e) {} }
+
+    function _foldCSS() {
+        if (document.getElementById('afk-wh-fold-style')) return;
+        var s = document.createElement('style'); s.id = 'afk-wh-fold-style';
+        // 藏「標題以外的所有兄弟」而不是只藏 #wh-inv-list:批次存取(afk-whbatch)會把它的工具列
+        // insertBefore 到清單前面,而且它的注入時機不保證早於這裡 → 用 CSS 涵蓋整欄才不會漏掉後來才出現的。
+        s.textContent = '.afk-wh-invfold > *:not(:first-child){display:none !important;}';
+        (document.head || document.documentElement).appendChild(s);
+    }
+
+    function _foldApply(col, head, folded) {
+        col.classList.toggle('afk-wh-invfold', folded);
+        head.dataset.afkFold = folded ? '1' : '0';
+        head.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        var caret = head.querySelector('.afk-wh-caret');
+        if (caret) caret.textContent = folded ? '▶' : '▼';
+    }
+
+    function _injectInvFold() {
+        var list = document.getElementById('wh-inv-list'); if (!list) return;
+        if (getComputedStyle(list).maxHeight !== 'none') return;   // 清單本來就限高(桌機)→ 沒有擋住倉庫的問題
+        var col = list.parentElement; if (!col) return;
+        var head = col.firstElementChild;
+        if (!head || head === list || head.querySelector('.afk-wh-caret')) return;
+        _foldCSS();
+        var caret = document.createElement('span');
+        caret.className = 'afk-wh-caret';
+        caret.style.cssText = 'display:inline-block;width:1em;';
+        head.insertBefore(caret, head.firstChild);
+        head.setAttribute('style', 'cursor:pointer;-webkit-user-select:none;user-select:none;padding:4px 0;');
+        head.setAttribute('role', 'button');
+        head.setAttribute('tabindex', '0');
+        head.title = '摺疊／展開背包';
+        head.addEventListener('click', function () {
+            var next = head.dataset.afkFold !== '1';
+            _foldWrite(next);
+            _foldApply(col, head, next);
+        });
+        _foldApply(col, head, _foldRead());
+    }
+
     // 分類列插入「只列可穿」勾選(核心每次重繪整塊 innerHTML → 每次重新插)
     function _injectWearToggle() {
         var sel = document.querySelector('select[onchange*="whSetFilter"]');
@@ -300,7 +354,7 @@
         } catch (e) {}
         var inp = document.getElementById('wh-gold-amt');
         if (!inp) return;   // 倉庫面板不在畫面上
-        try { _wearCSS(); _injectWearToggle(); _markNoEquip(); } catch (e) {}
+        try { _wearCSS(); _injectWearToggle(); _markNoEquip(); _injectInvFold(); } catch (e) {}
         var goldRow = inp.parentElement;
         if (goldRow && !document.getElementById('afk-wh-allin')) {
             var mk = function (id, txt, tip, dir, style) {
