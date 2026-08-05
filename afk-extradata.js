@@ -70,12 +70,12 @@
     // ── 地圖名前面帶「領域」(地圖改版後給新人找圖用):「領域·地圖名」；無領域就只回名 ──
     //   [name] 只是 mapName 查不到時的備援(村莊那邊傳 DB.towns 的名字);查得到一律以 mapName 為準,
     //   否則村莊會退回 DB.towns 的舊名(「奇岩」)、跟地圖選單的「奇岩城鎮」對不起來。
-    //   ⚠ 名稱裡已經出現過領域名就不再冠(「古魯丁地監1樓」不寫成「古魯丁·古魯丁地監1樓」)——
-    //     只比對「完全相同」會漏掉這種疊字,42 個地圖都中。
+    //   有領域就一律冠上,不因「名稱裡已經有領域名」而省略(「古魯丁·古魯丁周邊」照寫)——
+    //   格式一致,玩家一眼就知道前面那段是選單左邊要選的領域。
     mapNameWithRegion: function (id, name) {
       var nm = this.mapName(id); if (nm === id && name) nm = name;
       var reg = this.mapRegion(id);
-      return (reg && String(nm).indexOf(reg) < 0) ? (reg + '·' + nm) : nm;
+      return reg ? (reg + '·' + nm) : nm;
     },
 
     // ── 物品取得方式(特殊、可控的取得鏈;一般抽獎/掉落不放這,交給掉落查詢動態呈現)──
