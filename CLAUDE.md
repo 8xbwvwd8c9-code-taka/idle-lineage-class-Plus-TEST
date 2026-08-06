@@ -106,44 +106,9 @@
 寫法:標題一句話結論,內文只寫「為什麼會中+判準/怎麼避」,不寫案發經過;能併進現有條目就別開新段。**寫進最貼近的那份**(離線→`docs/offline.md`、手機→`docs/mobile.md`…),只有「動任何一行都適用」的鐵則才寫本檔。
 
 PowerShell / Node 腳本執行規則
-禁止事項
-禁止使用 node -e 執行多行或複雜 JavaScript。
-禁止產生超過一行的 node -e 指令。
-禁止使用 PowerShell 的 Add-Content、Set-Content 等指令逐行拼接 JavaScript。
-禁止為了避開引號問題而使用 Base64 編碼 JavaScript。
-禁止要求使用者複製長串 PowerShell 指令來建立 JavaScript 檔案。
-必須遵守
-任何超過幾行的 JavaScript，一律建立獨立 .js 檔案。
-所有程式碼直接寫入 .js 檔，不要透過 PowerShell 字串組合。
-執行方式固定為：
-node fix-ui.js
+PowerShell 指令規範：
+詳見 docs/powershell.md
 
-或
-
-node scripts/fix-ui.js
-如果需要修改現有檔案，請直接在 .js 中使用 fs.readFileSync()、fs.writeFileSync() 完成，不要透過 PowerShell 操作程式內容。
-原因
-
-PowerShell 會先解析命令列內容，容易造成：
-
-< 被當成 PowerShell 運算子
-> 被重新導向
-{}、() 被 PowerShell 提前解析
-"、' 跳脫失敗
-Unexpected token
-ParserError
-The '<' operator is reserved for future use.
-
-這些錯誤與 JavaScript 本身無關，而是 PowerShell 的語法解析造成。
-
-標準流程
-建立或修改 fix-ui.js
-將完整 JavaScript 寫入該檔案
-執行：
-node fix-ui.js
-如需修改其他檔案，全部在 JavaScript 內完成，不要使用 PowerShell 拼接程式碼。
-
-此規則為強制規範，不得以 node -e、PowerShell 字串拼接、Base64 或其他方式繞過。若需要產生腳本，一律提供完整 .js 檔案內容。
 ===========================
 Monkey Patch Policy
 ===========================
@@ -169,3 +134,57 @@ Core Patch
 請提出 Hook Manager 重構方案，
 
 不要繼續包裝原函式。
+
+===========================
+Custom Assets Policy
+===========================
+
+所有我方新增圖片、音效、JSON：
+
+一律放：
+
+custom-assets/
+
+不得放：
+
+assets/
+public/
+
+原因：
+
+CI sync 會 rsync --delete，
+自訂檔會遺失。
+
+===========================
+Large Mod Integration
+===========================
+
+整合大型 MOD 時：
+
+1.
+先保持原始程式架構。
+
+2.
+優先外科手術修改，
+不要全部重寫。
+
+3.
+每個功能獨立 try/catch。
+
+4.
+每個功能可獨立停用。
+
+5.
+Fail Soft。
+
+6.
+完成後再考慮重構。
+
+不要一開始就重寫整個 MOD。
+
+===========================
+Plugin Integration
+===========================
+
+Plugin 整合、同步、驗證流程：
+詳見 docs/powershell.md
