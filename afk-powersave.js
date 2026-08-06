@@ -1,12 +1,14 @@
 /**
- * afk-powersave.js — 省電模式（補回我方原本核心的 2 個省電選項＋光暈濾鏡開關）
+ * afk-powersave.js — 省電模式（補回我方原本核心的省電選項＋光暈濾鏡開關）
  *
- * 上游首頁原生已有「✨戰鬥特效」「🔢傷害數字」兩顆開關（__vfxOff / __vfxNumOff）。我方原本核心還多兩個：
+ * 上游首頁原生已有「✨戰鬥特效」「🔢傷害數字」兩顆開關（__vfxOff / __vfxNumOff）。本檔再加兩個：
  *   ① 關戰鬥動畫：把 8fps sprite ticker 推進的動畫關掉（怪/玩家/傭兵/寵物/召喚 sprite 不再逐幀動）。
- *   ② 降畫面更新頻率：把 updateUI / renderMobs 節流成低幀（省 CPU/電；遊戲邏輯 tick 照跑，只是畫面更新變慢）。
- *   ③ 關閉光暈與濾鏡：注入覆寫樣式拔掉常駐的 GPU 熱點（全域圖片濾鏡、鎖定光暈、物品光暈動畫、
+ *   ② 關閉光暈與濾鏡：注入覆寫樣式拔掉常駐的 GPU 熱點（全域圖片濾鏡、鎖定光暈、物品光暈動畫、
  *      modal 背景模糊…）。手機發熱的主力是這些每幀重算的 filter，詳見 docs/perf-battery.md。
- * 這支把這 3 個做成外掛：純包核心函式＋注入 CSS、不動核心；設定存本機（per 裝置的效能偏好，不進存檔）。
+ * 純包核心函式＋注入 CSS、不動核心；設定存本機（per 裝置的效能偏好，不進存檔）。
+ *
+ * ⚠️ 刻意沒有「節流 updateUI / renderMobs」這種選項：實測省 4%／−2%~8% ＝等於沒省，加狠到 250~500ms
+ * 也一樣（畫面照樣每秒合成 57 幀，少算幾次「要畫什麼」省不到電）。數據見 docs/perf-battery.md。
  *
  * 入口：首頁「⚙ 其他功能 → 🔋 省電模式」面板勾選。關掉本外掛(開關) → 完全回原版。
  */
@@ -14,7 +16,7 @@
     'use strict';
     if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('powersave')) return;   // 🎚️ 外掛開關
 
-    // on() 掛在 sprite ticker / updateUI 的熱路徑上（每秒數十次），不能每次同步讀 localStorage。
+    // on() 掛在 sprite ticker 與怪物卡渲染的熱路徑上（每秒數十次），不能每次同步讀 localStorage。
     // 唯一寫入者是本檔 set()（面板勾選），快取不會過期。
     var _ps = {};
     function on(k) {
@@ -48,28 +50,7 @@
         window.mobStillImg.__afkPs = true;
     }
 
-    // ② 降畫面更新頻率：時間節流 updateUI / renderMobs（開啟時 ~最多 8fps）。遊戲邏輯(tick)不受影響。
-    var _last = {};
-    var MIN_MS = 125;   // 約 8fps
-    ['updateUI', 'renderMobs'].forEach(function (fn) {
-        if (typeof window[fn] === 'function' && !window[fn].__afkPsThrottle) {
-            var o = window[fn];
-            window[fn] = function () {
-                // ⚡ 離線補跑期間(catchupActive)透明放行：核心 updateUI/renderMobs 此時本就早退，
-                //   而每殺一隻怪都會呼叫它們 → 這裡每次 on('lowfps') 讀 localStorage 純浪費（離線結算 profile 佔 ~2%）。
-                if (typeof catchupActive === 'function' && catchupActive()) return o.apply(this, arguments);
-                if (on('lowfps')) {
-                    var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-                    if (_last[fn] && (now - _last[fn]) < MIN_MS) return;   // 太密就跳過這次渲染（下次 gameLoop 會再來）
-                    _last[fn] = now;
-                }
-                return o.apply(this, arguments);
-            };
-            window[fn].__afkPsThrottle = true;
-        }
-    });
-
-    // ③ 關閉光暈與濾鏡：鏡射上游選擇器覆寫、靠「後載入者勝出」而**不用 !important**——
+    // ② 關閉光暈與濾鏡：鏡射上游選擇器覆寫、靠「後載入者勝出」而**不用 !important**——
     //    功能性 filter（剪影怪 brightness(0)、reduced-motion 的 !important 靜態光）的勝負關係才不會被打亂。
     var NOFX_CSS = [
         /* 全遊戲每張 <img> 的常駐濾鏡：任一張 8fps 換幀都整層重算，是最大範圍的 GPU 熱點 */
@@ -155,14 +136,14 @@
         ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.66);display:flex;align-items:flex-start;justify-content:center;padding:calc(var(--orig-bar-h,0px) + 14px) 12px calc(12px + env(safe-area-inset-bottom, 0px));';
         if (window.AFK_TOGGLES && AFK_TOGGLES.applyBannerPad) AFK_TOGGLES.applyBannerPad(ov);   // 開啟當下實測橫幅高度覆寫 padding-top
         // 由上而下＝省電效果由大到小。**順序照實測排,不是照直覺**(2026-08-05 實測,數據與方法見 docs/perf-battery.md):
-        //   關動畫 24~37% > 光暈濾鏡 22~25% > 特效 16~17% >> 降更新頻率 ~0 ≈ 傷害數字 0。
-        //   直覺會把「降更新頻率」排第一(它砍掉最多重繪次數),但畫面照樣每秒合成 57 幀,少畫幾次資料省不到電。
+        //   關動畫 24~37% > 光暈濾鏡 22~25% > 特效 16~17% >> 傷害數字 0。
+        //   傷害數字實測 0% 仍留著:那是上游自己的開關(__vfxNumOff),標題畫面本來就有,拿掉這一列
+        //   只會讓「省電模式」跟標題畫面兩邊不一致,不是我們能決定的東西。
         //   音樂/音效無頭環境量不到(沒有使用者手勢→不會播),排最後是依「音訊解碼常駐且切背景不停」推估。
         var opts = [
             { k: 'noanim', name: '關閉戰鬥動畫', desc: '怪物/玩家/傭兵/寵物/召喚的逐幀動畫停止（傷害/戰鬥數值不變）' },
             { k: 'nofx', name: '關閉光暈與濾鏡', desc: '裝備與怪物的發光、畫面濾鏡等裝飾效果關閉' },
             { core: 'vfx', name: '關閉戰鬥特效', desc: '不再播放技能與攻擊的特效動畫' },
-            { k: 'lowfps', name: '降低畫面更新頻率', desc: '畫面更新節流到約 8fps（遊戲邏輯照跑，只是畫面較不即時）' },
             { core: 'vfxnum', name: '關閉傷害數字', desc: '不再跳出傷害/治療的浮動數字' },
             { core: 'bgm', name: '關閉背景音樂', desc: '同遊戲中音量列的音樂開關' },
             { core: 'sfx', name: '關閉音效', desc: '同遊戲中音量列的音效開關' }
@@ -197,5 +178,5 @@
         });
     }
 
-    try { console.log('[AFK-powersave] hooks OK — 省電模式（關動畫/降更新頻率）已就緒。'); } catch (e) {}
+    try { console.log('[AFK-powersave] hooks OK — 省電模式（關動畫/關光暈濾鏡）已就緒。'); } catch (e) {}
 })();
