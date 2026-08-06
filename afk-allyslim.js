@@ -33,7 +33,7 @@
 
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
         id: 'allyslim', name: '傭兵快照瘦身', group: '系統與其他', def: true,
-        desc: '不把傭兵用不到的資料存進存檔，存檔小三成左右；關掉會讓存檔空間吃緊得更快。'
+        desc: '存檔小三成左右；關掉會讓存檔空間吃緊得更快'
     });
 
     if (typeof window.saveGame !== 'function') {

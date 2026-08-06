@@ -476,7 +476,7 @@
     { t: '怪打你時：迴避(ER)・傷害減免(DR)・受到傷害減少%', blocks: [
       { t: 'p', p: '被怪打中時，傷害<b>依序</b>經過這三關（各自獨立、可同時生效）：' },
       { t: 'tbl', h: ['防禦層', '作用', '來源／規則'], rows: [
-        ['① 迴避率（ER）', '有機率<b>整個閃掉（0 傷害）</b>', '主要靠<b>敏捷</b>＋增益/套裝（迴避提升+12、月光3件+5）。<b>非 1:1</b>：50 以內 1 點=1%、超過 50 每 5 點才+1%。一般只閃物理；月光5件才連魔法/必中技能也先判定。⚠ 帶<b>笨重的鋼鐵石盾</b>時完全<b>不能靠迴避閃</b>（暗隱術的必閃不受影響）'],
+        ['① 迴避率（ER）', '有機率<b>整個閃掉（0 傷害）</b>', '主要靠<b>敏捷</b>＋增益/套裝（迴避提升+12、月光3件+5）。<b>非 1:1</b>：50 以內 1 點=1%、超過 50 每 5 點才+1%。<b>只閃物理</b>，魔法與必中技能一律閃不掉（唯一例外：黑暗妖精的<b>暗影閃避</b>，50% 閃掉一次必中傷害魔法）。⚠ 帶<b>笨重的鋼鐵石盾</b>時完全<b>不能靠迴避閃</b>（暗隱術的必閃不受影響）'],
         ['② 傷害減免（DR）', '沒閃掉時<b>固定扣掉 DR</b>（物理魔法都扣）', '套裝（鐵衛2件+5、紅獅3件+10）、龍之護鎧+5、巴風特盔甲+2、守護者臂甲、耐力、遠古/太初防具'],
         ['③ 受到傷害減少 %', '扣完 DR 後<b>整體乘算</b>（各效果相乘、不是加總）', '鐵衛3件＝×0.8（−20%）、幻覺化身 −3%（任一隊員維持即全隊生效）、龍裔（龍血3件觸發）−15%、狂怒5件依失血最多 −15%（HP≤50%達上限）']
       ]},
@@ -567,10 +567,32 @@
     ]}
   ];
 
+  // 🏅 精通任務的頭目一律問核心 MASTERY_DATA,不寫死:上游把八個職業的頭目全改成同一隻(飛龍)之後,
+  //   本檔原本各職業手寫的那份就有六個過期(玩家回報「小百科寫巴風特,實際要打飛龍」)。
+  //   出沒地圖由 DB.maps 反查(同掉落查詢那套解析),核心改頭目或改出沒地都會自動跟上。
+  //   查不到就寫「查無資料」——**不留寫死的後備值**:那份會過期,真的用到反而顯示錯的頭目。
+  function masteryBossText(cls) {
+    var name = null;
+    try { name = (typeof MASTERY_DATA !== 'undefined' && MASTERY_DATA[cls]) ? MASTERY_DATA[cls].boss : null; } catch (e) {}
+    if (!name) return '（查無資料）';
+    var maps = [];
+    try {
+      var key = null;
+      for (var k in DB.mobs) if (DB.mobs[k] && DB.mobs[k].n === name) { key = k; break; }
+      if (key) {
+        for (var m in DB.maps) if ((DB.maps[m] || []).indexOf(key) >= 0) {
+          var mn = (window.AFK_EXTRA && AFK_EXTRA.mapNameWithRegion) ? AFK_EXTRA.mapNameWithRegion(m) : m;
+          if (mn && maps.indexOf(mn) < 0) maps.push(mn);
+        }
+      }
+    } catch (e) {}
+    return esc(name) + (maps.length ? '（' + esc(maps.join('、')) + '）' : '');
+  }
+
   // ===== 任務(本檔維護;依職業分類) =========================================
   var QUEST_BY_CLASS = {
     knight: {
-      icon: '⚔️', name: '騎士', masteryBoss: '飛龍（龍之谷）',
+      icon: '⚔️', name: '騎士',
       trials: [
         { n: '紅騎士頭巾（15 級）', npc: '瑞奇 ＠銀騎士村', req: '黑騎士的誓約 ×1、古老的交易文件 ×1、龍龜甲 ×1', from: '誓約／交易文件：黑騎士（銀騎士地區、說話之島港口）；龍龜甲：龍龜（銀騎士地區、海音·鏡子森林）。接取試煉後擊殺必定掉落', rw: '紅騎士頭巾' },
         { n: '紅騎士之劍＋盾牌（30 級）', npc: '甘特 ＠說話之島', req: '夏洛伯之爪 ×1、蛇女之鱗 ×1', from: '夏洛伯之爪：夏洛伯（蜘蛛，說話之島、古魯丁、奇岩、海音一帶廣布）；蛇女之鱗：蛇女（海音領域：海音周邊／鏡子森林／地下通道）。接取後必定掉落', rw: '紅騎士之劍＋紅騎士盾牌（一次全拿）' },
@@ -581,7 +603,7 @@
       ]
     },
     mage: {
-      icon: '🪄', name: '法師', masteryBoss: '黑長者（龍之谷）',
+      icon: '🪄', name: '法師',
       trials: [
         { n: '魔法能量之書（15 級）', npc: '詹姆 ＠說話之島', req: '食屍鬼的指甲 ×1、食屍鬼的牙齒 ×1、骷髏頭 ×1', from: '指甲／牙齒：食屍鬼；骷髏頭：骷髏（皆低階野外／地監廣布）。接取試煉後擊殺必定掉落', rw: '魔法能量之書' },
         { n: '水晶魔杖（30 級・水晶試煉）', npc: '塔拉斯 ＠歐瑞·象牙塔', req: '不死族的鑰匙 ×1、不死族的骨頭 ×1', from: '鑰匙：骷髏；骨頭：骷髏神射手／骷髏警衛（龍之谷、龍之谷地監1~4樓）。接取後必定掉落', rw: '水晶魔杖' },
@@ -592,7 +614,7 @@
       ]
     },
     elf: {
-      icon: '🍃', name: '妖精', masteryBoss: '變形怪首領（海音·鏡子森林）',
+      icon: '🍃', name: '妖精',
       trials: [
         { n: '精靈頭盔（15 級）', npc: '歐斯 ＠燃柳村', req: '四大妖魔魔法書（都達瑪拉／那魯加／甘地／阿吐巴）各 ×1', from: '對應四種妖魔（燃柳村·妖魔森林、妖精森林周邊、妖精森林·眠龍洞穴）。接取試煉後擊殺必定掉落', rw: '精靈敏捷頭盔＋精靈體質頭盔（一次全拿）' },
         { n: '精靈水晶＋精靈T恤（30 級）', npc: '迷幻森林之母 ＠妖精森林', req: '受詛咒的精靈書 ×1', from: '希爾黛斯（海音·伊娃王國）。接取後必定掉落', rw: '精靈水晶(召喚屬性精靈)＋精靈T恤（一次全拿）' },
@@ -601,7 +623,7 @@
       attr: { n: '選定屬性魔法', npc: '艾利溫 ＠妖精森林', req: '四種屬性（火／水／風／地）四選一', from: '—', rw: '開啟所選屬性的魔法路線。注意：只能選一種、選了就固定' }
     },
     dark: {
-      icon: '🗡', name: '黑暗妖精', masteryBoss: '巴風特（說話之島地監2樓）',
+      icon: '🗡', name: '黑暗妖精',
       trials: [
         { n: '影子手套（30 級）', npc: '倫得 ＠龍之谷·沉默洞穴', req: '死亡誓約 ×1', from: '強盜（奇岩）。接取試煉後擊殺必定掉落', rw: '影子手套' },
         { n: '影子面具（15 級）', npc: '康 ＠龍之谷·沉默洞穴', req: '妖魔長老首級 ×1', from: '妖魔法師（低階區廣布）。接取後必定掉落', rw: '影子面具' },
@@ -609,7 +631,7 @@
       ]
     },
     illusion: {
-      icon: '🔮', name: '幻術士', masteryBoss: '伊弗利特（威頓·火龍窟）',
+      icon: '🔮', name: '幻術士',
       trials: [
         { n: '幻術士魔杖＋記憶水晶(立方：燃燒)（15 級）', npc: '希蓮恩 ＠歐瑞·希培利亞村莊', req: '污濁安特的水果 ×1、污濁安特的樹枝 ×1、污濁安特的樹皮 ×1', from: '污染的安特（妖精森林·眠龍洞穴 1~3 樓、妖精森林周邊）。接取試煉後擊殺必定掉落', rw: '幻術士魔杖＋記憶水晶(立方：燃燒)（一次全拿）' },
         { n: '幻術士法書＋記憶水晶(立方：衝擊)（30 級）', npc: '希蓮恩 ＠歐瑞·希培利亞村莊', req: '艾爾摩將軍之心 ×1', from: '艾爾摩將軍（歐瑞領域：歐瑞周邊／歐瑞雪原／艾爾摩激戰地）。接取後必定掉落', rw: '幻術士法書＋記憶水晶(立方：衝擊)（一次全拿）' },
@@ -617,7 +639,7 @@
       ]
     },
     dragon: {
-      icon: '🐉', name: '龍騎士', masteryBoss: '飛龍（龍之谷）',
+      icon: '🐉', name: '龍騎士',
       trials: [
         { n: '龍騎士雙手劍＋龍之護鎧書板（15 級）', npc: '普洛凱爾 ＠威頓·貝希摩斯', req: '妖魔搜索文件 ×3', from: '甘地／羅孚／阿吐巴／都達瑪拉妖魔（妖精森林周邊、燃柳村·妖魔森林、妖精森林·眠龍洞穴）。接取試煉後擊殺必定掉落（僅龍騎士）', rw: '龍騎士雙手劍＋龍騎士書板(龍之護鎧)（一次全拿）' },
         { n: '龍鱗臂甲＋血之渴望書板（30 級）', npc: '普洛凱爾 ＠威頓·貝希摩斯', req: '妖魔密使首領間諜書 ×1', from: '蛇女（海音領域：海音周邊／鏡子森林／地下通道）。接取後必定掉落（僅龍騎士）', rw: '龍鱗臂甲＋龍騎士書板(血之渴望)（一次全拿）' },
@@ -625,7 +647,7 @@
       ]
     },
     warrior: {
-      icon: '⚔️', name: '戰士', masteryBoss: '變形怪首領（海音·鏡子森林）',
+      icon: '⚔️', name: '戰士',
       trials: [
         { n: '試煉斧頭＋戰士的印記(迅猛雙斧)（15 級）', npc: '多文 ＠海音', req: '生命的卷軸 ×1', from: '石頭高崙（低階野外／地監廣布）。接取試煉後擊殺必定掉落（僅戰士）', rw: '試煉斧頭（單手鈍器）＋戰士的印記(迅猛雙斧)（一次全拿）' },
         { n: '戰士團斗篷＋戰士的印記(咆哮)（30 級）', npc: '多文 ＠海音', req: '被偷的戒指 ×1、被偷的項鍊 ×1', from: '戒指：強盜；項鍊：強盜頭目（皆奇岩）。接取後必定掉落（僅戰士）', rw: '戰士團斗篷＋戰士的印記(咆哮)（一次全拿）' },
@@ -633,7 +655,7 @@
       ]
     },
     royal: {
-      icon: '👑', name: '王族', masteryBoss: '巴風特（說話之島地監2樓）',
+      icon: '👑', name: '王族',
       trials: [
         { n: '紅色斗篷＋魔法書(精準目標)（15 級）', npc: '甘特 ＠說話之島', req: '搜索狀 ×1', from: '黑騎士搜索隊（古魯丁）。接取試煉後擊殺必定掉落（僅王族、無法存入倉庫）', rw: '紅色斗篷（防禦(AC) -2、魅力 +1）＋魔法書(精準目標)（一次全拿）' },
         { n: '君主的威嚴＋魔法書(呼喚盟友)（30 級）', npc: '甘特 ＠說話之島', req: '村民的遺物 ×1', from: '巨大兵蟻（風木領域：沙漠／螞蟻洞窟 1~2 樓）。接取後必定掉落（僅王族）', rw: '君主的威嚴（防禦(AC) -2、全六屬性 +1）＋魔法書(呼喚盟友)（一次全拿）' },
@@ -732,7 +754,7 @@
 
   // ===== 強化機制(本檔維護) ================================================
   var ENHANCE_SECTIONS = [
-    { t: '強化（把裝備 +1 升級）', blocks: [
+    { t: '強化', blocks: [
       { t: 'p', p: '用「施法卷軸」強化：武器、盔甲、飾品各用對應的一種。<b>上限：武器／防具 +15、飾品 +5</b>。' },
       { t: 'p', p: '<b>安定值（safe）以下 100% 成功</b>，到達安定值起才會失敗，<b>失敗＝裝備直接消失（爆裝）</b>。安定值：武器多為 6（少數高階 0）、防具 0／4／6、飾品 0。' },
       { t: 'tbl', h: ['達安定值後', '成功率'], rows: [
@@ -788,7 +810,7 @@
       '在「傲慢之塔入口」進塔。玩法有兩種：一層層往上「攀登」，或選定一段「樓層區間」固定刷。',
       '想<b>停在同一段練</b>的人請看下面的「樓層區間」——<b>攀登模式沒辦法停在某一層</b>，清掉那層就會被帶上去。'
     ]},
-    { t: '攀登（一層一層往上）', lines: [
+    { t: '攀登', lines: [
       '從入口開始攀登，自 <b>2 樓</b>起。每層要打掉「往上層的樓梯」（逢 10 的倍數樓打的是該樓頭目），打掉就<b>自動前進到下一層</b>。',
       '<b>沒辦法停在某一層慢慢練</b>：只要清掉那層的樓梯／頭目就會立刻被帶上樓。想固定刷某段請改用「樓層區間」。',
       '塔共 <b>100 樓</b>：一路攀到頂、在 <b>100 樓</b>打贏最終頭目「邪惡的鐮刀死神」後會結算、送回入口。',
@@ -1368,11 +1390,10 @@
     return p.join('・');
   }
   function mapTitleOf(v) { return (window.AFK_EXTRA && AFK_EXTRA.mapName) ? AFK_EXTRA.mapName(v) : v; }   // 統一委派 afk-extradata 共用地圖名解析
-  // 🗺️ 村莊／地圖名前面補「領域」(＝地圖選單左側那層分組),玩家照著才找得到路;名稱本身已含領域名(奇岩城鎮…)就不疊字
+  // 🗺️ 村莊／地圖名前面補「領域」(＝地圖選單左側那層分組),玩家照著才找得到路;規則統一委派 afk-extradata
   function withRegion(mapId, name) {
-    var r = '';
-    try { r = (window.AFK_EXTRA && AFK_EXTRA.mapRegion) ? AFK_EXTRA.mapRegion(mapId) : ''; } catch (e) {}
-    return (r && String(name).indexOf(r) < 0) ? (r + '·' + name) : name;
+    try { if (window.AFK_EXTRA && AFK_EXTRA.mapNameWithRegion) return AFK_EXTRA.mapNameWithRegion(mapId, name); } catch (e) {}
+    return name;
   }
   var CASTLE_EXTRA_CITY = { windwood_dungeon: '風木城' };   // 🏰 攻城後開放的城堡狩獵區 → 要攻下哪座城(作者新增別的城堡狩獵區時補這裡;掉落查詢 afk-dex 亦有一份)
   function renderMap() {
@@ -1659,7 +1680,7 @@
     html += '<div class="m-wiki-sub">🏅 精通任務（50 級開放）</div>' + questCard({
       n: '職業精通', npc: '漢 ＠威頓村',
       req: '50 級以上接任務 → 擊敗你的職業頭目取得「精通之證」→ 回威頓村交給漢',
-      from: '你（' + q.name + '）的職業頭目：' + q.masteryBoss,
+      from: '你（' + q.name + '）的職業頭目：' + masteryBossText(cls),
       rw: '四選一精通能力（初次免費，之後更換要付費）；各精通內容見「職業專精」分頁'
     });
     if (q.legend) html += '<div class="m-wiki-sub">🐉 ' + esc(q.name) + '隱藏 / 傳說</div>' + q.legend.map(questCard).join('');
@@ -2655,9 +2676,9 @@
   // 特性標籤:玩家會拿來找裝備的「這件有沒有 X」。值由索引時算好(純欄位判斷,不掃說明文字)。
   var EQ_TAGS = [
     ['2h', '雙手武器'], ['1h', '單手武器'], ['ranged', '遠距離'], ['ele', '武器帶屬性'],
-    ['haste', '⚡ 影響攻速'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
+    ['haste', '⚡ 影響攻速'], ['move', '🏃 影響移動速度'], ['proc', '觸發特效'], ['set', '套裝件'], ['enh', '可強化'],
     ['stat', '加能力值'], ['regen', '回 HP／MP'], ['maxhp', '加 HP／MP 上限'], ['res', '元素抗性'], ['imm', '免疫／抗異常'],
-    ['block', '有格擋'], ['wcap', '提高負重上限']
+    ['block', '有格擋'], ['wcap', '提高負重上限'], ['relicfind', '🏺 遺物尋寶']
   ];
   var EQ_RARITY = [['relic', '🏺 遺物'], ['legend', '✦ 傳說'], ['normal', '一般']];
   // 觸發特效:遊戲的觸發式欄位命名很雜(procXxx / xxxProc / 完全不含 proc 的具名旗標)。
@@ -2704,6 +2725,7 @@
       if (d.ranged || d.isBow) tags.push('ranged');
       if (d.ele) tags.push('ele');
       if (hi) tags.push('haste');
+      if (d.moveSpeedPct) tags.push('move');   // 負值(潛行者的祕密箱子 −100%)照樣收:刻意放慢移動來拖慢怪物重生是玩法之一,不是雷
       if (eqHasProc(d)) tags.push('proc');
       if (d.set) tags.push('set');
       if (!d.noEnhance && !d.isArrow) tags.push('enh');   // 箭矢一律沒有強化鈕(js/10 的條件含 !d.isArrow),雖然它們沒標 noEnhance
@@ -2714,6 +2736,7 @@
       if (eqHasImm(d)) tags.push('imm');
       if (d.block) tags.push('block');
       if (d.weightCap) tags.push('wcap');
+      if (d.relicDropX2) tags.push('relicfind');
       var rar = isRelicItem(d) ? 'relic' : (d.legend ? 'legend' : 'normal');
       var regions = (ridx && ridx.byItem[id]) ? ridx.byItem[id].regions : [];
       var it = {
@@ -2827,6 +2850,7 @@
     //   免得玩家得逐件展開才知道「為什麼這件符合」。
     var extra = '';
     if (it.haste && (sortK === 'spd' || (stt && (stt.sel.tag || []).indexOf('haste') >= 0))) extra = '⚡ ' + it.haste.txt;
+    else if (d.moveSpeedPct && stt && (stt.sel.tag || []).indexOf('move') >= 0) extra = '🏃 移動速度 ' + (d.moveSpeedPct > 0 ? '+' : '') + d.moveSpeedPct + '%';
     else if (stt && (stt.sel.region || []).length && it.f.region.length) {
       var rgs = it.f.region.slice(), pick = stt.sel.region[0], pi = rgs.indexOf(pick);
       if (pi > 0) { rgs.splice(pi, 1); rgs.unshift(pick); }   // 選了區域 → 排最前,截斷後也一眼對得上
@@ -2878,7 +2902,7 @@
         { label: '💍 飾品', opts: pick(function (g) { return accKeys[g.k]; }) },
         { label: '✨ 特殊', opts: pick(function (g) { return !wpnKeys[g.k] && !armKeys[g.k] && !accKeys[g.k]; }) }
       ] },
-      { k: 'cls', n: '職業（誰穿得上）', mode: 'or', groups: [{ label: '', opts: clsOpts }] },
+      { k: 'cls', n: '職業', mode: 'or', groups: [{ label: '', opts: clsOpts }] },
       { k: 'rar', n: '稀有度', mode: 'or', groups: [{ label: '', opts: EQ_RARITY.map(function (r) { return [r[0], r[1], eqCount('rar', r[0])]; }) }] },
       { k: 'tag', n: '特性', mode: 'and', hint: '這一組多選＝要全部符合', groups: [{ label: '', opts: EQ_TAGS.map(function (t) { return [t[0], t[1], eqCount('tag', t[0])]; }).filter(function (o) { return o[2] > 0; }) }] },
       { k: 'set', n: '套裝', mode: 'or', groups: [{ label: '', opts: Object.keys(_eqCnt.set).sort(function (a, b) { return _eqCnt.set[b] - _eqCnt.set[a]; }).map(function (s) { return [s, eqSetName(s), _eqCnt.set[s]]; }) }] },
@@ -2887,7 +2911,7 @@
       { k: 'ac', n: '防禦力', type: 'min', hint: '數字越大防禦越好（裝備上寫的是 −N）' },
       { k: 'hit', n: '命中', type: 'min' }
     ];
-    if (ridx && ridx.regions.length) facets.push({ k: 'region', n: '掉落區域（怪物掉落）', mode: 'or', groups: [{ label: '', opts: ridx.regions.map(function (r) { return [r, r, eqCount('region', r)]; }) }] });
+    if (ridx && ridx.regions.length) facets.push({ k: 'region', n: '掉落區域', mode: 'or', groups: [{ label: '', opts: ridx.regions.map(function (r) { return [r, r, eqCount('region', r)]; }) }] });
     return facets;
   }
   function renderEquip() {
@@ -3225,16 +3249,15 @@
 
     out += wCard('🦴 席琳遺骸（套裝效果的載體）',
       wDesc('席琳套裝效果<b>不再附在一般裝備上</b>，改由 8 格專屬的「席琳遺骸」承載——遺骸欄在「<b>裝備</b>」分頁的最下方。遺骸本身沒有任何數值、不佔負重、不能強化，唯一的作用就是帶著一個席琳套裝詞綴。') +
-      wTbl(['遺骸', '對應部位（拆分時用）'], [
+      wTbl(['遺骸', '對應部位'], [
         ['之爪', '武器'], ['之眼', '頭盔'], ['之血', '斗篷'], ['之肉', '長靴／脛甲'],
         ['之心', '腰帶'], ['之骨', '手套'], ['之牙', '副手（盾牌／臂甲）'], ['之鱗', '盔甲']
       ]) +
       wTbl(['取得方式', '規則'], [
-        ['席琳神殿・<b>伊奧</b>', '<b>席琳結晶 ×1</b> → 指定部位的遺骸 ×1（8 部位任選），詞綴從 12 組<b>隨機</b>一種'],
-        ['席琳神殿・<b>菈克希絲</b>', '把<b>身上穿著或背包裡</b>、帶舊席琳詞綴的武器防具拆成對應部位的遺骸（<b>免費</b>、可一鍵全部拆；裝備、強化值與其他詞綴全部保留，只有詞綴被取下。共用倉庫內的要先領出來）'],
+        ['席琳神殿・<b>伊奧</b>', '<b>席琳結晶 ×1</b> → 指定部位的遺骸 ×1（8 部位任選），詞綴從 12 組<b>隨機</b>一種。<b>這是唯一取得管道</b>'],
         ['怪物掉落', '<b style="color:#f87171">沒有</b>——怪不會掉遺骸，裝備也不會再自己長出席琳詞綴']
       ]) +
-      wDesc('舊裝備上的席琳詞綴<b>只剩顯示、不再計入套裝件數</b>，要生效請找菈克希絲拆成遺骸。'));
+      wDesc('舊裝備上的席琳詞綴<b>只剩顯示、不再計入套裝件數</b>，也<b>沒有辦法轉成遺骸</b>（席琳神殿原本有位「菈克希絲」可以拆，已經沒有這個 NPC 了）。'));
 
     var st = sherineSetText();
     var setRows = Object.keys(st).map(function (g) {
@@ -3496,7 +3519,7 @@
 
     var c4 = card('🏛️ 系統 · NPC · 其他', tbl(
       r('席琳神殿（進入·世界排名）', OK, NO) +
-      r('席琳結晶兌換遺骸（伊奧／菈克希絲）', OK, NO) +
+      r('席琳結晶兌換遺骸（伊奧）', OK, NO) +
       r('碧恩（歐瑞·象牙塔）：賦予武器屬性', OK, NO) +
       r('漢：職業精通', OK, NO) +
       r('共用倉庫', '一般組', '經典組') +

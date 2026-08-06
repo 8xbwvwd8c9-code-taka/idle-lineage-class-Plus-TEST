@@ -42,7 +42,7 @@ const logs = [];
 // afk-battlehud 桌機也會 init(只是 CSS 讓它不顯示)→ 放 need 即可;它取代的是核心手機版 #mobile-vitals。
 // afk-touchtip 只在觸控裝置 init(桌機有 hover,本來就不該掛)→ 桌機那輪永遠等不到,必須放手機輪。
 const needMobileOnly = ['[AFK-touchtip]'];
-const need = ['[AFK]', '[AFK-banner]', '[AFK-lzcache]', '[AFK-synccompress]', '[AFK-clanroster]', '[AFK-allyslim]', '[AFK-dollcursor]', '[AFK-mobile]', '[AFK-backnav]', '[AFK-battlehud]', '[AFK-mapbar]', '[AFK-nozoom]', '[AFK-trackinfo]', '[AFK-relicguard]', '[AFK-enhtarget]', '[AFK-retrial]', '[AFK-attrbatch]', '[AFK-cursebatch]', '[AFK-battlebuffs]', '[AFK-slotinfo]', '[AFK-dex]', '[AFK-wiki]', '[AFK-syncinfo]', '[AFK-statpts]', '[AFK-statlist]', '[AFK-pwa]', '[AFK-storage]', '[AFK-fullsave]', '[AFK-quotawarn]', '[AFK-notice]', '[AFK-history]', '[AFK-reissueid]', '[AFK-diag]', '[AFK-mobname]', '[AFK-training]', '[AFK-junkmgr]', '[AFK-mercguard]', '[AFK-itemsearch]', '[AFK-eqlist]', '[AFK-npclist]', '[AFK-whbatch]', '[AFK-skin]'];
+const need = ['[AFK]', '[AFK-banner]', '[AFK-lzcache]', '[AFK-synccompress]', '[AFK-clanroster]', '[AFK-allyslim]', '[AFK-dollcursor]', '[AFK-mobile]', '[AFK-backnav]', '[AFK-battlehud]', '[AFK-mapbar]', '[AFK-nozoom]', '[AFK-statusicon]', '[AFK-trackinfo]', '[AFK-trackmaps]', '[AFK-relicguard]', '[AFK-wpnfix]', '[AFK-enhtarget]', '[AFK-retrial]', '[AFK-attrbatch]', '[AFK-cursebatch]', '[AFK-battlebuffs]', '[AFK-slotinfo]', '[AFK-dex]', '[AFK-wiki]', '[AFK-syncinfo]', '[AFK-statpts]', '[AFK-statlist]', '[AFK-pwa]', '[AFK-storage]', '[AFK-fullsave]', '[AFK-quotawarn]', '[AFK-notice]', '[AFK-history]', '[AFK-reissueid]', '[AFK-diag]', '[AFK-mobname]', '[AFK-npclabel]', '[AFK-training]', '[AFK-junkmgr]', '[AFK-bossavoid]', '[AFK-mercguard]', '[AFK-itemsearch]', '[AFK-eqlist]', '[AFK-npclist]', '[AFK-whbatch]', '[AFK-anyclass]', '[AFK-locksafe]', '[AFK-skin]'];
 const seen = (list) => list.every((n) => logs.some((l) => l.includes(n) && l.includes('hooks OK')));
 
 // ⚠ 不用 waitUntil:'networkidle':作者新版(.49 起)加了背景音樂 assets/bgm/*.mp3，<audio> 媒體串流會讓網路
@@ -56,6 +56,52 @@ await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentl
 const _deadline = Date.now() + 20000;   // 最多等 20 秒讓全部外掛初始化(CI 較慢)
 while (Date.now() < _deadline && !seen(need)) await page.waitForTimeout(200);
 await page.waitForTimeout(300);   // 緩衝:讓 hooks 之後的索引(dex/wiki)與 AFK_EXTRA 建好,再做地圖翻譯檢查
+
+// 🚫 只迴避指定頭目(afk-bossavoid):驗「沒挑到的王真的不會觸發瞬移逃離」。
+//   為什麼非驗不可:這支的作法是在 autoActions 跑之前,把玩家沒挑到的 BOSS 實例暫時標上 noAutoTeleport,
+//   借上游那行 `mobs.some(m => m && m.boss && !m.noAutoTeleport)` 自己少看到牠們。上游哪天改掉那行的
+//   寫法(不看這個旗標、或改用別的判斷),wrapper 照掛、旗標照標,但條件根本不讀它 → 變回「全部都躲」,
+//   零錯誤訊息、hooks OK 照印,玩家只會覺得「怎麼連我沒選的也躲」。
+//   ⚠ smoke 停在主選單(沒載入角色),但 player 是物件、currentSlot=1、autoActions 可直接呼叫(實測);
+//     把 useItem 換成計數器就能確定性地看出「有沒有觸發瞬移」,不必真的消耗卷軸。
+const bossAvoidProblems = await page.evaluate(() => {
+  const bad = [];
+  const origUse = window.useItem;
+  try {
+    if (!window.AFK_BOSSAVOID) return ['AFK_BOSSAVOID 不存在(外掛沒載入或被關掉)'];
+    const MAP = 'dragon_valley', PICK = 'blackelder', OTHER = 'wyvern';
+    let calls = 0;
+    window.useItem = function () { calls++; return true; };
+    const tp = document.getElementById('set-teleport');
+    if (!tp) return ['找不到上游的「迴避頭目」勾選框 #set-teleport(上游改了 id?)'];
+    tp.checked = true;
+    mapState.current = MAP;
+    player.inv = player.inv || [];
+    if (!player.inv.some((i) => i && i.id === 'scroll_teleport')) player.inv.push({ id: 'scroll_teleport', uid: 'smoke_tp', cnt: 9 });
+    const put = (id) => {
+      const d = DB.mobs[id];
+      mapState.mobs = [{ ...d, curHp: d.hp, uid: 'smoke_' + id, _born: 1, _magCd: {}, st: (typeof newMobStatus === 'function' ? newMobStatus() : {}) }, null, null, null, null];
+    };
+    const run = (id) => { put(id); calls = 0; autoActions(); return calls; };
+
+    AFK_BOSSAVOID.set(MAP, []);                       // 沒挑 = 上游今天的行為(全部躲)
+    if (!run(OTHER)) bad.push(`對照組:沒挑任何頭目時 ${DB.mobs[OTHER].n} 也沒觸發瞬移(上游的迴避頭目分支變了?)`);
+
+    AFK_BOSSAVOID.set(MAP, [PICK]);                   // 只挑了黑長者
+    if (!run(PICK)) bad.push(`挑到的 ${DB.mobs[PICK].n} 沒有觸發瞬移(縮小範圍把該躲的也擋掉了)`);
+    const n = run(OTHER);
+    if (n) bad.push(`沒挑到的 ${DB.mobs[OTHER].n} 仍觸發了 ${n} 次瞬移(上游是不是改掉了 autoActions 裡看 noAutoTeleport 的那行?)`);
+
+    const left = mapState.mobs.filter((m) => m && m.noAutoTeleport).length;
+    if (left) bad.push(`autoActions 跑完還有 ${left} 隻怪殘留 noAutoTeleport(旗標沒還原,會被寫進存檔並影響離線收益估算)`);
+
+    AFK_BOSSAVOID.set(MAP, []);
+    tp.checked = false;
+    mapState.mobs = [null, null, null, null, null];
+  } catch (e) { bad.push('迴避頭目檢查本身出錯:' + e.message); }
+  finally { window.useItem = origUse; }
+  return bad;
+});
 
 // --- 第二輪:手機模擬(iPhone 13),專驗 afk-mobile 的三欄掛點在作者最新 DOM 上仍成立 ---
 //   afk-mobile 只在手機時 init,桌機那輪印不出 hooks OK;用真手機模擬(pointer:coarse/UA)讓它跑起來才驗得到。
@@ -200,6 +246,11 @@ const untranslatedMaps = await page.evaluate(() => {
   return out;
 });
 
+// 🌓 色彩配置宣告:index.html 必須讓 :root 的 color-scheme 是 dark。沒有的話 Android Chrome 的
+//   「自動深色主題」會自己疊一層反轉,逐張圖判定 → 部分 NPC/怪物 sprite 變成白色人形(玩家回報過)。
+//   症狀完全不像我們的 bug(重繪/重登/清快取都無效、重裝才好),沒有這道檢查掉了不會有人發現。
+const colorScheme = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
+
 // 🔌 桌機外掛入口區塊(afk-skin 的 #afk-plugin-panel):整塊絕對定位在左欄「版本號正上方」。
 //   座標是照上游 4:3 舞台的百分比放的 → 上游改首頁版面(標題變高、搬 #login-meta-layer、換舞台元素)時,
 //   入口不會消失、只會疊到標題/版號上或被舞台的 overflow:hidden 切掉,肉眼不掃根本看不出來。
@@ -280,6 +331,15 @@ if (!allOK) {
   process.exit(1);
 }
 
+if (bossAvoidProblems.length) {
+  console.error('冒煙測試失敗:「只迴避指定頭目」沒有正確縮小迴避範圍:');
+  for (const p of bossAvoidProblems) console.error('  ' + p);
+  console.error('  判準:afk-bossavoid 是在 autoActions 之前把「沒挑到的 BOSS」暫時標成 noAutoTeleport,');
+  console.error('       借上游自己那行 some(m => m.boss && !m.noAutoTeleport) 少看到牠們;');
+  console.error('       上游一旦改掉那行的判斷方式,這支就會安靜失效(hooks OK 照印、無錯誤訊息)。');
+  process.exit(1);
+}
+
 if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
@@ -321,6 +381,13 @@ if (tabletProblems.length) {
 if (untranslatedMaps.length) {
   console.error('冒煙測試失敗:掉落查詢有地圖名未翻譯(會顯示英文 id),請補進 afk-extradata.js 的 AFK_EXTRA.mapName:');
   for (const [id, nm] of untranslatedMaps) console.error(`  ${id}  ->  ${nm}`);
+  process.exit(1);
+}
+
+if (!/dark/.test(colorScheme)) {
+  console.error(`冒煙測試失敗::root 的 color-scheme 是「${colorScheme}」,不是 dark。`);
+  console.error('  後果:Android Chrome 的自動深色主題會把部分 sprite 反成白色人形,而且重繪/重登/清快取都無效。');
+  console.error('  修法:scripts/afk-plugin-block.html 裡那行 <style>:root{color-scheme:dark}</style> 要在,並同步進 index.html。');
   process.exit(1);
 }
 

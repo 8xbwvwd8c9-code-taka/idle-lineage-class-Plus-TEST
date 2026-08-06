@@ -18,14 +18,18 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
+
 ## 外掛(59 支;載入順序見 `scripts/afk-plugin-block.html`)
+
+## 外掛(63 支;載入順序見 `scripts/afk-plugin-block.html`)
+
 
 | 檔案 | 功能 |
 |---|---|
 | `afk-toggles.js` | 外掛開關中樞(最先載;逃生門,自己不可關) |
 | `afk-banner.js` | 非官方轉載橫幅讓位(量橫幅→`--orig-bar-h`/`body.afk-bar`→位移全螢幕容器+桌機/平板彈窗讓位;基礎設施,無開關) |
 | `afk-synccompress.js` | 存檔即時壓縮(預設關;把 `_lzSet` 換回同步壓縮,根治登出/多開後存檔未壓縮爆滿;代價=存檔當下多花 0.02~0.4 秒) |
-| `afk-lzcache.js` | 大資料重複處理的快取,兩層:①存檔解壓(同一份壓縮字串只解一次;離線結算 4×) ②血盟 Buff 查詢(`getClanBuffStats`——解壓被快取後剩下的成本是每次重 `JSON.parse` 242KB 血盟資料＋整份正規化,`recomputeStats` 每次都會問一次) |
+| `afk-lzcache.js` | 大資料重複處理的快取,三層:①存檔解壓(同一份壓縮字串只解一次;離線結算 4×) ②血盟 Buff 查詢(`getClanBuffStats`——解壓被快取後剩下的成本是每次重 `JSON.parse` 242KB 血盟資料＋整份正規化,`recomputeStats` 每次都會問一次) ③血盟狀態讀取(`_clanReadStateResult`——野外圖每生一個 PVP 對手、每殺一隻怪問一次要不要開團戰都會整包重讀,①蓋不到它因為結算期間存的多半是未壓縮明文。**快取存字串不存物件、每次回傳新物件**:`_clanWithLock` 的 mutator 會就地改它且有 commit:false 改完不寫回的路徑,共用同一個物件會讓本該丟掉的修改默默留下。寫入後用 `_saveUnwrap` 拆出已正規化文字預熱,命中率 3745/3746;跳過正規化的前提是它冪等,第一次填快取時自驗,不過就整層自我停用。實測線上 90 秒 398ms→135ms、離線每次 357→231µs) |
 | `afk-clanroster.js` | 血盟名冊瘦身(核心把「遇過的玩家型 NPC」逐一登記在血盟共用桶、**只增不減**、上限一萬筆;而野外 PVP 每生成一個對手就整包讀改寫一次 → 越玩越慢。改成盟主全留、每盟留最近 20 個成員、無血盟路人留最近 200 個。實測玩家存檔 6,189 筆→620 筆、每離線小時 20.0s→3.4s) |
 | `afk-allyslim.js` | 傭兵快照瘦身(傭兵＝來源角色的深拷貝,隊長存檔裡每個傭兵都各帶一份**沒人讀**的資料;實測三位玩家全部存檔位未壓縮 5,299KB 中傭兵快照佔 1,644KB,光廢品標記就 824KB。清空 junkPrefs/pvpAlignLock/pandoraMarket2/_offStats/autoSellRules/lastMapByCat 六個欄位,存檔小 33~38%。**新增欄位前要過三關**:js/02 整份沒有(player=ally 視窗只跑 recomputeStats)、js/06 整份沒有、全 repo 只以 `player.` 前綴出現;`config` 是反例不能清。清空不 delete——上游哪天加讀取,`{}` 只是空的、undefined 會炸) |
 | `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層) |
@@ -36,6 +40,7 @@
 | `afk-battlehud.js` | 手機戰鬥狀態列(取代上游只有 HP/MP 的 #mobile-vitals;自己量橫幅) |
 | `afk-mapbar.js` | 手機冒險地圖標題列壓成兩排(純 CSS,自己判手機) |
 | `afk-nozoom.js` | 取消雙擊放大(觸控裝置;`body,body *` touch-action:manipulation,捏合縮放保留) |
+| `afk-statusicon.js` | 手機狀態圖示縮小一半(純 CSS·28→14px、gap 4→2px、隊友藍點 6→4px)。狀態列是絕對定位浮在戰鬥畫面上的,桌機戰鬥區寬、28px 只佔一角;手機整個戰鬥區才 346px,22 個狀態就排成 346×92px 把怪物與角色蓋掉大半(實測)。只用上游那條窄 MQ、不做平板路徑——這是「窄畫面排版優化」而非「手機殼套上了就該有」(判準見 docs/mobile.md),同 afk-mapbar |
 | `afk-slotinfo.js` | 選角卡片疊「掛哪張圖/掛多久」(讀 afk-offline 的 afk_map_/afk_ts_,唯讀) |
 | `afk-loadslots.js` | 卡片式選角擴到 16 格(搭配補丁3) |
 | `afk-dex.js` | 掉落查詢(五張掉落表+特殊掉落 SPECIAL_BLOCKS;`?view=dex` 獨立頁) |
@@ -54,23 +59,29 @@
 | `afk-training.js` | 木人場(量真實 DPS;獨立 map id `afk_dummy`;隊員全員不死＝**判定前補到真實上限**不灌血量;HUD 兩檢視:來源長條圖(玩家/各傭兵/**每隻**寵物/**每種**召喚物)與每隻訓練怪;可選「MP 不消耗」,預設關) |
 | `afk-junkmgr.js` | 廢品標記管理(木人場鈕下方;列出/搜尋/多選刪除 `player.junkPrefs`,刪除同時取消背包同款標記;規則標記 `_ruleJunk` 刻意不列;虛擬捲動) |
 | `afk-mercguard.js` | 傭兵招募被擋下時跳彈窗(收核心自己吐的紅字原文,不重刻擋下條件;核心只寫系統日誌→玩家看不到) |
-| `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5) |
+| `afk-bossavoid.js` | 只迴避指定頭目(上游「迴避頭目(瞬移卷軸)」原本全部都躲 → 改成**每張地圖各自挑要躲哪幾隻**,依存檔位分開;空清單=全部躲=上游原行為。**作法:在 `autoActions` 跑之前把「玩家沒挑到的 BOSS 實例」暫時標上 `noAutoTeleport`、`finally` 還原**,借上游自己那行 `mobs.some(m => m.boss && !m.noAutoTeleport)` 少看到牠們 → 不必動核心,而且「哪些地圖不能傳送」整套守衛仍由上游 `useItem` 自己套用(不必自己維護地圖清單)。⚠️ 還原**必須**在 finally:`mapState.mobs` 會序列化進存檔,殘留旗標會被 js/27 的離線收益估算讀到。離線快速段不跑 `autoActions`(自己 1:1 重放)→ `afk-offline.js` 的 `fastTeleportAwayBoss` 主動問 `AFK_BOSSAVOID.shouldAvoid`。⚠️ 上游若改掉那行的判斷方式會**安靜失效**,靠 smoke 的行為斷言擋) |
+| `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5——**開著自動找王時迴避頭目整組不生效**,連帶 afk-bossavoid 也等於沒作用,這是上游設計,不是 bug) |
 | `afk-itemsearch.js` | 背包名稱搜尋(包 renderTabs 重注入;純顯示層過濾) |
 | `afk-invlist.js` | 背包條列式(桌機手機通用;**本檔整片鋪底的 `background:...!important` 會蓋掉核心給的狀態底色**——「無法裝備/無法學習」的 `bg-red-950/40` 就這樣被吃掉過,已補回紅底＋左紅條,`.bg-red-950\/40` 與 `:has(.text-red-500)` 兩種選法各寫一條、不可併成 selector list) |
 | `afk-eqlist.js` | 裝備分頁條列式(隱藏 12 格圖形窗,露出原生部位條列) |
 | `afk-npclist.js` | 村莊 NPC 條列式(鏡射地圖 NPC 成列表) |
 | `afk-mobname.js` | 怪物名稱顯示模式三選一(純 CSS+body data 驅動) |
+| `afk-npclabel.js` | 村莊 NPC 名牌不出界(包核心 `_resolveTownLabelOverlap`,排完之後夾回「地圖 ∩ 視窗」)。玩家回報炎魔謁見所的「炎魔的輔佐官」名字看不到 —— 量出來是**上方**出界:名牌貼在立繪正上方(`.tn-label` bottom:100%),這位站得高(y=32%)又立繪特別高 → 整個跑到地圖頂端外 68px 被面板蓋掉,**與視窗寬度無關**(1400/1024/860 都差 68px)。核心那支只在「為了閃開別的名牌而往上抬」時檢查地圖頂端,名牌**天生**就在外面的它不管。上方出界時**先把整個 NPC 往下挪**(改 el 的 margin-top·牠自己的腳不可掉出地圖下緣),挪不夠才退而求其次把名牌壓下來(margin-bottom·與核心同一管道);左右出界用 translateX(順手治「名字長又站得靠邊」:視窗 860px 時這位的名牌右緣會超出瀏覽器)。resize 後重夾。🚨 **位移一律不可以用 transform**:`.town-npc` 的 CSS 帶 `transition: transform .12s`,設完馬上 getBoundingClientRect 會量到動畫途中的值 → 後續步驟依據錯的數字再補一次位移,名牌就被推到立繪身上,而且時好時壞(踩過)。margin 沒有 transition。另外立繪是逐張載入、版面會再動好幾次 → 每次排完補跑 120/400/900ms 三次(clamp 冪等),並在地圖矩形還沒安定(高度<60)時直接跳過 |
 | `afk-toast.js` | 手機 toast(包 logSys,點擊同步窗內訊息浮現) |
 | `afk-touchtip.js` | 手機長按看資料(技能/商店/製作/收集冊/背包) |
 | `afk-notip.js` | 關閉物品懸停資訊框(預設關;技能說明保留、只在滑鼠環境動作;不印 hooks OK 不進 smoke) |
 | `afk-dollcursor.js` | 關閉魔法娃娃游標(預設關;包 `applyDollCursor`)。上游裝娃娃時會① body cursor 換娃娃圖 ② 加 `has-doll-cursor` 讓可點擊處也吃 `cursor:inherit!important` ③ 啟用跟著滑鼠跑的 `#doll-cursor-glow`。**手機看到的那顆「點一下留下的光點」就是③**(觸控會補送合成 mousemove),所以兩者是同一個開關、不能只關一半 |
 | `afk-trackinfo.js` | 狀態欄顯示魔物追蹤剩餘時間(包 renderStatusEffects,補一格) |
+| `afk-trackmaps.js` | 魔物追蹤選單補上 8 張選不到的圖(包 `obelMapList`)。核心只掃 MAP_CATEGORIES 的 wild/dungeon/special/rift/pirate_island 五類 → 不在那五類的圖天生選不到;上游對這種圖是逐張補進 `OBEL_EXTRA_MAPS`(遺忘之島/風木地監)。**只補選單、不碰出怪判定、也不代表進得去**——怎麼進場照原本規矩,選單只決定「到了那張圖之後哪隻怪變常見」。一律**無條件列出**(不看背包/進度),代價是沒解鎖的人也看得到。⚠️ **補的三批來歷不同,同步上游時照這張表判斷**:①**黑暗妖精聖地**=補上游的漏(上游 2026-06-30 建 `OBEL_EXTRA_MAPS` 時它還不存在、07-13 才誕生,全核心沒有一句話說它不能追蹤;唯一一張「8 種一般怪卻完全不能追蹤」的正常獵場,地獄奴隸自 v3.4.21 起只住這裡)。②**傲慢之塔2~10樓**=刻意偏離(上游只開放「持支配符→追蹤 pride_N_(N+9)」,N 剛好=有支配符的九組,而支配符道具說明把「可追蹤該樓層區間」寫成賣點 → 塔內追蹤本是支配符特權)。③**六張隱藏區域**=上游明確拒絕過、我們推翻(上游在建 `OBEL_EXTRA_MAPS` 的**同一個 commit** 寫下「用戶要求不開放追蹤」=看過後的決定;我們照樣開,理由是追蹤不會把人送進去、仍須自己在母圖手動傳送,「只能由母圖進入」沒被破壞)。隱藏區清單/名稱由核心 `HIDDEN_AREA_PARENT`/`HIDDEN_AREA_NAMES` 推導不寫死;名稱後補「(母圖名)」是**必要**的——隱藏區的「黑魔法研究室」跟地監既有的 `dark_magic_lab` 完全同名、是兩張不同的圖 |
 | `afk-battlebuffs.js` | 手機戰鬥框下方鏡射整條狀態欄(必須排在 afk-trackinfo 之後才含追蹤格) |
 | `afk-relicguard.js` | 快速廢品的「全選」跳過遺物(包 quickJunkSelectAll/buildQuickHeader) |
+| `afk-wpnfix.js` | 補上游漏掉的武器設定:分類表(包 `getWeaponTags`)＋物品欄位(載入時寫 `DB.items`)。**一律只在上游是空的時候才補**,作者填了自動讓路。現有 5 件(飛翼的混沌雙刀缺「雙刀」、猴子的金箍棒缺「單手鈍器」、滾燙巨劍缺 `eff:'cleave'`、青色火炎/熔岩噴嘴缺 `weakExpose`;金箍棒的貫穿寫在物品資料上、本來就有,不必補)。**判準=說明文字用「；」列出的特效清單**(那是承諾),不是風味文——掃風味文會一堆假陽性(「箭矢能穿透一切血肉」不是穿透特效) |
 | `afk-enhtarget.js` | 快速強化目標上限 +12→+15(包 buildQuickEnhanceHeader 補下拉;執行端本就鉗各裝備 enhanceCap) |
 | `afk-attrbatch.js` | 碧恩「賦予屬性」一鍵衝到指定階段/星數(包 renderBianAttr 加面板;把 doBianAttr 的副作用暫時靜音後迴圈呼叫→規則單一真相仍在核心;「這輪卷軸沒被扣」＝核心擋下,拿它的訊息當停止原因) |
 | `afk-cursebatch.js` | 詛咒卷軸一鍵弱化(包 openModal 掛入口;**不看 `isMaxEnhanced`**——上游滿強化就整顆強化鈕消失,連帶讓詛咒卷軸沒入口。批次同樣靠靜音副作用迴圈呼叫 executeCurseDeEnhance;背包堆疊要**自己先拆一件**,否則核心每次呼叫各拆一件變成 N 件各 -1) |
 | `afk-retrial.js` | 試煉批次兌換(試煉道具持續掉落·已完成也照掉;面板自訂數量重複兌換;試煉狀態只讀不寫;包 trialItemActive/trialQHTML/build50TrialHTML) |
+| `afk-anyclass.js` | 去除裝備的職業與性別限制(**預設關**;包核心唯一的裝備資格入口 `checkCanEquip`,含遺物)。作法是**只在它執行的那一瞬間**拿掉兩道閘、跑完立刻還原:①職業＝`reqAllowsClass` 與五支 `*EquipOk` 一律放行 ②性別＝把該件的 `d.reqAvatar` 暫時清空(核心是寫死在 checkCanEquip 裡的 if,沒有函式可換)。遺物/負重強化/劍術精通例外全照作者原邏輯,我方不重寫規則。⚠️ **不可永久替換 `reqAllowsClass`**:它同時管職業限定藥水(慎重/勇敢/精靈餅乾)與物品資訊框的「適用職業」圖示,永久換掉會連那些一起解除;`d.reqAvatar` 同理是 DB 共用資料,`finally` 一定放回去。⚠️ **`DB` 是 `const DB`(js/00)、不在 window 上** —— 寫 `window.DB` 會是 undefined 而整段安靜不生效(踩過:職業解除了、性別那 4 件還是穿不上),要用 `typeof DB !== 'undefined'`。連帶效果(同一支判定的必然結果):飾品商店會列出跨職業飾品、傭兵也能穿隊長給的跨職業裝備、關掉後讀檔核心會把穿不上的自動卸回背包(作者原有機制,訊息寫「因負重強化改版」)。**真夏納變身也一併補齊**:核心的真夏納速度表是逐職業一份、只列該職業原本能用的武器家族(js/02 SHANNA_APM_PROFILES),本外掛讓他拿到清單外的武器後,那個組合在核心眼中不存在 → apm/hitstun 回 null → 變身資訊連「攻擊間隔」「受擊硬直」都不顯示、退回角色自己的速度(實測龍騎士拿魔杖 51.4/分 vs 長劍 124/分,玩家回報「跟沒拿武器一樣」)。包 trueShannaSpeedForActor,只在原函式查不到值時改用核心那張全職業共用的 TRUE_SHANNA_APM 補上,硬直/走速算式原封不動抄核心 —— 等於只打開「可用武器家族」那道閘、數值仍由核心決定;跟著 anyclass 開關走(關掉完全是原版)。⚠️ TRUE_SHANNA_APM / SHANNA_DAGGER_LONG_HITSTUN 也是 const、不在 window 上 |
+| `afk-locksafe.js` | 上鎖的裝備不會被潘朵拉的收購 NPC／遺物布告欄拿走。**上游漏判**:js/24 的 `_findMatches` 只比對 id/強化值/數量,沒看 `lock` → 背包裡上鎖那件會被直接交易掉(已重現:上鎖的亞連被金幣收購員收走、無任何警告)。這與核心自己在 js/04 寫的「鎖定件不列入,與全專案其他破壞性路徑一致」相反,故認定是漏掉不是設計。挑選邏輯在 IIFE 內拿不到,改包**全域入口**(performWanderingBuyerTrade / pandoraExchangeRelic ＋兩支畫面函式,畫面才不會先說可交、按下去又說沒有),執行期間把上鎖物品從 player.inv 暫時抽掉。🚨 還原要以「核心跑完後的 player.inv」為準重組(核心成交時是 `player.inv = filter(...)` 換新陣列):上鎖的一律留、沒上鎖的看核心有沒有拿走、核心新增的補最後——無腦還原舊陣列會讓剛賣掉的東西復活。⚠️ **`player` 是 `let player`(js/01)、不在 window 上**,寫 window.player 會整段安靜失效(wrapper 掛得好好的卻完全沒作用,踩過;同 anyclass 的 DB)。倉庫不處理:whDeposit 本來就擋下上鎖物品存入 |
 | `afk-traditional.js` | 傳統模式(偽)/自動衝裝(掉落自帶強化值;靠補丁2 的 `__afkTradRollEn` 鉤子) |
 | `afk-warehouse.js` | 倉庫增強(魔法書標`[已學習]`/`[無法學習]`並各給底色——判定一律用核心那兩條(`player.skills` 有沒有它、`skillReqLv()` 是否 undefined),不自己判職業表;金幣全存/全取、遺物與席琳遺骸分類、**只列可穿＋不可穿標紅**;可穿判定一律呼叫核心 `checkCanEquip`,過濾包在 `whMatchFilter`＋`whMatchSearch` 兩支上(搜尋不走 filter),核心的「沒有物品」空訊息才會正確) |
 | `afk-whbatch.js` | 倉庫批次存取(**預設關**——會改掉「點清單」原本的意思;包核心函式型:照樣安裝 wrapper、每次重繪問 `enabled()`,關掉就收乾淨注入的 UI 並透明放行,故開關即時生效且仍印 hooks OK。⚠️ `register` 必須早於第一次 `enabled()`:找不到登錄項時預設值一律回 true(afk-toggles.js:39),先問就把 def:false 問成 true。「🗂️ 批次」鈕→點清單=勾選、全選、一次搬完;整批共用一次 `whTxnSnapshot`/`whTxnCommit`＝核心 `whOneClickDeposit` 的既有模式,實測 4998 格倉庫由 145ms/件 → 0.1ms/格。搬移規則逐條比照核心 whDeposit/whWithdraw,唯一差別是一律整疊。⚠️ **不可用 uid 當索引**:玩家倉庫真的存在「兩格共用同一 uid」(4998 格裡 17 組),uid→物品的 map 只留最後一格,另一格會被連同數量一起刪掉＝真實遺失(踩過,少 35 件);一律掃來源陣列比對勾選集合。同 sig 查找改 Map(核心 `_whStackFind` 是線性 find,N 筆就 O(N²)、幾千格會卡住)) |

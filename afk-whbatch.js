@@ -33,7 +33,7 @@
 
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
         id: 'whbatch', name: '倉庫批次存取', group: '遊戲介面', def: false,
-        desc: '倉庫多一顆「🗂️ 批次」:點清單改成勾選,可全選、一次搬完(核心是一件一件搬、每件都存檔一次,幾千格搬不動)。會改變「點一下」的意思,所以預設關。'
+        desc: '倉庫可勾選、全選、一次搬完；開著的時候點清單是勾選，不會直接搬'
     });
     // 讀不到開關中樞 → 不啟用:預設關的偏好不可在讀不到設定時自作主張開啟(同 afk-notip)
     function on() { try { return !!window.AFK_TOGGLES && AFK_TOGGLES.enabled('whbatch'); } catch (e) { return false; } }

@@ -36,7 +36,7 @@
 
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
         id: 'clanroster', name: '血盟名冊瘦身', group: '系統與其他', def: true,
-        desc: '只記住最近遇過的玩家，離線結算才不會越玩越慢；關掉會慢慢累積到一萬人。'
+        desc: '只記住最近遇過的玩家，離線結算才不會越玩越慢；關掉會慢慢累積到一萬人'
     });
 
     if (typeof _clanWriteState !== 'function') {

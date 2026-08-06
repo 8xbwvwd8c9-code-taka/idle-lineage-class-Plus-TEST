@@ -82,10 +82,20 @@
         });
     }
 
+    // 地圖被我們用 display:none 藏起來,但核心的站立動畫(_townNpcAnimTick)只認 .hidden class →
+    // 它會對看不見的 NPC 每秒換 8 次 sprite src(8 隻 NPC＝每秒 64 次),停在村莊就一直跑,純浪費電。
+    // 不去搶 .hidden(核心開關 NPC 功能視窗時會自己加減),改成清空動畫清單＝畫面凍在第 0 幀。
+    // 反正地圖看不見,凍住沒有任何損失;清單圖示也因此每次都是同一幀。
+    function freezeMapAnim() {
+        if (typeof _townNpcSprites === 'undefined' || !Array.isArray(_townNpcSprites)) return;
+        _townNpcSprites.length = 0;
+    }
+
     var _orig = window.renderTownNPCMap;
     window.renderTownNPCMap = function (townId) {
         var r = _orig.apply(this, arguments);
         try { buildList(townId); } catch (e) {}
+        freezeMapAnim();   // 一定要排在 buildList 之後:清單是從地圖那些 .tn-body 鏡射出來的
         return r;
     };
 

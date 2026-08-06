@@ -16,6 +16,10 @@
  *            用法是「順著往下鑽」：先 --hot 看誰貴，再把它內部呼叫的幾支丟進 --probe 再跑一次。
  *   --set    灌檔後覆寫 localStorage，逗號分隔的 k=v。拿來 A/B「某個開關值多少錢」，
  *            例：--set afk_toggle_synccompress=0（實測某玩家存檔 20.0s → 6.5s）。
+ *            也可以用它換地圖：--set afk_map_6=dragon_valley（離線結算看的是這個 key，不是存檔裡的位置）。
+ *   --player 讀檔後覆寫 player 的欄位，逗號分隔的 k=v（true/false/數字會自動轉型）。
+ *            拿來 A/B「某個角色狀態值多少錢」——那些東西存在角色存檔裡，--set 改不到。
+ *            例：--player pvpOn=false（實測龍之谷 2.8~4.7s → 1.2s／離線小時）。
  *
  * 讀得懂輸出的重點欄位（其餘見 afk-offline.js 的 buildHistRec）：
  *   settleMs  這次結算實際花掉的真實毫秒 ← 玩家在意的就是這個
@@ -56,6 +60,8 @@ const PROBE = (arg('probe', '') || '').split(',').map((x) => x.trim()).filter(Bo
 const ALL = FLAG('all');
 // --set k=v[,k=v] 灌檔後再覆寫幾個 localStorage key,用來 A/B「某個開關對結算耗時的影響」
 const SETS = (arg('set', '') || '').split(',').map((x) => x.trim()).filter(Boolean).map((kv) => kv.split('='));
+// --player k=v[,k=v] 讀檔後覆寫 player 欄位(存在角色存檔裡、--set 改不到的東西,如 pvpOn)
+const PLAYER_SETS = (arg('player', '') || '').split(',').map((x) => x.trim()).filter(Boolean).map((kv) => kv.split('='));
 if (!FILE) { console.error('❌ .testdata/ 沒有存檔——請先放一份進去（該資料夾已 gitignore）'); process.exit(1); }
 
 const raw = readTestSave(FILE);
@@ -166,6 +172,17 @@ for (const slot of slots) {
   if (!logs.some((l) => l.startsWith('[AFK] hooks OK'))) { console.error(`❌ 存檔位 ${slot}：afk-offline 沒掛上，跳過`); await ctx.close(); continue; }
 
   if (HOT) await page.evaluate(installProbes, PROBE);
+  // --player：包住 loadGame，讀完檔立刻覆寫欄位。必須在這裡包(結算是 loadGame 之後才非同步排程的)，
+  //   等 loadGame 回來再改就可能已經有事件跑過去了。
+  if (PLAYER_SETS.length) await page.evaluate((sets) => {
+    const cast = (v) => (v === 'true' ? true : v === 'false' ? false : (v !== '' && !isNaN(Number(v)) ? Number(v) : v));
+    const orig = window.loadGame;
+    window.loadGame = function () {
+      const r = orig.apply(this, arguments);
+      try { sets.forEach(([k, v]) => { player[k] = cast(v); }); } catch (e) {}
+      return r;
+    };
+  }, PLAYER_SETS);
   const t0 = Date.now();
   const who = await page.evaluate((slot) => {
     window.__afk.last = null;          // 結算跑完會被設起來 → 拿它當「真的跑完了」的訊號
