@@ -162,18 +162,6 @@
     var html = hintHTML();
     el.innerHTML = html;
     el.style.display = html ? '' : 'none';
-    // 建議清單是絕對定位、就浮在提示列正上方，把數字整個蓋掉——而「手動打完整個名字」正是最
-    //   需要看到數字的時候。清單「已經無事可做」時就收掉它：打的字完全吻合一件可收購物品，
-    //   而且清單只剩那一筆。
-    //   ⚠️ 判斷不可只看「名字完全吻合」：2115 個可收購名稱裡有 315 個是別的名稱的子字串
-    //   （長劍／短劍／弓／矛／武士刀…），只看吻合就會在玩家打「短劍」想往「小侏儒短劍」找時
-    //   把清單關掉。還有別的候選＝他還在挑，清單留著（那時提示被蓋住無所謂，點完就看得到）。
-    //   關掉本外掛則完全不碰它，維持上游行為。
-    var box = document.getElementById('pandora-buy-suggestions');
-    if (box && !box.classList.contains('hidden') && box.querySelectorAll('.pandora-buy-suggestion').length === 1) {
-      var hit = resolveName((document.getElementById('pandora-buy-name') || {}).value);
-      if (hit && hit.ok) { box.innerHTML = ''; box.classList.add('hidden'); }
-    }
   }
 
   function closeSuggestions() {
@@ -186,8 +174,10 @@
       var el = document.getElementById(id);
       if (el && !el.__afkBm) { el.__afkBm = 1; el.addEventListener('input', update); }
     });
-    // 游標進到價錢欄＝名字已經挑完了 → 收掉建議清單（上游沒有任何 blur/失焦時的收合，
-    //   清單會一直浮著蓋住提示列；名稱有歧義時上面那條規則也不會收）。
+    // 游標進到價錢欄＝名字已經挑完了 → 收掉建議清單。
+    //   ⚠️ 不能假設「玩家去點金額欄，下拉自然就被點掉了」——實測不會：上游收掉清單只有兩處
+    //   （點建議項、名字砍到 <2 字），沒有任何 blur／點外面的收合。清單是絕對定位、正好浮在
+    //   提示列上，不收的話玩家在決定要出多少的整段時間裡都看不到數字，正是最需要它的時候。
     var priceEl = document.getElementById('pandora-buy-price');
     if (priceEl && !priceEl.__afkBmFocus) {
       priceEl.__afkBmFocus = 1;
