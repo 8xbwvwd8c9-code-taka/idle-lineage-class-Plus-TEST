@@ -3,8 +3,8 @@
  *
  * 潘朵拉黑市可以「掛收購單」：指定一件物品 + 出價，之後每次輪換（10 分鐘一格）系統會
  *   替那件物品擲一次行情價，行情價 ≤ 你的出價才命中、以「你的出價」上架。所以：
- *     ① 出價要多高才必定買得到 = 行情價的最大可能值（算得出來，不必試）
- *     ② 你成交時付的就是自己出的那個價 —— 直接出必中價等於自願買最貴
+ *     ① 這件在黑市的成交價落在哪個區間（算得出來，不必試）——出滿上限就必定買到
+ *     ② 你成交時付的就是自己出的那個價 —— 直接出上限等於自願買最貴
  *     ③ 行情是均勻分布 → 任何出價的「每次輪換命中率」與「平均要等多久」也都算得出來
  *   遊戲一個都沒告訴玩家，只能靠掛單試 → 這支把三件事寫在收購欄下面，打字即時更新。
  *
@@ -17,7 +17,7 @@
  * 🚨 絕不呼叫 pandoraBuyOrderPrice()：它內部走 lootRng，而 lootRng 每呼叫一次就把
  *   player.lootSeq 加一（committed RNG 的序號，進存檔且受簽章保護）。查個價就會讓玩家
  *   之後所有掉落／黑市結果整個位移。只用不擲骰的 pandoraBuyOrderPriceProfile 與
- *   pandoraCardPriceRange 拿區間，最大值就是必中價。
+ *   pandoraCardPriceRange 拿區間，上限就是必定買到的出價。
  *
  * ⚠️ 同步上游時要看一眼：上面三支核心函式若改名，提示會安靜消失（smoke 有擋，見
  *   scripts/smoke-hooks.mjs 的 [AFK-bmprice]）。
@@ -29,7 +29,7 @@
 
   if (window.AFK_TOGGLES) AFK_TOGGLES.register({
     id: 'bmprice', name: '黑市收購價提示', group: '遊戲介面', def: true,
-    desc: '潘朵拉收購欄顯示必中價與命中機率；小百科／掉落查詢的物品也標必中價'
+    desc: '潘朵拉收購欄顯示成交價區間與命中機率；小百科／掉落查詢的物品也標成交價'
   });
 
   function enabled() { return !window.AFK_TOGGLES || AFK_TOGGLES.enabled('bmprice'); }
@@ -124,7 +124,7 @@
     if (!r) return '';
     // 每一段各自 nowrap：手機一行放不下時整段換行，不會斷在「平均等 約 / 20 分鐘」中間
     var seg = function (html, cls) { return '<span class="afk-bm-seg' + (cls ? ' ' + cls : '') + '">' + html + '</span>'; };
-    var out = seg('必中價 <b>' + r.max.toLocaleString() + '</b> 金幣');
+    var out = seg('黑市成交價 <b>' + r.min.toLocaleString() + ' ~ ' + r.max.toLocaleString() + '</b> 金幣');
 
     var priceEl = document.getElementById('pandora-buy-price');
     var offer = Number(String((priceEl && priceEl.value) || '').replace(/[,\s，]/g, ''));
@@ -132,7 +132,7 @@
 
     var p = hitChance(r, offer);
     if (offer >= r.max) out += seg('下次輪換必定上架' + (offer > r.max ? '，多出的是白付的' : ''));
-    else if (offer < r.min) out += seg('低於 ' + r.min.toLocaleString() + ' 永遠不會上架');
+    else if (offer < r.min) out += seg('出價低於下限，永遠不會上架');
     else out += seg('你出的價 ' + fmtPct(p) + ' 命中，平均等 ' + fmtWait(p));
 
     var gold = (typeof player !== 'undefined' && player) ? (player.gold || 0) : 0;
@@ -186,15 +186,16 @@
   }
 
   // ---- 對外：小百科／掉落查詢的物品詳情用 -----------------------------------
-  //   回 { max } ＝可收購的必中價；{ deny } ＝玩家會拿去試但不給收的（遺物、耳環、箭矢、
-  //   寵物裝備…）；null ＝不必在詳情裡提（藥水、材料這些沒人會去掛收購單）。
+  //   回 { min, max } ＝黑市成交價區間（出滿 max 必定上架，低於 min 永遠不會）；{ deny } ＝玩家
+  //   會拿去試但不給收的（遺物、耳環、箭矢、寵物裝備…）；null ＝不必在詳情裡提（藥水、材料
+  //   這些沒人會去掛收購單）。
   function itemInfo(id) {
     if (!enabled()) return null;
     var d = (typeof DB !== 'undefined' && DB.items) ? DB.items[id] : null;
     if (!d) return null;
     if (typeof pandoraBuyOrderAllowed === 'function' && pandoraBuyOrderAllowed(id)) {
       var r = rangeOf(id);
-      return r ? { max: r.max } : null;
+      return r ? { min: r.min, max: r.max } : null;
     }
     if (d.relic) return { deny: 'relic' };
     if (d.type === 'wpn' || d.type === 'arm' || d.type === 'acc') return { deny: 'other' };
@@ -235,7 +236,7 @@
     && wrap('pandoraChooseBuyItem', update);   // 點建議清單是程式塞 value，不會觸發 input
   if (!okPanel) console.warn('[AFK-bmprice] 找不到潘朵拉黑市面板函式，收購欄提示停用（小百科／掉落查詢的標價照常）。');
   if (typeof pandoraBuyOrderPriceProfile !== 'function' || typeof pandoraBuyOrderAllowed !== 'function') {
-    console.warn('[AFK-bmprice] 找不到核心收購價函式，必中價全面停用（遊戲照常運作）。');
+    console.warn('[AFK-bmprice] 找不到核心收購價函式，成交價全面停用（遊戲照常運作）。');
   }
   console.log('[AFK-bmprice] hooks OK');
 })();

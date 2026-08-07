@@ -103,7 +103,7 @@ const bossAvoidProblems = await page.evaluate(() => {
   return bad;
 });
 
-// 💰 黑市收購價(afk-bmprice):驗「必中價還算得出來」。
+// 💰 黑市收購價(afk-bmprice):驗「成交價區間還算得出來」。
 //   為什麼非驗不可:這支不重刻公式,直接借核心的 pandoraBuyOrderAllowed / pandoraBuyOrderPriceProfile /
 //   pandoraCardPriceRange 拿行情價區間。上游改名或改結構(minMult/maxMult 換欄位名)時,itemInfo 只會
 //   安靜回 null → 收購欄那行與物品詳情那行整個不出現,零錯誤、hooks OK 照印,沒人會發現。
@@ -113,7 +113,7 @@ const bmProblems = await page.evaluate(() => {
   try {
     if (!window.AFK_BM || !AFK_BM.itemInfo) return ['AFK_BM 不存在(外掛沒載入或被關掉)'];
     if (!AFK_BM.rotateFromCore) bad.push('抓不到核心「每 N 分鐘輪換」那句(上游改了黑市標題寫法?)→「平均等多久」會用猜的 10 分鐘');
-    // 一般裝備:必中價應為 售價×maxMult,至少要大於售價本身
+    // 一般裝備:區間＝售價×minMult ~ 售價×maxMult,上限至少要大於售價本身
     const eq = Object.keys(DB.items).find((id) => {
       const d = DB.items[id];
       return d && d.p > 0 && d.eff !== 'card' && typeof pandoraBuyOrderAllowed === 'function' && pandoraBuyOrderAllowed(id);
@@ -121,17 +121,17 @@ const bmProblems = await page.evaluate(() => {
     if (!eq) bad.push('全 DB 找不到任何「可指定收購且有售價」的物品(上游改了 pandoraBuyOrderAllowed 的條件?)');
     else {
       const info = AFK_BM.itemInfo(eq);
-      if (!info || !(info.max > DB.items[eq].p)) bad.push(`${DB.items[eq].n} 算不出必中價(itemInfo 回 ${JSON.stringify(info)})`);
+      if (!info || !(info.max > DB.items[eq].p) || !(info.min > 0) || !(info.min < info.max)) bad.push(`${DB.items[eq].n} 算不出成交價區間(itemInfo 回 ${JSON.stringify(info)})`);
     }
     // 怪物卡走另一條路徑(固定區間·與售價無關),要分開驗
     const card = Object.keys(DB.items).find((id) => DB.items[id] && DB.items[id].eff === 'card' && DB.items[id].cardTier >= 1);
     if (card) {
       const ci = AFK_BM.itemInfo(card);
-      if (!ci || !(ci.max > 0)) bad.push(`${DB.items[card].n} 算不出必中價(pandoraCardPriceRange 改了?)`);
+      if (!ci || !(ci.max > 0)) bad.push(`${DB.items[card].n} 算不出成交價(pandoraCardPriceRange 改了?)`);
     }
     // 物品詳情那行真的有印出來(afk-dex 與小百科裝備頁共用同一支 itemDetailHTML)
     if (eq && window.AFK_DEX_API && AFK_DEX_API.itemDetailHTML) {
-      if (!AFK_DEX_API.itemDetailHTML(eq).includes('黑市建議收購價')) bad.push('物品詳情裡沒有「黑市建議收購價」那一行(afk-dex 的插入點掉了?)');
+      if (!AFK_DEX_API.itemDetailHTML(eq).includes('黑市成交價')) bad.push('物品詳情裡沒有「黑市成交價」那一行(afk-dex 的插入點掉了?)');
     }
   } catch (e) { bad.push('黑市收購價檢查本身出錯:' + e.message); }
   return bad;
@@ -375,10 +375,10 @@ if (bossAvoidProblems.length) {
 }
 
 if (bmProblems.length) {
-  console.error('冒煙測試失敗:黑市必中價算不出來(收購欄與物品詳情那兩行會安靜消失):');
+  console.error('冒煙測試失敗:黑市成交價算不出來(收購欄與物品詳情那兩行會安靜消失):');
   for (const p of bmProblems) console.error('  ' + p);
   console.error('  判準:afk-bmprice 不重刻公式,借核心 pandoraBuyOrderAllowed / pandoraBuyOrderPriceProfile /');
-  console.error('       pandoraCardPriceRange 拿行情價區間,最大值即必中價。上游改名或改欄位就會回 null。');
+  console.error('       pandoraCardPriceRange 拿行情價區間。上游改名或改欄位就會回 null。');
   console.error('  ⚠ 修的時候絕不可改用 pandoraBuyOrderPrice——它走 lootRng,查個價就推進玩家存檔的亂數序號。');
   process.exit(1);
 }
