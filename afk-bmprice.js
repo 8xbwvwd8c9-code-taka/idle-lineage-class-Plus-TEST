@@ -6,7 +6,8 @@
  *     ① 這件在黑市的成交價落在哪個區間（算得出來，不必試）——出滿上限就必定買到
  *     ② 你成交時付的就是自己出的那個價 —— 直接出上限等於自願買最貴
  *     ③ 行情是均勻分布 → 任何出價的「每次輪換命中率」與「平均要等多久」也都算得出來
- *   遊戲一個都沒告訴玩家，只能靠掛單試 → 這支把三件事寫在收購欄下面，打字即時更新。
+ *   遊戲一個都沒告訴玩家，只能靠掛單試 → 這支把 ①③ 寫在收購欄下面，打字即時更新
+ *   （② 不另外寫字：「成交價」這個說法本身就講完了）。
  *
  * 掛接：
  *   - 包 pandoraRenderMarket（面板重繪，含輪換就地重繪）→ 補提示列、綁輸入監聽
@@ -128,7 +129,7 @@
 
     var priceEl = document.getElementById('pandora-buy-price');
     var offer = Number(String((priceEl && priceEl.value) || '').replace(/[,\s，]/g, ''));
-    if (!Number.isSafeInteger(offer) || offer <= 0) return out + seg('（出多少就付多少）');
+    if (!Number.isSafeInteger(offer) || offer <= 0) return out;
 
     var p = hitChance(r, offer);
     if (offer >= r.max) out += seg('下次輪換必定上架' + (offer > r.max ? '，多出的是白付的' : ''));

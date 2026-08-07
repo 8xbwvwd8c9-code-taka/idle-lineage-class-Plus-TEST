@@ -659,11 +659,10 @@
     }
     var priceLine = d.p ? '<div class="m-dex-craft-mats" style="color:#cbd5e1;">賣店價：' + Math.floor(d.p * 0.3).toLocaleString() + ' 金幣</div>' : '';
     // 黑市成交價:潘朵拉收購單每次輪換擲一次行情價,落在這個區間;出滿上限就必定上架(數字由
-    //   afk-bmprice 借核心函式算,關掉那支開關就整行不出現)。「付的是你自己出的價」非講不可——
-    //   不然玩家一律直接出上限,等於自願買最貴。
+    //   afk-bmprice 借核心函式算,關掉那支開關就整行不出現)。
     var bmLine = '';
     var bm = (window.AFK_BM && AFK_BM.itemInfo) ? AFK_BM.itemInfo(id) : null;
-    if (bm && bm.max) bmLine = '<div class="m-dex-craft-mats" style="color:#cbd5e1;">黑市成交價：<b style="color:#fde047;">' + bm.min.toLocaleString() + ' ~ ' + bm.max.toLocaleString() + '</b> 金幣（收購單付的是你自己出的價）</div>';
+    if (bm && bm.max) bmLine = '<div class="m-dex-craft-mats" style="color:#cbd5e1;">黑市成交價：<b style="color:#fde047;">' + bm.min.toLocaleString() + ' ~ ' + bm.max.toLocaleString() + '</b> 金幣</div>';
     else if (bm && bm.deny === 'relic') bmLine = '<div class="m-dex-craft-mats" style="color:#94a3b8;">黑市成交價：遺物不能用金幣收購，要在黑市用龍鑽搜索</div>';
     else if (bm && bm.deny) bmLine = '<div class="m-dex-craft-mats" style="color:#94a3b8;">黑市成交價：不可指定收購</div>';
     // 取得方式:手動補(itemAcquire)/ 歐西里斯寶箱 / 中性句;製作、商店、查掉落鈕沿用
