@@ -162,14 +162,23 @@
     var html = hintHTML();
     el.innerHTML = html;
     el.style.display = html ? '' : 'none';
-    // 名稱已經完全吻合時收掉建議清單：它是絕對定位、就浮在提示列正上方，把數字整個蓋掉——
-    //   而「手動打完整個名字」正是最需要看到數字的時候。此時清單也已無資訊可給（要找別的
-    //   物品再多打一個字就會重開）。關掉本外掛則完全不碰它，維持上游行為。
+    // 建議清單是絕對定位、就浮在提示列正上方，把數字整個蓋掉——而「手動打完整個名字」正是最
+    //   需要看到數字的時候。清單「已經無事可做」時就收掉它：打的字完全吻合一件可收購物品，
+    //   而且清單只剩那一筆。
+    //   ⚠️ 判斷不可只看「名字完全吻合」：2115 個可收購名稱裡有 315 個是別的名稱的子字串
+    //   （長劍／短劍／弓／矛／武士刀…），只看吻合就會在玩家打「短劍」想往「小侏儒短劍」找時
+    //   把清單關掉。還有別的候選＝他還在挑，清單留著（那時提示被蓋住無所謂，點完就看得到）。
+    //   關掉本外掛則完全不碰它，維持上游行為。
     var box = document.getElementById('pandora-buy-suggestions');
-    if (box && !box.classList.contains('hidden')) {
+    if (box && !box.classList.contains('hidden') && box.querySelectorAll('.pandora-buy-suggestion').length === 1) {
       var hit = resolveName((document.getElementById('pandora-buy-name') || {}).value);
       if (hit && hit.ok) { box.innerHTML = ''; box.classList.add('hidden'); }
     }
+  }
+
+  function closeSuggestions() {
+    var box = document.getElementById('pandora-buy-suggestions');
+    if (box && !box.classList.contains('hidden')) { box.innerHTML = ''; box.classList.add('hidden'); }
   }
 
   function bindInputs() {
@@ -177,6 +186,13 @@
       var el = document.getElementById(id);
       if (el && !el.__afkBm) { el.__afkBm = 1; el.addEventListener('input', update); }
     });
+    // 游標進到價錢欄＝名字已經挑完了 → 收掉建議清單（上游沒有任何 blur/失焦時的收合，
+    //   清單會一直浮著蓋住提示列；名稱有歧義時上面那條規則也不會收）。
+    var priceEl = document.getElementById('pandora-buy-price');
+    if (priceEl && !priceEl.__afkBmFocus) {
+      priceEl.__afkBmFocus = 1;
+      priceEl.addEventListener('focus', function () { if (enabled()) closeSuggestions(); });
+    }
   }
 
   // ---- 對外：小百科／掉落查詢的物品詳情用 -----------------------------------
