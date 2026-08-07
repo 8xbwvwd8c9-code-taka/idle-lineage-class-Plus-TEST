@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(66 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(67 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -56,6 +56,7 @@
 | `afk-junkmgr.js` | 廢品標記管理(木人場鈕下方;列出/搜尋/多選刪除 `player.junkPrefs`,刪除同時取消背包同款標記;規則標記 `_ruleJunk` 刻意不列;虛擬捲動) |
 | `afk-mercguard.js` | 傭兵招募被擋下時跳彈窗(收核心自己吐的紅字原文,不重刻擋下條件;核心只寫系統日誌→玩家看不到) |
 | `afk-squadsync.js` | 傭兵技能清單變了就重建隊伍面板的 skill 分頁(**上游 js/10 `sigSkill` 只由「存檔位:名字:倒地:等級」＋`elfEle` 組成,不含技能清單** → 傭兵在隊上期間換了 `grantSkills` 裝備/學了新魔法,回村 `refreshAllyOnce` 明明已重建快照、`ally.skills` 也對了,下拉卻永遠停在招募當下那份。2026-08-07 玩家回報「戴了古代法師的隨手小抄卻選不到寒冰尖刺」即此。上游 v3.8.5 補 `elfEle` 進簽章時理由一字不差,只是沒補完。作法:包 `renderSquadPanel`,畫之前比「技能數＋授予技能 id」,變了才把 `_squadSigSkill` 清空。⚠️不可改成每次都重建——v3.2.74 拆 team/skill 兩份簽章就是為了不把玩家拉開的下拉關掉) |
+| `afk-ancdrop.js` | 金卡怪掉落的裝備有機會帶遠古系詞綴(**遠古系在上游是「絕版」不是「不存在」**——`anc` 欄位、四階效果 `applyAncStats`、名稱前綴配色、排序、堆疊簽章、廢品標記全在,只有產生那步被關掉:js/07 `rollAffixesNew` 恆回 `anc:false`,全 repo 無任何處寫入 `anc=true`。本支只補「來源」。條件=`cardDexTier(怪名)>=3`;機率**直接用核心傳進 `rollAffixesNew` 的第一參**(一般 1%/頭目 10%)→上游調祝福率會自動跟上,不必兩邊各記一份;階級四等分。**只包 `rollAffixesNew` 一個點**就涵蓋一般掉落/血盟攻城掉寶/離線結算(離線=1:1 重放核心 killMob)。⚠️ **判斷順序必須是「先確認已金卡才呼叫 lootRng」**——掉落是 committed RNG(吃 `player.lootSeq` 遞增序號),多消耗一個就會位移之後**所有**掉落結果,順序寫反等於光是裝了外掛就改掉所有玩家的掉落序列(已驗:未開金卡 seqPerRoll 維持 1)。⚠️ 怪名要先過 `CARD_DROP_ALIAS`,否則變身鏈最終階(殺生石/安塔瑞斯後續階)查不到卡而安靜失效) |
 | `afk-bossavoid.js` | 只迴避指定頭目(上游「迴避頭目(瞬移卷軸)」原本全部都躲 → 改成**每張地圖各自挑要躲哪幾隻**,依存檔位分開;空清單=全部躲=上游原行為。**作法:在 `autoActions` 跑之前把「玩家沒挑到的 BOSS 實例」暫時標上 `noAutoTeleport`、`finally` 還原**,借上游自己那行 `mobs.some(m => m.boss && !m.noAutoTeleport)` 少看到牠們 → 不必動核心,而且「哪些地圖不能傳送」整套守衛仍由上游 `useItem` 自己套用(不必自己維護地圖清單)。⚠️ 還原**必須**在 finally:`mapState.mobs` 會序列化進存檔,殘留旗標會被 js/27 的離線收益估算讀到。離線快速段不跑 `autoActions`(自己 1:1 重放)→ `afk-offline.js` 的 `fastTeleportAwayBoss` 主動問 `AFK_BOSSAVOID.shouldAvoid`。⚠️ 上游若改掉那行的判斷方式會**安靜失效**,靠 smoke 的行為斷言擋) |
 | `afk-bossring.js` | 傳送控制戒指自動找BOSS(缺卷軸自動購買;與迴避頭目互斥=補丁5——**開著自動找王時迴避頭目整組不生效**,連帶 afk-bossavoid 也等於沒作用,這是上游設計,不是 bug) |
 | `afk-itemsearch.js` | 背包名稱搜尋(包 renderTabs 重注入;純顯示層過濾) |
