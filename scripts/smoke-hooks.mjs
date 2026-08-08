@@ -60,8 +60,15 @@ const seen = (list) => list.every((n) => logs.some((l) => l.includes(n) && l.inc
 //   「永遠不靜止」→ networkidle 等不到逾時、smoke 假性失敗、自動同步整個卡住(踩過 2026-06-30,掛點其實全正常)。
 //   改成 domcontentloaded + 輪詢「外掛是否都印出 hooks OK」,既驗到掛點、又完全不受媒體/長連線影響。
 
+// SMOKE_NO_SW=1:這一輪不讓 sw.js 接手。**預設不開**——正常狀態下 SW 那條路本來就該一起走。
+//   只在「這台機器進入送出方向壞掉的狀態」時用它拿一次可信的判讀:那個狀態下傳出去的位元組會被
+//   截斷/改壞(連 127.0.0.1 都會,判別法見全域 CLAUDE.md),而 SW 會把這一頁要傳的量從 ~9MB 拉到 ~84MB
+//   (它把整站資產也抓去快取)→ 幾乎必然踩到 → 核心 js 少載 → 一堆外掛整支不執行 → 報成「外掛沒掛上」。
+//   ⚠️ 用了它就是這一輪沒驗到 SW 那條路,判讀時要自己記得。真正的解是重開機。
+const SMOKE_CTX = process.env.SMOKE_NO_SW === '1' ? { serviceWorkers: 'block' } : {};
+
 // --- 第一輪:桌機視窗,驗桌機面向的 12 支外掛 + 地圖翻譯 ---
-const page = await browser.newPage();
+const page = await browser.newPage(SMOKE_CTX);
 watch(page);
 await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 const _deadline = Date.now() + 20000;   // 最多等 20 秒讓全部外掛初始化(CI 較慢)
@@ -170,7 +177,7 @@ const bmProblems = await page.evaluate(() => {
 
 // --- 第二輪:手機模擬(iPhone 13),專驗 afk-mobile 的三欄掛點在作者最新 DOM 上仍成立 ---
 //   afk-mobile 只在手機時 init,桌機那輪印不出 hooks OK;用真手機模擬(pointer:coarse/UA)讓它跑起來才驗得到。
-const mctx = await browser.newContext({ ...devices['iPhone 13'] });
+const mctx = await browser.newContext({ ...devices['iPhone 13'], ...SMOKE_CTX });
 const mpage = await mctx.newPage();
 watch(mpage);
 await mpage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
@@ -182,7 +189,7 @@ while (Date.now() < _mDeadline && !seen(needMobileOnly)) await mpage.waitForTime
 //   否則玩家關掉某支外掛後連把它開回來的入口都沒有,變成死結(2026-07-20 實際回報)。
 //   歷史成因都是「基礎設施依賴了可被關掉的外掛」:逃生門的 top 讀 afk-mobile 設的 --orig-bar-h、
 //   afk-skin 靠 afk-mobile 掛的 body.m-mobile 判斷手機。前兩輪都是「全開」狀態,永遠測不到。
-const octx = await browser.newContext({ ...devices['iPhone 13'] });
+const octx = await browser.newContext({ ...devices['iPhone 13'], ...SMOKE_CTX });
 const opage = await octx.newPage();
 watch(opage);
 await opage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
@@ -237,6 +244,7 @@ const toggleOffProblems = await opage.evaluate(() => {
 //   「分頁不捲(我方規則) + #game-screen 也不捲(上游桌機幾何)」→ 道具/防具/設定超出畫面的部分永遠
 //   看不到也滑不到(2026-07-25 玩家回報)。前三輪都是手機或桌機尺寸,正好落在這道縫的兩側,測不到。
 const tctx = await browser.newContext({
+  ...SMOKE_CTX,
   viewport: { width: 820, height: 1180 }, hasTouch: true, deviceScaleFactor: 2,
   userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
 });
