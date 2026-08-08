@@ -164,6 +164,7 @@
       out.push({
         t: '迴避王:' + who,
         c: muted ? 'text-slate-500' : 'text-rose-300',
+        strike: muted,   // 灰色還是會被當成「只是比較不重要」，劃掉才一眼看得出「這條現在沒作用」
         ti: muted ? '自動找 BOSS 進行中，這張圖暫時不迴避。到「迴避對象」指定要躲哪幾隻，那幾隻就會照樣躲。'
           : '這張圖遇到這些頭目會用瞬移卷軸離開'
       });
@@ -180,6 +181,9 @@
       sp.className = 'afk-statusadd font-bold ' + r.c;
       sp.textContent = r.t;
       if (r.ti) sp.title = r.ti;
+      // ⚠️ 用 inline style 不用 Tailwind 的 line-through:那份 css 是預先建置過的,
+      //   grep 過 css/tailwind-built.css **沒有**這條 → 寫了會安靜不生效。
+      if (r.strike) sp.style.textDecoration = 'line-through';
       return sp;
     });
     var track = buildSpan(); if (track) spans.push(track);   // 🔍 追蹤固定排最後（時間類，不是身上的增益）
