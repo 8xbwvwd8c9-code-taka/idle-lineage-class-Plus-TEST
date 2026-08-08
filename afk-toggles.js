@@ -78,7 +78,7 @@
         { id: 'nozoom', name: '手機取消雙擊放大', desc: '連點兩下不會放大畫面（兩指縮放照常）', group: '遊戲介面' },
         { id: 'statusicon', name: '手機狀態圖示縮小', desc: '手機上的狀態圖示縮成一半，不會蓋住戰鬥畫面', group: '遊戲介面' },
         { id: 'battlebuffs', name: '手機戰鬥狀態欄', desc: '戰鬥框下方直接顯示增益、異常與魔物追蹤', group: '遊戲介面' },
-        { id: 'trackinfo', name: '魔物追蹤剩餘時間', desc: '狀態欄顯示正在追蹤哪隻怪、還剩多久', group: '遊戲介面' },
+        { id: 'trackinfo', name: '狀態欄補充', desc: '「狀態」欄補上魔物追蹤剩餘時間、龍裔、血盟 Buff 與生效中的套裝', group: '遊戲介面' },
         { id: 'locksafe', name: '上鎖裝備不被收購', desc: '潘朵拉的收購與遺物布告欄不會拿走你上鎖的裝備', group: '遊戲介面' },
         { id: 'relicguard', name: '快速廢品不選遺物', desc: '背包「快速廢品」按全選時自動跳過遺物', group: '遊戲介面' },
         { id: 'junkmgr', name: '廢品標記管理', desc: '查看與刪除「以後掉到同款就自動標廢品」的記憶（自動化分頁開啟）', group: '遊戲介面' },

@@ -18,7 +18,7 @@
 | 8 | js/05 | 聖地遺物判斷改「先判地區再掃背包」(純 `&&` 順序對調·語意相同):原式每殺一隻怪都 `player.inv.some()` 掃全背包,大背包離線補跑吃掉大量時間 |
 | 9 | js/05 | 吉爾塔斯魔杖不再「每殺一隻怪就整個人重算」:buff 還在且加成值(依邪惡值)沒變時,重算前後的 `d` 完全一樣＝白算。**離線結算最大的單一熱點**——一個傭兵拿杖＝每殺重算兩次(`_allyLevelRecompute` 內部又叫一次玩家 `calcStats`),而每次重算都經 `getClanBuffStats` 重 parse 整包血盟。實測真實存檔 1 小時離線 54s→1.1s |
 
-## 外掛(69 支;載入順序見 `scripts/afk-plugin-block.html`)
+## 外掛(68 支;載入順序見 `scripts/afk-plugin-block.html`)
 
 | 檔案 | 功能 |
 |---|---|
@@ -69,8 +69,7 @@
 | `afk-touchtip.js` | 手機長按看資料(技能/商店/製作/收集冊/背包) |
 | `afk-notip.js` | 關閉物品懸停資訊框(預設關;技能說明保留、只在滑鼠環境動作;不印 hooks OK 不進 smoke) |
 | `afk-dollcursor.js` | 關閉魔法娃娃游標(預設關;包 `applyDollCursor`)。上游裝娃娃時會① body cursor 換娃娃圖 ② 加 `has-doll-cursor` 讓可點擊處也吃 `cursor:inherit!important` ③ 啟用跟著滑鼠跑的 `#doll-cursor-glow`。**手機看到的那顆「點一下留下的光點」就是③**(觸控會補送合成 mousemove),所以兩者是同一個開關、不能只關一半 |
-| `afk-buffinfo.js` | 狀態欄補上三種上游看不見的生效中效果(包 renderStatusEffects,比照 afk-trackinfo 補格):**龍裔**(龍血套裝 3 件的 10 秒減傷·不是技能→DB.skills 查不到、也沒有狀態圖示的圖檔可用)、**血盟 Buff**、**生效中的一般裝備套裝**(席琳的 n/5 上游本來就有,不重複)。兩處刻意「不自己抄一份」:①套裝門檻直接 regex 撈核心 `recomputeStats` 原始碼的 `setCheck['x'] >= N`——**認 js/02(數值真正生效處)而不是 js/10 那份底色判定**,兩邊對抗魔套裝就不一致(js/02 要 3 件、js/10 亮 2 件);撈不到就不顯示套裝那段。②血盟不自己查(`getClanBuffStats` 內含 localStorage 讀+解壓+JSON.parse,每 tick 呼叫=每秒十次)→ 改包住它、記下核心自己算出的結果,開關/貢獻不足自動關閉都會走 calcStats 故一定記得到。載入序**必須在 afk-trackinfo 之前**(讓「🔍 追蹤」留最後)**且在 afk-battlebuffs 之前**(手機鏡射才含這幾格) |
-| `afk-trackinfo.js` | 狀態欄顯示魔物追蹤剩餘時間(包 renderStatusEffects,補一格) |
+| `afk-trackinfo.js` | **狀態欄補充**(一支一個開關·包 renderStatusEffects 往「狀態:」那行補格):**🔍 魔物追蹤剩餘時間**(上游只有回去問 NPC 才看得到;人在被追蹤那張圖=青色、別張圖=灰色並提示要去哪)、**龍裔**(龍血套裝 3 件的 10 秒減傷·不是技能→DB.skills 查不到、也沒有狀態圖示的圖檔可用)、**血盟 Buff**、**生效中的一般裝備套裝**(席琳的 n/5 上游本來就有,不重複)。追蹤那格固定排最後(時間類、不是身上的增益)。兩處刻意「不自己抄一份」:①套裝門檻直接 regex 撈核心 `recomputeStats` 原始碼的 `setCheck[x] >= N`——**認 js/02(數值真正生效處)而不是 js/10 那份底色判定**,兩邊對抗魔套裝就不一致(js/02 要 3 件、js/10 亮 2 件);撈不到就不顯示套裝那段。②血盟不自己查(`getClanBuffStats` 內含 localStorage 讀+解壓+JSON.parse,每 tick 呼叫=每秒十次)→ 改包住它、記下核心自己算出的結果,開關/貢獻不足自動關閉都會走 calcStats 故一定記得到。⚠️ 載入序必須在 afk-battlebuffs 之前(手機鏡射才含這幾格) |
 | `afk-trackmaps.js` | 魔物追蹤選單補上 8 張選不到的圖(包 `obelMapList`)。核心只掃 MAP_CATEGORIES 的 wild/dungeon/special/rift/pirate_island 五類 → 不在那五類的圖天生選不到;上游對這種圖是逐張補進 `OBEL_EXTRA_MAPS`(遺忘之島/風木地監)。**只補選單、不碰出怪判定、也不代表進得去**——怎麼進場照原本規矩,選單只決定「到了那張圖之後哪隻怪變常見」。一律**無條件列出**(不看背包/進度),代價是沒解鎖的人也看得到。⚠️ **補的三批來歷不同,同步上游時照這張表判斷**:①**黑暗妖精聖地**=補上游的漏(上游 2026-06-30 建 `OBEL_EXTRA_MAPS` 時它還不存在、07-13 才誕生,全核心沒有一句話說它不能追蹤;唯一一張「8 種一般怪卻完全不能追蹤」的正常獵場,地獄奴隸自 v3.4.21 起只住這裡)。②**傲慢之塔2~10樓**=刻意偏離(上游只開放「持支配符→追蹤 pride_N_(N+9)」,N 剛好=有支配符的九組,而支配符道具說明把「可追蹤該樓層區間」寫成賣點 → 塔內追蹤本是支配符特權)。③**六張隱藏區域**=上游明確拒絕過、我們推翻(上游在建 `OBEL_EXTRA_MAPS` 的**同一個 commit** 寫下「用戶要求不開放追蹤」=看過後的決定;我們照樣開,理由是追蹤不會把人送進去、仍須自己在母圖手動傳送,「只能由母圖進入」沒被破壞)。隱藏區清單/名稱由核心 `HIDDEN_AREA_PARENT`/`HIDDEN_AREA_NAMES` 推導不寫死;名稱後補「(母圖名)」是**必要**的——隱藏區的「黑魔法研究室」跟地監既有的 `dark_magic_lab` 完全同名、是兩張不同的圖 |
 | `afk-battlebuffs.js` | 手機戰鬥框下方鏡射整條狀態欄(必須排在 afk-trackinfo 之後才含追蹤格) |
 | `afk-relicguard.js` | 快速廢品的「全選」跳過遺物(包 quickJunkSelectAll/buildQuickHeader) |
