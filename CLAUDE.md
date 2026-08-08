@@ -9,7 +9,6 @@
 | 玩家回報「離線結算跑很久」 | 跑 `node scripts/profile-offline.mjs --file <.testdata 檔> --slot N [--hot]`(拿真實存檔實測,別用新角色猜) |
 | 想加速離線結算 | `docs/offline-batch-settle.md`(**草稿·尚未實作**;開頭補註說明為什麼優先順序被降低) |
 | 查「手機耗電/發熱」熱點、做省電優化 | `docs/perf-battery.md`(熱點清單＋方案排序;第一批與「關閉光暈與濾鏡」已實作,其餘待議) |
-| 加詞綴來源(製作出遠古系 / 遺物可祝福) | `docs/affix-sources.md`(**規劃·尚未實作**;兩案的掛接點、要決定的事、既有 afk-ancdrop 的關係) |
 | 做「存檔搬家 / 跨裝置轉移」 | `docs/save-transfer.md`(**評估·尚未實作**;整包 localStorage 的打包/還原做法、五種方案的優缺點) |
 | 改 sw.js / 快取 / PWA | `docs/sw-pwa.md` |
 | 改手機或平板版面、覆寫上游手機樣式 | `docs/mobile.md` |
