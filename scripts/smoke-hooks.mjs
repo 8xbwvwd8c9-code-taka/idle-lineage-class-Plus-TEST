@@ -106,6 +106,26 @@ const bossAvoidProblems = await page.evaluate(() => {
     const left = mapState.mobs.filter((m) => m && m.noAutoTeleport).length;
     if (left) bad.push(`autoActions 跑完還有 ${left} 隻怪殘留 noAutoTeleport(旗標沒還原,會被寫進存檔並影響離線收益估算)`);
 
+    // 🔗 「自動找BOSS」開著時,挑到要躲的王仍要逃(afk-bossring 的 huntActive 會問 AFK_BOSSAVOID)。
+    //   這條耦合在「找王沒開」的狀態下永遠測得過——而找王開著正是玩家回報「設了躲黑長者卻沒用」的情境:
+    //   互斥條件看的是「這張圖找王功能有效」而非「正在召喚」,在有王池的圖上恆真 → 一旦耦合斷掉就是
+    //   「迴避頭目整個失效」,而且無錯誤訊息、hooks OK 照印。
+    const _ring = player.eq && player.eq.ring1;
+    const _ringKey = 'afk_bossring_on_' + currentSlot;
+    const _ringPrev = localStorage.getItem(_ringKey);
+    try {
+      player.eq = player.eq || {};
+      player.eq.ring1 = { id: 'acc_116', uid: 'smoke_ring', cnt: 1 };   // 傳送控制戒指:找王的前提
+      localStorage.setItem(_ringKey, '1');
+      if (typeof hasTeleportRing === 'function' && hasTeleportRing() && window.AFK_BOSSRING) {
+        if (!run(PICK)) bad.push(`「自動找BOSS」開著時,挑到要躲的 ${DB.mobs[PICK].n} 沒有逃離(找王與迴避頭目的互斥沒有拆到「隻」的層級 → 迴避頭目在有王池的圖上等於整個失效)`);
+        if (run(OTHER)) bad.push(`「自動找BOSS」開著時,沒挑到的 ${DB.mobs[OTHER].n} 也被逃離了(找王會被自己的逃離瞬移走,卷軸燒光還打不到王)`);
+      }
+    } finally {
+      if (_ring) player.eq.ring1 = _ring; else delete player.eq.ring1;
+      if (_ringPrev === null) localStorage.removeItem(_ringKey); else localStorage.setItem(_ringKey, _ringPrev);
+    }
+
     AFK_BOSSAVOID.set(MAP, []);
     tp.checked = false;
     mapState.mobs = [null, null, null, null, null];

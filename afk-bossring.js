@@ -122,12 +122,34 @@
     function mapHasBossPool() {
         try { return (DB.maps[mapState.current] || []).some(function (id) { return DB.mobs[id] && DB.mobs[id].boss; }); } catch (e) { return false; }
     }
+    // 玩家在「迴避頭目」裡指定了要躲哪幾隻,而且場上就是那一隻 → 這一拍讓開,讓核心照常瞬移逃離。
+    //   為什麼要這個:互斥條件不看「正在召喚」而是「這張圖找王功能有效」,所以在有王池的圖上它是**恆真**的
+    //   → 找王開著時迴避頭目一次都不會觸發(玩家回報:設了躲黑長者、打飛龍,勾與不勾一樣會遇到)。
+    //   兩者其實只在「要不要躲場上這一隻」上衝突,拆到「隻」的層級就能並存:
+    //     沒挑的(飛龍)照召照打、挑了的(黑長者)照樣逃。
+    //   ⚠️ 只在「玩家有指定」時讓開:沒指定＝全部都躲,那時讓開等於把找王功能自己關掉
+    //     (剛召來的王下一拍就被瞬移走,卷軸燒光還打不到王)——那正是當初要互斥的原因。
+    //   ⚠️ 讀 AFK_BOSSAVOID 前先確認它在:那支可以被玩家關掉,關掉就退回原本的互斥。
+    function avoidWanted() {
+        try {
+            var A = window.AFK_BOSSAVOID;
+            if (!A || typeof A.shouldAvoid !== 'function' || typeof A.picked !== 'function') return false;
+            var ids = A.picked(mapState.current);
+            if (!ids || !ids.length) return false;
+            var mobs = mapState.mobs || [];
+            // shouldAvoid 已含「上游標了不躲的不算」與「沒挑到的不算」——afk-bossavoid 的 autoActions
+            // wrapper 在核心讀 _huntBoss 之前就把沒挑到的標好了,所以這裡問到的就是最終答案。
+            for (var i = 0; i < mobs.length; i++) if (mobs[i] && mobs[i].boss && A.shouldAvoid(mobs[i])) return true;
+        } catch (e) {}
+        return false;
+    }
+
     // 「自動找 BOSS 進行中」:核心「迴避頭目(瞬移卷軸)」以此互斥(找BOSS開著就抑制逃離,
     // 否則剛召來的王立刻被逃離瞬移走;比照 main 版核心的 _huntBoss 旗標)。
     function huntActive() {
         try {
             return isOn() && typeof state !== 'undefined' && state && state.running && !state.ff
-                && hasTeleportRing() && !excludedMap() && mapHasBossPool();
+                && hasTeleportRing() && !excludedMap() && mapHasBossPool() && !avoidWanted();
         } catch (e) { return false; }
     }
     window.AFK_BOSSRING = { huntActive: huntActive };
