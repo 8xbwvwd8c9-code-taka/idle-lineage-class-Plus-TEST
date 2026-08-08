@@ -302,7 +302,7 @@
         (document.head || document.documentElement).appendChild(s);
     }
 
-    // 摺疊時把標題後半的「(點擊存入 ▶)」換成灰色的「(已收起)」:
+    // 摺疊時把標題後半的「(點擊存入 ▶)」換成灰色的「(已收起,點擊展開)」:
     //   ① 那句話在摺疊時是錯的指示 —— 清單都收起來了,根本沒東西可點。
     //   ② 狀態是記住的,下次開倉庫會直接看到「背包」與「倉庫」兩行標題疊在一起、背包底下空空的,
     //      不講清楚會被讀成「背包是空的」。
@@ -316,7 +316,7 @@
         var i = orig.indexOf('（');
         lab.appendChild(document.createTextNode(i > 0 ? orig.slice(0, i) : orig));
         var tag = document.createElement('span');
-        tag.textContent = '（已收起）';
+        tag.textContent = '（已收起，點擊展開）';
         tag.setAttribute('style', 'color:#94a3b8;font-weight:400;');
         lab.appendChild(tag);
     }
