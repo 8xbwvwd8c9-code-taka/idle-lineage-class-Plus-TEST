@@ -24,7 +24,10 @@ const server = createServer(async (req, res) => {
     if (p === '/') p = '/index.html';
     const file = join(process.cwd(), normalize(p).replace(/^(\.\.[/\\])+/, ''));
     const buf = await readFile(file);
-    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
+    // content-length 是為了讓「回應被截斷」變成看得見的錯誤:少了它 node 走 chunked,
+    // 截斷會以 net::ERR_INCOMPLETE_CHUNKED_ENCODING 出現、而且訊息裡看不出少了多少;
+    // 帶上長度後截斷會直接回報 net::ERR_CONTENT_LENGTH_MISMATCH，一眼認得出不是外掛的問題。
+    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'content-length': buf.length });
     res.end(buf);
   } catch {
     res.writeHead(404);
@@ -35,6 +38,14 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch();
 const logs = [];
+// 「檔案沒載完」與「外掛沒掛上」看起來一模一樣(都是那支外掛沒印 hooks OK),但要修的地方完全不同。
+// 每頁都收 pageerror / requestfailed,失敗時先印這兩份 → 不必再靠重跑猜是不是假紅。
+const pageErrs = [], netFails = [];
+const watch = (pg) => {
+  pg.on('console', (m) => logs.push(m.text()));
+  pg.on('pageerror', (e) => pageErrs.push(String(e.message).split('\n')[0].slice(0, 140)));
+  pg.on('requestfailed', (q) => netFails.push(q.url().split('/').pop().split('?')[0] + ' ← ' + ((q.failure() && q.failure().errorText) || '?')));
+};
 
 // 各外掛的開機 log:'[AFK] hooks OK' / '[AFK-mobile] hooks OK' / …(集中定義,goto 後輪詢等待 + 最後判定共用)
 // afk-mobile 為「桌機零接觸」設計——只有偵測到手機尺寸/裝置才會 init 並印出 hooks OK(見 afk-mobile.js);
@@ -51,7 +62,7 @@ const seen = (list) => list.every((n) => logs.some((l) => l.includes(n) && l.inc
 
 // --- 第一輪:桌機視窗,驗桌機面向的 12 支外掛 + 地圖翻譯 ---
 const page = await browser.newPage();
-page.on('console', (m) => logs.push(m.text()));
+watch(page);
 await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 const _deadline = Date.now() + 20000;   // 最多等 20 秒讓全部外掛初始化(CI 較慢)
 while (Date.now() < _deadline && !seen(need)) await page.waitForTimeout(200);
@@ -141,7 +152,7 @@ const bmProblems = await page.evaluate(() => {
 //   afk-mobile 只在手機時 init,桌機那輪印不出 hooks OK;用真手機模擬(pointer:coarse/UA)讓它跑起來才驗得到。
 const mctx = await browser.newContext({ ...devices['iPhone 13'] });
 const mpage = await mctx.newPage();
-mpage.on('console', (m) => logs.push(m.text()));
+watch(mpage);
 await mpage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 const _mDeadline = Date.now() + 20000;
 while (Date.now() < _mDeadline && !seen(needMobileOnly)) await mpage.waitForTimeout(200);
@@ -153,6 +164,7 @@ while (Date.now() < _mDeadline && !seen(needMobileOnly)) await mpage.waitForTime
 //   afk-skin 靠 afk-mobile 掛的 body.m-mobile 判斷手機。前兩輪都是「全開」狀態,永遠測不到。
 const octx = await browser.newContext({ ...devices['iPhone 13'] });
 const opage = await octx.newPage();
+watch(opage);
 await opage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 await opage.evaluate(() => localStorage.setItem('afk_toggle_mobile', '0'));
 await opage.reload({ waitUntil: 'domcontentloaded' });
@@ -209,6 +221,7 @@ const tctx = await browser.newContext({
   userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
 });
 const tpage = await tctx.newPage();
+watch(tpage);
 await tpage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 await tpage.waitForTimeout(3000);
 const tabletProblems = await tpage.evaluate(() => {
@@ -361,7 +374,18 @@ const allOK = Object.values(okMap).every(Boolean);
 
 console.log('外掛掛點檢查:', JSON.stringify(okMap, null, 0));
 if (!allOK) {
-  console.error('冒煙測試失敗:有外掛沒有成功 hook(原作者可能改了 DOM / id)。');
+  console.error('冒煙測試失敗:有外掛沒有成功 hook。');
+  // 先問「檔案有沒有載完」再怪外掛:載入期炸掉的外掛整支不執行,看起來就跟「掛點被改掉」一模一樣。
+  if (netFails.length) {
+    console.error(`  ⚠ 有 ${netFails.length} 個請求失敗 → 先修這個,不是外掛的問題:`);
+    for (const f of [...new Set(netFails)].slice(0, 8)) console.error('    ' + f);
+  }
+  if (pageErrs.length) {
+    console.error(`  ⚠ 頁面丟出 ${pageErrs.length} 個錯誤(前幾個):`);
+    for (const e of [...new Set(pageErrs)].slice(0, 6)) console.error('    ' + e);
+  }
+  if (!netFails.length && !pageErrs.length) console.error('  (沒有網路失敗也沒有頁面錯誤 → 才是真的掛點被改掉,原作者可能改了 DOM / id)');
+  else console.error('  ↑ 這台機器開機久了會進入「送出方向的傳輸壞掉」的狀態(連 127.0.0.1 都會),重開機即可;判別法見全域 CLAUDE.md。');
   process.exit(1);
 }
 
