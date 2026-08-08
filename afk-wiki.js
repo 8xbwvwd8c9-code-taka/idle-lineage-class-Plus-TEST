@@ -241,9 +241,11 @@
     } catch (e) { return null; }
   }
   // 法師魔法的「可學」清單:哪個職業到幾級可學(規則同遊戲 skillReqLv)
+  // ⚠ 回傳值會被呼叫端 esc() 後才輸出(它同時吃「需 XX Lv N」這種純文字)→ 這裡一律純文字,
+  //   夾 <b> 只會讓標籤原樣印在畫面上(寒冰尖刺踩過)。
   function learnLine(id, sk) {
     var only = skillGrantOnly(id);
-    if (only) return '<b style="color:#fca5a5;">沒有魔法書、學不到</b>——只有裝備「' + esc(only.join('、')) + '」才用得出來';
+    if (only) return '沒有魔法書、學不到——只有裝備「' + only.join('、') + '」才用得出來';
     var p = ['法師 ' + sk.reqM];
     if (sk.reqE !== undefined) p.push('妖精 ' + sk.reqE);
     else if (typeof MAGIC_MASTERY_SKILLS !== 'undefined' && MAGIC_MASTERY_SKILLS.indexOf(id) >= 0) p.push('妖精 ' + sk.reqM + '（需魔導精通）');
