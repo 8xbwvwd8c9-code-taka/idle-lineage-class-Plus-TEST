@@ -1,5 +1,5 @@
 /* ============================================================================
- * afk-ancdrop.js — 遠古系裝備的兩個來源：金卡怪掉落、以及「該分類收集滿」後的製作
+ * afk-ancdrop.js — 遠古系裝備的兩個來源：金卡怪掉落、以及「該分類收集滿」後的非擊殺取得
  *
  * 為什麼做得起來：遠古系在遊戲裡是「絕版」而不是「不存在」——物品的 anc 欄位、四階
  *   效果(js/08 applyAncStats)、名稱前綴配色、道具說明、背包排序、堆疊簽章、廢品標記
@@ -10,16 +10,19 @@
  *
  * 規則（兩個來源共用同一套機率與階級，都以「與祝福相同的機率」擲、四階各 25%）：
  *   ① 擊殺掉落——該怪的卡片收集冊已開到金階(cardDexTier>=3)。
- *   ② 製作——成品所屬的**裝備收集冊分類已全收集**(js/16 equipCatComplete)。
- *      分類全收集本來就有永久加成(EQUIP_CAT_BONUS)，玩家早就在追這件事，這是第二層獎勵。
+ *   ② 非擊殺取得（製作、兌換、任務獎勵…）——**該物品自己所屬的裝備收集冊分類已全收集**
+ *      (js/16 equipCatComplete)。分類全收集本來就有永久加成(EQUIP_CAT_BONUS)，玩家早就在
+ *      追這件事，這是第二層獎勵。
+ *      ⭐ 條件寫成「不是打怪掉的」而不是逐條列來源（製作、職業試煉、50 級試煉、傭兵試煉…）：
+ *        逐條掛鉤漏掉一條就會出現「原版兌換會出遠古、外掛批次兌換不會」這種說不清的不一致，
+ *        而每次上游加新兌換都要再補一條。通則只有一句話，玩家也記得住。
  *   ⭐ 機率不自己訂死，直接用核心傳進 rollAffixesNew 的第一參 baseChance
- *   （js/08 gainItem 給的是「一般怪 1%、頭目 10%、製作 10%」）→ 上游哪天調整祝福率，
- *   這裡自動跟著，不必兩邊各記一份數字。席琳倍率是原函式內部算的、拿不到，故不套用。
+ *   （js/08 gainItem 給的是「一般怪 1%、頭目 10%、製作 10%、其餘來源 1%」）→ 上游哪天調整
+ *   祝福率，這裡自動跟著，不必兩邊各記一份數字。席琳倍率是原函式內部算的、拿不到，故不套用。
  *
- * ⚠️ 製作那條要認「正在產生的那件東西」，不能只認 doCraft 的成品 id：
- *   核心 ensureMaterial 會在同一次 doCraft 裡遞迴補製中間物（也走 gainItem），
- *   只看成品 id 會讓中間物拿成品的分類去判定（判錯，還白白吃掉一個掉落亂數序號）。
- *   故另包 gainItem 記下當下的 id，只有「id 就是這次要做的成品」才算數。
+ * ⚠️ 要認「正在產生的那件東西」，所以另包 gainItem 記下當下的 id：rollAffixesNew 自己不知道
+ *   在替哪件東西擲。核心自動補製的中間物走的是「不附詞綴」的路（forceNormal），本來就不會
+ *   進到這裡，不必另外排除。
  *
  * 掛接：包 rollAffixesNew（核心決定「這件掉落品要不要祝福」的唯一入口）。
  *   ⭐ 只包這一個點就涵蓋全部路徑——一般掉落(js/08 gainItem)、血盟/攻城掉寶(js/04)、
@@ -44,7 +47,7 @@
 
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
         id: 'ancdrop', name: '遠古系裝備來源', group: '遊戲玩法', def: true,
-        desc: '金卡怪掉落的裝備、以及該分類已收集滿的製作成品，有機會帶遠古系詞綴'
+        desc: '金卡怪掉落的裝備、以及該分類已收集滿時製作或兌換到的裝備，有機會帶遠古系詞綴'
     });
 
     if (typeof window.rollAffixesNew !== 'function') {
@@ -71,27 +74,27 @@
         return cardDexTier(nm) >= 3 ? mi : null;
     }
 
-    // ── 來源②：製作（成品所屬的裝備收集冊分類已全收集）──────────────────
+    // ── 來源②：非擊殺取得，且該物品自己的分類已全收集 ──────────────────
     // ⚠️ EQUIP_ITEM_CAT / equipCatComplete 在核心是 const/function 宣告＝不在 window 上，用裸名讀
     function catDone(id) {
         if (!id || typeof EQUIP_ITEM_CAT === 'undefined' || typeof equipCatComplete !== 'function') return false;
         var ck = EQUIP_ITEM_CAT[id];
         try { return !!ck && equipCatComplete(ck); } catch (e) { return false; }
     }
-    var _craftGoal = null;   // doCraft 執行期間＝這次要做的成品 id
-    var _gainId = null;      // gainItem 執行期間＝正在產生的物品 id（中間物也會經過）
-    function craftAncOk() { return !!(_craftGoal && _gainId === _craftGoal && catDone(_craftGoal)); }
+    var _gainId = null;   // gainItem 執行期間＝正在產生的物品 id
 
-    if (typeof window.doCraft === 'function' && !window.doCraft.__afkAncDrop) {
-        var _origCraft = window.doCraft;
-        window.doCraft = function (npcId, recipeIdx) {
-            var rc = (typeof CRAFT_RECIPES !== 'undefined' && CRAFT_RECIPES[npcId]) ? CRAFT_RECIPES[npcId][recipeIdx] : null;
-            var prev = _craftGoal;
-            _craftGoal = rc ? rc.result : null;
-            try { return _origCraft.apply(this, arguments); } finally { _craftGoal = prev; }
-        };
-        window.doCraft.__afkAncDrop = true;
+    // 「是不是打怪掉的」問核心的掉落來源上下文：擊殺期間 _lootMobInfo 有值，且 killMob 的 finally
+    // 會清掉（核心註解寫明是為了不外洩到兌換/任務），所以 null＝非擊殺。離線走 afk-offline 1:1
+    // 重放 killMob，一樣有值。
+    // ⚠️ 這個判斷成立的前提是「發掉落的路徑都會設 _lootMobInfo」。上游那套統計式離線結算
+    //   (js/27) 不設，但它自 v3.7.94 起已被上游從 index.html 移除、我方也沒載入；
+    //   哪天它被加回來，這裡要一起重驗（否則離線掉落會被當成非擊殺、繞過金卡條件）——
+    //   docs/offline.md 的「js/27 加回來要重測」清單裡有列。
+    function nonKillAncOk() {
+        if (typeof _lootMobInfo !== 'undefined' && _lootMobInfo) return false;
+        return catDone(_gainId);
     }
+
     if (typeof window.gainItem === 'function' && !window.gainItem.__afkAncDrop) {
         var _origGain = window.gainItem;
         window.gainItem = function (id) {
@@ -106,7 +109,7 @@
     window.rollAffixesNew = function (baseChance) {
         var r = _origRoll.apply(this, arguments);
         try {
-            if (enabled() && r && !r.anc && (goldCardMob() || craftAncOk())) {   // ⚠️ 先問條件，確定要抽了才動 lootRng（見檔頭）
+            if (enabled() && r && !r.anc && (goldCardMob() || nonKillAncOk())) {   // ⚠️ 先問條件，確定要抽了才動 lootRng（見檔頭）
                 var p = Number(baseChance);
                 if (!Number.isFinite(p)) p = 0.01;             // 無參呼叫（js/04 血盟掉寶）＝核心預設值
                 p = Math.max(0, Math.min(1, p));
@@ -148,7 +151,7 @@
                     var done = typeof _equipBookCat !== 'undefined' && typeof equipCatComplete === 'function' && equipCatComplete(_equipBookCat);
                     if (head && !host.querySelector('.afk-ancdrop-eqnote')) {
                         head.insertAdjacentHTML('afterend', '<div class="afk-ancdrop-eqnote c-ancient text-sm mb-3">'
-                            + (done ? '已收集完成：製作這類裝備有機會做出遠古系。' : '收集完成後，製作這類裝備有機會做出遠古系。') + '</div>');
+                            + (done ? '已收集完成：製作或兌換到的這類裝備，有機會是遠古系。' : '收集完成後，製作或兌換到的這類裝備有機會是遠古系。') + '</div>');
                     }
                 } catch (e) { /* 說明沒插上不影響功能本體 */ }
             }
@@ -175,5 +178,5 @@
         window.craftActionHtml.__afkAncDrop = true;
     }
 
-    console.log('[AFK-ancdrop] hooks OK — 金卡怪掉落／分類收集滿的製作可帶遠古系詞綴。');
+    console.log('[AFK-ancdrop] hooks OK — 金卡怪掉落／分類收集滿後的非擊殺取得可帶遠古系詞綴。');
 })();
