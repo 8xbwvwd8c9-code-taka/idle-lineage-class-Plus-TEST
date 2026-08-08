@@ -396,6 +396,17 @@ const equipPageProblems = await page.evaluate(async () => {
 await browser.close();
 server.close();
 
+// 每一種失敗都先報一次「這一輪的檔案有沒有載完」:載入被截斷時,任何一項檢查都可能長成
+// 「某某東西不存在」,跟真的壞掉分不出來。判準:兩份都是 0 才是真的要修被測的東西。
+function die() {
+  if (netFails.length || pageErrs.length) {
+    console.error(`  ⚠ 這一輪有 ${netFails.length} 個請求失敗、${pageErrs.length} 個頁面錯誤 —— 檔案沒載完也會長成這樣,先排除這個原因再修上面那條:`);
+    for (const f of [...new Set(netFails)].slice(0, 5)) console.error('    ' + f);
+    for (const e of [...new Set(pageErrs)].slice(0, 4)) console.error('    ' + e);
+  }
+  process.exit(1);
+}
+
 const okMap = {};
 for (const n of [...need, ...needMobileOnly]) okMap[n] = logs.some((l) => l.includes(n) && l.includes('hooks OK'));
 const allOK = Object.values(okMap).every(Boolean);
@@ -414,7 +425,7 @@ if (!allOK) {
   }
   if (!netFails.length && !pageErrs.length) console.error('  (沒有網路失敗也沒有頁面錯誤 → 才是真的掛點被改掉,原作者可能改了 DOM / id)');
   else console.error('  ↑ 這台機器開機久了會進入「送出方向的傳輸壞掉」的狀態(連 127.0.0.1 都會),重開機即可;判別法見全域 CLAUDE.md。');
-  process.exit(1);
+  die();
 }
 
 if (bossAvoidProblems.length) {
@@ -423,7 +434,7 @@ if (bossAvoidProblems.length) {
   console.error('  判準:afk-bossavoid 是在 autoActions 之前把「沒挑到的 BOSS」暫時標成 noAutoTeleport,');
   console.error('       借上游自己那行 some(m => m.boss && !m.noAutoTeleport) 少看到牠們;');
   console.error('       上游一旦改掉那行的判斷方式,這支就會安靜失效(hooks OK 照印、無錯誤訊息)。');
-  process.exit(1);
+  die();
 }
 
 if (bmProblems.length) {
@@ -432,14 +443,14 @@ if (bmProblems.length) {
   console.error('  判準:afk-bmprice 不重刻公式,借核心 pandoraBuyOrderAllowed / pandoraBuyOrderPriceProfile /');
   console.error('       pandoraCardPriceRange 拿行情價區間。上游改名或改欄位就會回 null。');
   console.error('  ⚠ 修的時候絕不可改用 pandoraBuyOrderPrice——它走 lootRng,查個價就推進玩家存檔的亂數序號。');
-  process.exit(1);
+  die();
 }
 
 if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
-  process.exit(1);
+  die();
 }
 
 if (pluginPanelProblems.length) {
@@ -447,14 +458,14 @@ if (pluginPanelProblems.length) {
   for (const p of pluginPanelProblems) console.error('  ' + p);
   console.error('  判準:#afk-plugin-panel 的座標(left/width/top/bottom)是照上游 4:3 舞台算的,');
   console.error('       上游搬動 #login-title-layer / #login-meta-layer 就要跟著調(見 afk-skin.js 的 CSS)。');
-  process.exit(1);
+  die();
 }
 
 if (equipPageProblems.length) {
   console.error('冒煙測試失敗:小百科「裝備」分頁的覆蓋/版面有問題:');
   for (const p of equipPageProblems) console.error('  ' + p);
   console.error('  判準:部位對不上分組桶的裝備要落進「❓ 其他部位」,不可整組消失(見 afk-wiki.js 的 equipGroupKey / EQUIP_GROUPS)。');
-  process.exit(1);
+  die();
 }
 
 if (tabletHudProblems.length) {
@@ -462,7 +473,7 @@ if (tabletHudProblems.length) {
   for (const p of tabletHudProblems) console.error('  ' + p);
   console.error('  判準:不要放寬上游那條 @media(會變成桌機三欄裡的第四欄,擠掉戰鬥區與喝水鈕),');
   console.error('       改由外掛自己判平板缺口、掛自己的 body class 走第二套版面(見 afk-battlehud.js 的 placeStrip)。');
-  process.exit(1);
+  die();
 }
 
 if (tabletProblems.length) {
@@ -470,20 +481,20 @@ if (tabletProblems.length) {
   for (const p of tabletProblems) console.error('  ' + p);
   console.error('  判準:要覆寫上游「寫在 media query 裡」的樣式時,自己的規則必須包進同一條 media query');
   console.error('       (afk-mobile.js 的 MOBILE_GEOM_MQ);只寫 body.m-mobile 會讓觸控平板拿到混搭幾何。');
-  process.exit(1);
+  die();
 }
 
 if (untranslatedMaps.length) {
   console.error('冒煙測試失敗:掉落查詢有地圖名未翻譯(會顯示英文 id),請補進 afk-extradata.js 的 AFK_EXTRA.mapName:');
   for (const [id, nm] of untranslatedMaps) console.error(`  ${id}  ->  ${nm}`);
-  process.exit(1);
+  die();
 }
 
 if (!/dark/.test(colorScheme)) {
   console.error(`冒煙測試失敗::root 的 color-scheme 是「${colorScheme}」,不是 dark。`);
   console.error('  後果:Android Chrome 的自動深色主題會把部分 sprite 反成白色人形,而且重繪/重登/清快取都無效。');
   console.error('  修法:scripts/afk-plugin-block.html 裡那行 <style>:root{color-scheme:dark}</style> 要在,並同步進 index.html。');
-  process.exit(1);
+  die();
 }
 
 console.log('冒煙測試通過:外掛 hooks OK,且掉落查詢地圖名全部已翻譯。');
