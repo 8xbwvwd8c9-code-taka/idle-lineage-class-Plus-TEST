@@ -147,12 +147,17 @@
     // 「自動找 BOSS 進行中」:核心「迴避頭目(瞬移卷軸)」以此互斥(找BOSS開著就抑制逃離,
     // 否則剛召來的王立刻被逃離瞬移走;比照 main 版核心的 _huntBoss 旗標)。
     function huntActive() {
+        try { return huntEnabled() && !avoidWanted(); } catch (e) { return false; }
+    }
+    // 「這張圖的找王功能是有效的」——不含上面那個「這一拍讓開」。狀態欄要顯示的是這個:
+    // 用 huntActive 的話,場上一出現要躲的王就會閃掉一格,玩家會以為功能被關掉了。
+    function huntEnabled() {
         try {
             return isOn() && typeof state !== 'undefined' && state && state.running && !state.ff
-                && hasTeleportRing() && !excludedMap() && mapHasBossPool() && !avoidWanted();
+                && hasTeleportRing() && !excludedMap() && mapHasBossPool();
         } catch (e) { return false; }
     }
-    window.AFK_BOSSRING = { huntActive: huntActive };
+    window.AFK_BOSSRING = { huntActive: huntActive, huntEnabled: huntEnabled };
 
     var WAIT_SPAWN_TICKS = 100;      // 瞬移後等 BOSS 生成(10 秒),不連續空瞬移
     var WAIT_BLOCKED_TICKS = 3000;   // 卷軸沒被消耗=這張圖禁傳送 → 退避 5 分鐘再試

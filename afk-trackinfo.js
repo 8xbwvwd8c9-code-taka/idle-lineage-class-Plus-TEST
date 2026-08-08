@@ -1,12 +1,12 @@
 /* ============================================================================
- * afk-trackinfo.js — 狀態欄補充（魔物追蹤時間／龍裔／血盟 Buff／生效中套裝）
+ * afk-trackinfo.js — 狀態欄補充（魔物追蹤時間／龍裔／血盟 Buff／生效中套裝／找王／迴避王）
  *
  * 一支外掛、一個開關，補的都是同一件事：**明明生效中、玩家卻在畫面上看不到的東西**，
  * 全部接在能力面板底部那行「狀態:」後面（手機由 afk-battlebuffs 鏡射到戰鬥框下方）。
  *
  *   狀態: 加速 / 保護罩 … / 龍裔 / 血盟Buff / 寒冰套裝 / 🔍 追蹤:黑豹 3時12分
  *
- * 四格各自的來歷：
+ * 各格的來歷：
  *   ・🔍 魔物追蹤——城堡的追蹤 NPC（奧貝勒／赫特／帝倫）花金幣追蹤指定地圖的指定怪，效期 8 小時，
  *     期間該圖出怪有 50%（戴小獵犬的追蹤鼻 70%）固定變成那隻。上游只有「回去問 NPC」才看得到還剩多久。
  *     人在被追蹤的那張圖 → 青色（正在生效）；在別張圖 → 灰色，滑鼠移上去（或長按）說要去哪張圖。
@@ -143,6 +143,31 @@
     if (clanActive()) out.push({ t: '血盟Buff', c: 'text-emerald-300' });
     var s = activeSets();
     for (var i = 0; i < s.length; i++) out.push({ t: s[i], c: 'text-amber-400' });   // 琥珀金＝裝備分頁套裝欄位的框光同色
+
+    // ── 找王／迴避王 ────────────────────────────────────────────
+    // 這兩個都設定在別的面板裡，戰鬥中完全看不出「現在到底有沒有在作用」；更麻煩的是它們會互相影響：
+    // 沒指定要躲哪幾隻時，找王開著會把迴避整個壓住。玩家回報過「設了躲黑長者、勾與不勾一樣會遇到」
+    // 就是這個狀況，而畫面上一點線索都沒有 → 這兩格要能看出「壓住了」。
+    // ⚠️ 兩支來源外掛都可以被玩家關掉：關掉找王＝那格不顯示；關掉迴避外掛＝退回上游的「全部都躲」，
+    //   而核心那顆勾選框仍在 → 照樣顯示「迴避王:全部」，都是正確的。
+    var br = window.AFK_BOSSRING, ba = window.AFK_BOSSAVOID;
+    var hunting = false;
+    try { hunting = !!(br && typeof br.huntEnabled === 'function' && br.huntEnabled()); } catch (e) {}
+    if (hunting) out.push({ t: '找王', c: 'text-sky-300', ti: '傳送控制戒指自動找 BOSS：場上沒王就用瞬移卷軸召一隻來' });
+    var tchk = document.getElementById('set-teleport');
+    if (tchk && tchk.checked) {
+      var ids = null;
+      try { ids = (ba && typeof ba.picked === 'function') ? ba.picked(mapState.current) : null; } catch (e2) {}
+      var who = (!ids || !ids.length) ? '全部'
+        : (ids.length === 1 && DB.mobs[ids[0]] ? DB.mobs[ids[0]].n : ids.length + ' 隻');
+      var muted = hunting && (!ids || !ids.length);   // 沒指定＝全部都躲 → 這時才會被找王壓住
+      out.push({
+        t: '迴避王:' + who,
+        c: muted ? 'text-slate-500' : 'text-rose-300',
+        ti: muted ? '自動找 BOSS 進行中，這張圖暫時不迴避。到「迴避對象」指定要躲哪幾隻，那幾隻就會照樣躲。'
+          : '這張圖遇到這些頭目會用瞬移卷軸離開'
+      });
+    }
     return out;
   }
 
@@ -154,6 +179,7 @@
       var sp = document.createElement('span');
       sp.className = 'afk-statusadd font-bold ' + r.c;
       sp.textContent = r.t;
+      if (r.ti) sp.title = r.ti;
       return sp;
     });
     var track = buildSpan(); if (track) spans.push(track);   // 🔍 追蹤固定排最後（時間類，不是身上的增益）
@@ -186,7 +212,7 @@
       if (on()) { try { append(); } catch (e) {} }
       return r;
     };
-    console.log('[AFK-trackinfo] hooks OK — 狀態欄補上魔物追蹤時間／龍裔／血盟 Buff／生效中套裝。');
+    console.log('[AFK-trackinfo] hooks OK — 狀態欄補上魔物追蹤時間／龍裔／血盟 Buff／生效中套裝／找王／迴避王。');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
