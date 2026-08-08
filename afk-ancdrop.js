@@ -178,5 +178,60 @@
         window.craftActionHtml.__afkAncDrop = true;
     }
 
+    // 試煉面板：跟製作面板同一個道理——玩家站在這裡決定要不要換，不標他不會知道這一件可能出遠古。
+    //   三個面板（職業 15/30/45、50 級、傭兵專屬）獎勵的寫法有兩種：前兩者包在
+    //   <b class="text-sky-300">名稱</b> 裡，傭兵那份是「獎勵：甲、乙」的純文字 → 兩種各配一個錨點。
+    //   錨不到就原樣返回（上游改寫法＝標記自己消失，面板照常用），與製作面板那個標記同一種失效方式。
+    var ANC_TAG = '<span class="c-ancient text-xs font-bold" title="這個分類已收集完成，兌換到的有機會帶遠古系詞綴">✦遠古</span>';
+    var _trialIds = null;
+    function trialRewardIds() {   // 三個面板共用一份：多帶幾個不相干的 id 無害（是靠名字比對到才標）
+        if (_trialIds) return _trialIds;
+        var out = [];
+        try { for (var k in TRIAL_Q) (TRIAL_Q[k].rewards || []).forEach(function (id) { out.push(id); }); } catch (e) {}
+        try { for (var c in TRIAL_50_CFG) (TRIAL_50_CFG[c].rewards || []).forEach(function (r) { out.push(r.id || r); }); } catch (e) {}
+        return (_trialIds = out);
+    }
+    function markTrialRewards(html) {
+        if (!enabled() || typeof html !== 'string' || !html) return html;
+        try {
+            var names = {}, any = false;
+            trialRewardIds().forEach(function (id) {
+                var d = DB.items[id];
+                if (d && d.n && !names[d.n] && catDone(id)) { names[d.n] = 1; any = true; }
+            });
+            if (!any) return html;
+            for (var nm in names) {
+                var b = '<b class="text-sky-300">' + nm + '</b>';
+                if (html.indexOf(b) >= 0) html = html.split(b).join(b + ANC_TAG);
+            }
+            html = html.replace(/(獎勵：)([^<]+)(<\/div>)/g, function (m, head, list, tail) {
+                return head + list.split('、').map(function (s) { return names[s] ? s + ANC_TAG : s; }).join('、') + tail;
+            });
+        } catch (e) { /* 標記沒加上不影響面板 */ }
+        return html;
+    }
+    ['trialQHTML', 'build50TrialHTML'].forEach(function (fn) {
+        if (typeof window[fn] !== 'function' || window[fn].__afkAncDrop) return;
+        var o = window[fn];
+        window[fn] = function () { return markTrialRewards(o.apply(this, arguments)); };
+        window[fn].__afkAncDrop = true;
+    });
+    // 傭兵專屬任務面板是直接寫 div.innerHTML、不回傳字串 → 跑完再就地改寫。
+    // 面板上的按鈕全是 inline onclick，重寫 innerHTML 不會弄丟事件。
+    if (typeof window.renderAllyQuestManager === 'function' && !window.renderAllyQuestManager.__afkAncDrop) {
+        var _origAllyQ = window.renderAllyQuestManager;
+        window.renderAllyQuestManager = function (div) {
+            var ret = _origAllyQ.apply(this, arguments);
+            try {
+                if (div && div.innerHTML) {
+                    var next = markTrialRewards(div.innerHTML);
+                    if (next !== div.innerHTML) div.innerHTML = next;
+                }
+            } catch (e) { /* 同上 */ }
+            return ret;
+        };
+        window.renderAllyQuestManager.__afkAncDrop = true;
+    }
+
     console.log('[AFK-ancdrop] hooks OK — 金卡怪掉落／分類收集滿後的非擊殺取得可帶遠古系詞綴。');
 })();
