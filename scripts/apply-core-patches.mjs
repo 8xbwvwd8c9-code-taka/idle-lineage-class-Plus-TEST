@@ -302,7 +302,30 @@ function patchGiltasWandRecompute() {
   console.log(`[patch] 吉爾塔斯魔杖不再每殺必重算（${FILE}）`);
 }
 
-const PATCHES = [patchMaybeSpawnMobs, patchTradEnHook, patch16Slots, patchPetAnimTicker, patchBossHuntEscape, patchUseItemKeepModal, patchSellNowNoForce, patchInsigniaOrder, patchGiltasWandRecompute];
+// ── 補丁 10：js/10 裝備分頁的部位條列補上「魔眼」欄 ──────────────────
+//   上游把魔眼欄(slot:'eye'·地龍之魔眼)只加進 js/19 的圖形裝備視窗第 2 頁,js/10 renderTabs 裡
+//   那份寫死的部位清單 _baseSlots 沒跟上 → 條列式看不到這個欄位。
+//   上游看不出問題(圖形視窗蓋在條列上面),但加掛版的 afk-eqlist 預設就是走條列 → 玩家裝上魔眼後
+//   整個介面都找不到它,只能從背包點回去才知道有沒有裝上(玩家回報 2026-08-09)。
+//   清單是 renderTabs 內的區域 const,外掛包不住;自己在 DOM 補一列則要複製整段列渲染(套裝發光/
+//   角標/點擊開視窗),故走錨點補丁改那個字面值——同一個 forEach 畫出來,行為與其他欄位完全一致。
+//   ⚠ 第一頁是 4×6=24 格,補進去後一般裝備欄 21(戰士雙斧 22)格,仍在 24 內 → 遺骸 8 格照樣落在第 25 格起。
+function patchEyeSlotInEquipList() {
+  const FILE = 'js/10-ui-tabs.js';
+  let s = readFileSync(FILE, 'utf8');
+  if (s.includes("{k:'eye',n:'魔眼'}")) { already++; return; }
+
+  const FROM = "{k:'doll',n:'魔法娃娃'},{k:'arrow',n:'箭矢'}]";
+  const TO = "{k:'doll',n:'魔法娃娃'},{k:'arrow',n:'箭矢'},{k:'eye',n:'魔眼'}]";
+  if (s.indexOf(FROM) < 0) throw new Error(`[${FILE}] 找不到裝備分頁部位清單(_baseSlots)的錨點——上游可能改寫了該清單,請人工檢查魔眼欄是否已由上游補上。`);
+  s = s.replace(FROM, TO);
+
+  if (!CHECK) writeFileSync(FILE, s);
+  changed++;
+  console.log(`[patch] 裝備條列補上魔眼欄（${FILE}）`);
+}
+
+const PATCHES = [patchMaybeSpawnMobs, patchTradEnHook, patch16Slots, patchPetAnimTicker, patchBossHuntEscape, patchUseItemKeepModal, patchSellNowNoForce, patchInsigniaOrder, patchGiltasWandRecompute, patchEyeSlotInEquipList];
 
 try {
   for (const p of PATCHES) p();
