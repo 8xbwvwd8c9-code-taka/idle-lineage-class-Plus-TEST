@@ -50,7 +50,6 @@
         }
     }
 
-    var CONFIRM_OVER = 30;        // 超過這麼多格才跳確認(少量搬移不打斷手感)
     var _batch = false;           // 批次模式開關
     var selInv = {}, selWh = {};  // 已勾選的 uid(跨重繪保留;執行後清空)
 
@@ -162,16 +161,6 @@
         try { renderWarehouseNPC(document.getElementById('interaction-content')); } catch (e) {}
     }
 
-    // 大批量先確認(取出/存入都會動到存檔,手滑點到全選+執行代價不小)
-    function confirmRun(kind, uids, fn) {
-        var c = uids.length;
-        if (c <= CONFIRM_OVER) { fn(uids); return; }
-        var msg = '即將' + kind + ' ' + c + ' 格（整疊搬移）。\n\n這會寫入存檔與倉庫各一次，過程中請不要關掉頁面。';
-        if (window.AFK_UI && AFK_UI.confirm) {
-            AFK_UI.confirm({ title: '批次' + kind, message: msg, okText: '開始' + kind, cancelText: '再想想', onOk: function () { fn(uids); } });
-        } else if (window.confirm(msg)) fn(uids);
-    }
-
     // ── UI ────────────────────────────────────────────────────────
     function css() {
         if (document.getElementById('afk-whb-css')) return;
@@ -272,7 +261,7 @@
                 return function () {
                     var uids = []; for (var k in sel) if (sel[k]) uids.push(k);
                     if (!uids.length) return;
-                    confirmRun(act, uids, side === 'wh' ? runWithdraw : runDeposit);
+                    (side === 'wh' ? runWithdraw : runDeposit)(uids);
                 };
             })(d.side, d.sel, d.act), !cnt);
         }
