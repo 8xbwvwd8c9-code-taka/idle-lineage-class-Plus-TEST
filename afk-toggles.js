@@ -145,9 +145,13 @@
             + '<div><div style="font-size:17px;font-weight:700;">🎚️ 外掛開關</div>'
             + '<div style="font-size:12px;color:#94a3b8;margin-top:3px;">某個外掛出問題時，先關掉它就能用原版繼續玩，作者修好再打開。改完按「重新整理」生效。</div></div>'
             + '<button id="afk-tg-close" style="flex:none;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:6px 12px;cursor:pointer;">關閉</button></div>'
-            // 「只看我改過的」：玩家關掉某項之後往往忘了自己關過什麼（回報過），要他從幾十項裡捲著找出來不合理。
-            + '<div style="padding:9px 14px 0;flex:0 0 auto;"><button id="afk-tg-onlychanged"'
-            + ' style="background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;">'
+            // 工具列：搜尋 ＋「只看我改過的」（玩家關掉某項之後往往忘了自己關過什麼（回報過），要他從幾十項裡捲著找出來不合理）
+            //   ⚠ 搜尋框 font-size 一定要 ≥16px：iOS Safari 對小於 16px 的輸入框會在 focus 時自動放大整頁，之後縮不回去。
+            + '<div style="padding:9px 14px 0;flex:0 0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+            + '<input id="afk-tg-search" type="search" placeholder="搜尋外掛名稱或說明"'
+            + ' style="flex:1 1 150px;min-width:0;background:#0b1222;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:6px 10px;font-size:16px;font-family:inherit;">'
+            + '<button id="afk-tg-onlychanged"'
+            + ' style="flex:none;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit;">'
             + '只看我改過的（' + changedCount() + '）</button></div>'
             + '<div id="afk-tg-list" style="padding:10px 14px;flex:1 1 auto;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;">'
             + '<div id="afk-tg-empty" style="display:none;color:#94a3b8;padding:14px;text-align:center;">目前全部都是預設值。</div>';
@@ -197,16 +201,29 @@
         });
         card.querySelector('#afk-tg-reload').addEventListener('click', function () { try { location.reload(); } catch (e) { close(); } });
 
-        // 只看我改過的：切換時才重算一次（勾選當下不即時隱藏那一列，不然剛按到的東西會在眼前消失）
-        var onlyChanged = false, ocBtn = card.querySelector('#afk-tg-onlychanged');
-        ocBtn.addEventListener('click', function () {
-            onlyChanged = !onlyChanged;
+        // ── 篩選：搜尋 ＋ 只看我改過的（兩者同時生效，共用同一支 applyFilter）──
+        // 勾選當下不重算（剛按到的東西會在眼前消失）；只有按鈕切換／打字才重算。
+        var onlyChanged = false, query = '', ocBtn = card.querySelector('#afk-tg-onlychanged');
+        var searchBox = card.querySelector('#afk-tg-search'), emptyEl = card.querySelector('#afk-tg-empty');
+
+        function matchQuery(r) {   // 空白分隔＝全部都要中；名稱／說明／分類／id 都算
+            if (!query) return true;
+            var hay = ((r.name || '') + ' ' + (r.desc || '') + ' ' + (r.group || '') + ' ' + r.id).toLowerCase();
+            var toks = query.split(/\s+/);
+            for (var i = 0; i < toks.length; i++) if (toks[i] && hay.indexOf(toks[i]) < 0) return false;
+            return true;
+        }
+        function applyFilter() {
+            var vis = {};
+            registry.forEach(function (r) { vis[r.id] = (!onlyChanged || isChanged(r)) && matchQuery(r); });
+            // 子選項被搜到 → 父項一起顯示：縮排那列孤零零掛著看不出是誰的子項，也看不出「父項關掉它就失效」。
+            //   只在搜尋時做——「只看我改過的」原本就刻意只列改過的，不能被這條拉回沒改過的父項。
+            if (query && !onlyChanged) registry.forEach(function (r) { if (r.parent && vis[r.id]) vis[r.parent] = true; });
             var n = 0;
             card.querySelectorAll('label[data-tgrow]').forEach(function (row) {
-                var r = find(row.getAttribute('data-tgrow'));
-                var show = !onlyChanged || (r && isChanged(r));
+                var show = !!vis[row.getAttribute('data-tgrow')];
                 row.style.display = show ? 'flex' : 'none';   // ⚠ 不可設成 ''：那會把行內樣式的 display:flex 一起清掉，整列版面散開
-                if (show && onlyChanged) n++;
+                if (show) n++;
             });
             card.querySelectorAll('[data-tggroup]').forEach(function (h) {   // 整組都被濾掉就連標題一起收
                 var g = h.getAttribute('data-tggroup');
@@ -214,10 +231,22 @@
                     .some(function (row) { return row.style.display !== 'none'; });
                 h.style.display = any ? '' : 'none';
             });
-            card.querySelector('#afk-tg-empty').style.display = (onlyChanged && n === 0) ? '' : 'none';
-            ocBtn.textContent = onlyChanged ? '看全部（' + n + ' 項改過）' : '只看我改過的（' + changedCount() + '）';
+            if (emptyEl) {
+                emptyEl.textContent = query ? '找不到符合的外掛。' : '目前全部都是預設值。';
+                emptyEl.style.display = (registry.length && n === 0) ? '' : 'none';
+            }
+        }
+
+        ocBtn.addEventListener('click', function () {
+            onlyChanged = !onlyChanged;
+            ocBtn.textContent = onlyChanged ? '看全部（改過 ' + changedCount() + ' 項）' : '只看我改過的（' + changedCount() + '）';
             ocBtn.style.background = onlyChanged ? '#0e7490' : '#1e293b';
             ocBtn.style.color = onlyChanged ? '#e0f2fe' : '#cbd5e1';
+            applyFilter();
+        });
+        if (searchBox) searchBox.addEventListener('input', function () {
+            query = String(searchBox.value || '').trim().toLowerCase();
+            applyFilter();
         });
     }
 
