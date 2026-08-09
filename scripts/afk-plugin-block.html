@@ -86,6 +86,8 @@
     <script src="afk-attrbatch.js"></script>
     <!-- 詛咒卷軸一鍵弱化＋補回滿強化裝備的入口（包 openModal，批次呼叫 executeCurseDeEnhance） -->
     <script src="afk-cursebatch.js"></script>
+    <!-- 防手滑賣掉裝備：①物品視窗剛開的 450ms 不吃點擊（雙擊裝備失手時第二下會打在販賣上）②賣好裝備前先問；排在 afk-cursebatch 之後＝在最外層包 openModal -->
+    <script src="afk-sellguard.js"></script>
     <!-- 手機戰鬥框下方鏡射整條狀態欄：必須排在 afk-trackinfo 之後（要含它補的追蹤／龍裔／血盟／套裝那幾格） -->
     <script src="afk-battlebuffs.js"></script>
     <script src="afk-toast.js"></script>
