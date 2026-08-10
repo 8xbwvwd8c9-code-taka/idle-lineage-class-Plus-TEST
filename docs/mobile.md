@@ -22,6 +22,16 @@ afk-mobile 的 `detectMobile()` 跟上游 CSS 的手機斷點**判定範圍不�
 
 判準:**要覆寫的上游宣告是包在 media query 裡的嗎?** 是 → 自己的規則也包同一條;只有純位移／封頂(padding、max-height)這種「哪種幾何都成立」的才可以裸寫。**此規則已有 smoke 把關**:`smoke-hooks.mjs` 第四輪用 820×1180 觸控 context 驗「`#game-screen` 不捲時右欄分頁必須各自捲得動」,裸寫 `body.m-mobile` 覆寫上游手機規則會當場紅(捲動這組的條件常數=afk-mobile 的 `MOBILE_GEOM_MQ`)。
 
+## 把長清單攤平成單層捲動,代價是全站每一次「讀版面」都變貴
+
+afk-mobile ⑤ 為了避免雙層捲軸,把 `#tab-content-panel` 攤平交給 `#game-screen` 單層捲。副作用是整份背包變成一條數萬像素高的流(真實存檔 2083 件 → 防具分頁 1,405 列、近 58,000px),**瀏覽器一次就得把每一列都排版**;之後遊戲裡任何一次 `getBoundingClientRect()` / 設 `scrollTop` 都要重排整份清單(實測一次 82ms),而遊戲每秒做幾十次這種事(8fps 貼圖換向、狀態列對位、掉一件東西就重建清單)。**症狀不會指向清單**,而是「手指在滑的時候整個畫面閃爍破圖」(2026-08-10 玩家回報)。
+
+判準:**要把一個「筆數沒有上限」的清單攤進主捲動流之前,先問「它會變多高?」** 超過幾千像素就要給每一列 `content-visibility: auto` + `contain-intrinsic-size`(列高一致時零風險,afk-invlist 已用;實測大卡頓一趟 6 次 → 1 次、有效 fps 30 → 51)。
+
+⚠ `contain-intrinsic-size` 給的是**內容框**高度,padding 與框線瀏覽器會自己加 —— 填 border-box 的值會讓捲動高度多算三成(踩過:58,045 → 79,199)。
+
+⚠ **量這類東西時,一定要先等離線補跑跑完**(`__afk.busy()` / `catchupActive()` / `state.ff` 都要是 false)。補跑是 91% duty cycle 的非同步迴圈,分頁剛載入時它還在跑,每一輪殘量不同 → 數字會漂到讓你得出完全相反的結論(這次先誤判成「濾鏡與發光動畫是主因」,重量後兩者其實都量不出差別)。
+
 ## 手機的檢視 class 只有 `mview-left` / `mview-center` / `mview-right`——沒有 `mview-battle`
 
 外掛要判斷「現在在不在戰鬥那一欄」時,**戰鬥＝`mview-center`**(名字的單一真實來源是 afk-mobile 的 `setView()`,它只會加這三個)。寫成不存在的名字**不會報錯**,只會讓條件恆真/恆假 → 元素在手機上永遠不出現(或永遠不隱藏),而且**畫面上完全看不出是誰把它藏起來**,很容易往「z-index/版面被蓋住」的方向查半天(afk-training 的木人場 DPS HUD 就這樣在手機上從來沒出現過;afk-dograce 當初也踩過,才在原地留了警告註解)。
