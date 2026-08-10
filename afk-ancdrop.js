@@ -1,5 +1,6 @@
 /* ============================================================================
- * afk-ancdrop.js — 遠古系裝備的兩個來源：金卡怪掉落、以及「該分類收集滿」後的非擊殺取得
+ * afk-ancdrop.js — 遠古系裝備的來源與傳承
+ *   來源①金卡怪掉落　②「該分類收集滿」後的非擊殺取得　③製作／精煉把本體的詞綴帶到成品
  *
  * 為什麼做得起來：遠古系在遊戲裡是「絕版」而不是「不存在」——物品的 anc 欄位、四階
  *   效果(js/08 applyAncStats)、名稱前綴配色、道具說明、背包排序、堆疊簽章、廢品標記
@@ -8,7 +9,8 @@
  *   全 repo 沒有任何地方會把 anc 設成 true → 玩家手上的遠古裝備都是舊存檔遺產。
  *   所以這支只補「來源」一件事，其餘全部沿用核心既有支援。
  *
- * 規則（兩個來源共用同一套機率與階級，都以「與祝福相同的機率」擲、四階各 25%）：
+ * 規則（①② 兩個來源共用同一套機率與階級，都以「與祝福相同的機率」擲、四階各 25%；
+ *       ③ 不擲骰，見下方「來源③」那段）：
  *   ① 擊殺掉落——該怪的卡片收集冊已開到金階(cardDexTier>=3)。
  *   ② 非擊殺取得（製作、兌換、任務獎勵…）——**該物品自己所屬的裝備收集冊分類已全收集**
  *      (js/16 equipCatComplete)。分類全收集本來就有永久加成(EQUIP_CAT_BONUS)，玩家早就在
@@ -46,8 +48,8 @@
     var TIER_WEIGHTS = [[true, 25], ['eternal', 25], ['immortal', 25], ['primordial', 25]];
 
     if (window.AFK_TOGGLES) AFK_TOGGLES.register({
-        id: 'ancdrop', name: '遠古系裝備來源', group: '遊戲玩法', def: true,
-        desc: '金卡怪掉落的裝備、以及該分類已收集滿時製作或兌換到的裝備，有機會帶遠古系詞綴'
+        id: 'ancdrop', name: '遠古系裝備', group: '遊戲玩法', def: true,
+        desc: '金卡怪掉落的、以及該分類已收集滿時製作或兌換到的裝備，有機會帶遠古系詞綴；拿帶詞綴的裝備去製作或精煉也會保留'
     });
 
     if (typeof window.rollAffixesNew !== 'function') {
@@ -105,10 +107,92 @@
         window.gainItem.__afkAncDrop = true;
     }
 
+    // ── 來源③：製作／精煉時，把被當成本體吃掉的那件裝備的詞綴帶到成品 ──────
+    // 上游只替**祝福**開了這條旁路（js/14 consumeMaterialById 累加 _craftBlessCount → doCraft
+    //   讓前幾件成品強制祝福），遠古系沒有 → 成品是 gainItem 全新生的、anc 空的。於是
+    //   「太初 祝福的 冰之女王的耳環 Lv0」精煉成 Lv1 後**祝福留著、太初不見**（玩家回報，已重現）。
+    //   遠古系在我方是上面兩個來源的正常產出、不是絕版遺產，升級就蒸發＝逼玩家永遠停在 Lv0。
+    // 範圍＝**配方裡 cnt=1 的裝備類材料**（全掃 103 條符合）。刻意不限縮成「id 帶 _0/_1 的升級鏈」
+    //   （那只有 36 條）——武官雙手劍→真．冥皇執行劍、黑暗鋼爪→銀光鋼爪…語意一樣是升級，
+    //   漏掉會生出「耳環會留、其他不留」的不一致；而這遊戲沒有「拿裝備純粹湊數」的配方，
+    //   放寬到 103 條不會變成洗詞綴管道。
+    // 🚨 **四種詞綴平級、不可「取較高階」**：applyAncStats(js/08) 是永恆傷害+4／不朽命中+4／
+    //   太初魔傷+2＝三種風格不是三個等級，TIER_WEIGHTS 也各 25%。別被 ancientSortRank(js/10)
+    //   的名字騙了，那支只是背包**排序**用（第一版就是這樣寫成比大小的）。比大小的後果是
+    //   玩家的太初被隨機換成永恆＝詞綴照樣被洗掉，正是這段要防的事。
+    var _watch = null;   // 本次製作要盯的「本體」id 清單；null＝不在製作中
+    var _carry = [];     // 這次實際吃掉的本體身上的遠古系詞綴（依消耗順序）
+
+    function isGear(id) {
+        if (typeof DB === 'undefined' || !DB.items) return false;
+        var d = DB.items[id];
+        return !!d && (d.type === 'wpn' || d.type === 'arm' || d.type === 'acc');
+    }
+    // 該 id 目前在背包＋倉庫的所有堆疊：uid → { cnt, anc }
+    function snapStacks(id) {
+        var m = {}, i, it;
+        try {
+            var inv = (typeof player !== 'undefined' && player && player.inv) || [];
+            for (i = 0; i < inv.length; i++) { it = inv[i]; if (it && it.id === id && it.uid != null) m[it.uid] = { cnt: it.cnt || 1, anc: it.anc || false }; }
+        } catch (e) {}
+        try {
+            var w = (typeof loadWarehouse === 'function') ? loadWarehouse() : null;
+            var wi = (w && w.items) || [];
+            // ⚠ 背包與倉庫可能出現同一個 uid（玩家存檔實際存在這種損壞）→ 前綴分開記，不要互相蓋掉
+            for (i = 0; i < wi.length; i++) { it = wi[i]; if (it && it.id === id && it.uid != null) m['w:' + it.uid] = { cnt: it.cnt || 1, anc: it.anc || false }; }
+        } catch (e) {}
+        return m;
+    }
+    // 認「實際被吃掉的是哪幾件」用 diff，**刻意不複製核心那套白板/低強化優先的挑選排序**
+    //   （js/14:1025 與 whConsumeId 各一份，權重含 en/anc/bless/attr/seteff）——照抄等於多一份
+    //   會跟上游走鐘的規則；diff 則是上游怎麼挑、我們就怎麼認。
+    if (typeof window.consumeMaterialById === 'function' && !window.consumeMaterialById.__afkAncDrop) {
+        var _origConsume = window.consumeMaterialById;
+        window.consumeMaterialById = function (id) {
+            if (!_watch || !enabled() || _watch.indexOf(id) < 0) return _origConsume.apply(this, arguments);
+            var before = snapStacks(id);
+            var ret = _origConsume.apply(this, arguments);
+            try {
+                var after = snapStacks(id);
+                for (var k in before) {
+                    var b = before[k], a = after[k];
+                    var gone = b.cnt - (a ? a.cnt : 0);
+                    if (gone <= 0 || !b.anc) continue;
+                    for (var i = 0; i < gone; i++) _carry.push(b.anc);
+                }
+            } catch (e) {}
+            return ret;
+        };
+        window.consumeMaterialById.__afkAncDrop = true;
+    }
+    if (typeof window.doCraft === 'function' && !window.doCraft.__afkAncDrop) {
+        var _origCraft = window.doCraft;
+        window.doCraft = function (npcId, recipeIdx) {
+            if (!enabled() || typeof CRAFT_RECIPES === 'undefined') return _origCraft.apply(this, arguments);
+            var prevW = _watch, prevC = _carry;
+            try {
+                var rc = CRAFT_RECIPES[npcId] && CRAFT_RECIPES[npcId][recipeIdx];
+                var ids = [];
+                if (rc && rc.req) for (var i = 0; i < rc.req.length; i++) {
+                    var q = rc.req[i];
+                    if (q && q.cnt === 1 && isGear(q.id)) ids.push(q.id);   // cnt=1 的裝備類＝本體
+                }
+                _watch = ids; _carry = [];
+                return _origCraft.apply(this, arguments);
+            } finally { _watch = prevW; _carry = prevC; }
+        };
+        window.doCraft.__afkAncDrop = true;
+    }
+
     var _origRoll = window.rollAffixesNew;
     window.rollAffixesNew = function (baseChance) {
         var r = _origRoll.apply(this, arguments);
         try {
+            // 來源③ 傳承優先：材料本體帶什麼、成品就是什麼。
+            //   ⭐ 有傳承就**直接回傳、不擲骰** —— 同檔頭那條「先確認條件才動 lootRng」的紀律：
+            //   骰了也會被蓋掉，卻白白吃掉一個 committed RNG 序號、位移之後的掉落。
+            //   一次做多件時「件數對件數」發（同祝福）：吃掉幾件帶詞綴的本體，前幾件成品就帶。
+            if (enabled() && r && _watch && _carry.length) { r.anc = _carry.shift(); return r; }
             if (enabled() && r && !r.anc && (goldCardMob() || nonKillAncOk())) {   // ⚠️ 先問條件，確定要抽了才動 lootRng（見檔頭）
                 var p = Number(baseChance);
                 if (!Number.isFinite(p)) p = 0.01;             // 無參呼叫（js/04 血盟掉寶）＝核心預設值
