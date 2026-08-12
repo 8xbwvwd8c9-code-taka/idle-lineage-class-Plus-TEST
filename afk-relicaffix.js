@@ -68,23 +68,29 @@
         } catch (e) { return null; }   // 任何意外都當作沒這功能：掉落絕不可因此壞掉
     };
 
+    // ⚠️ 缺任何一支就整支停用並印 warn，不可「安靜地永遠不觸發」——這支外掛沒中詞綴時本來就長得跟
+    //   原版一模一樣，靠玩家或畫面看不出差別；上游哪天改掉 relicDexHas，沒有這道檢查就會變成
+    //   「console 照印 hooks OK、功能其實整支死掉」，而且 smoke 也驗不到（它只看有沒有印 hooks OK）。
+    var missing = ['gainItem', 'relicDexHas', 'lootRng'].filter(function (n) { return typeof window[n] !== 'function'; });
+    if (missing.length) {
+        console.warn('[AFK-relicaffix] 缺少核心函式（' + missing.join(',') + '），重複遺物詞綴停用（遊戲照常運作）。');
+        delete window.__afkRelicAffix;
+        return;
+    }
+
     // 記下「這件遺物在本次取得之前有沒有收錄過」。gainItem 內部會先 registerRelicObtained，
     // 所以只有在這裡（呼叫原函式之前）問得到真正的答案。
-    if (typeof window.gainItem === 'function' && !window.gainItem.__afkRelicAffix) {
+    if (!window.gainItem.__afkRelicAffix) {
         var _origGain = window.gainItem;
         window.gainItem = function (id) {
             var prev = _dupRelic;
             try {
                 var d = DB.items[id];
-                _dupRelic = !!(d && d.relic && typeof relicDexHas === 'function' && relicDexHas(id));
+                _dupRelic = !!(d && d.relic && relicDexHas(id));
             } catch (e) { _dupRelic = false; }
             try { return _origGain.apply(this, arguments); } finally { _dupRelic = prev; }
         };
         window.gainItem.__afkRelicAffix = true;
-    } else if (typeof window.gainItem !== 'function') {
-        console.warn('[AFK-relicaffix] 找不到 gainItem，重複遺物詞綴停用（遊戲照常運作）。');
-        delete window.__afkRelicAffix;
-        return;
     }
 
     // 遺物收集冊頁首補一句——玩家正是在這裡看到「這隻已經收了」，不講他不會知道再打還有意義。
