@@ -116,6 +116,13 @@
     //   （那只有 36 條）——武官雙手劍→真．冥皇執行劍、黑暗鋼爪→銀光鋼爪…語意一樣是升級，
     //   漏掉會生出「耳環會留、其他不留」的不一致；而這遊戲沒有「拿裝備純粹湊數」的配方，
     //   放寬到 103 條不會變成洗詞綴管道。
+    // 🚨 要watch**整條遞迴展開**的配方，不能只看最上層那一層：doCraft 缺中間物時會先跑 ensureMaterial
+    //   自動補製（js/14:1122），本體是在那裡面被吃掉的。只 watch 最上層＝「冰之女王的耳環 Lv0 一次做到
+    //   Lv8」時，被吃掉的是 Lv0（在 ensureMaterial 裡）而最上層只 watch 到 Lv7 → 認不到、太初蒸發；
+    //   一階一階手動做卻會保留（每次的本體都在最上層）——**同一件事做法不同結果不同**，玩家回報的正是這個。
+    //   祝福沒事是因為上游的 _craftBlessCount 是全域計數、ensureMaterial 那幾層也照樣累加。
+    // 中間物是 ensureMaterial 用 forceNormal 生的白板、不會走 rollAffixesNew → _carry 不會在半路被消費掉，
+    //   一路留到最後那幾件成品，與祝福同口徑（吃到幾件帶詞綴的本體，前幾件成品就帶）。
     // 🚨 **四種詞綴平級、不可「取較高階」**：applyAncStats(js/08) 是永恆傷害+4／不朽命中+4／
     //   太初魔傷+2＝三種風格不是三個等級，TIER_WEIGHTS 也各 25%。別被 ancientSortRank(js/10)
     //   的名字騙了，那支只是背包**排序**用（第一版就是這樣寫成比大小的）。比大小的後果是
@@ -165,6 +172,17 @@
         };
         window.consumeMaterialById.__afkAncDrop = true;
     }
+    // 展開配方樹收集「這次可能被吃掉的本體」。⚠️ RECIPE_BY_RESULT 是核心 let 宣告＝不在 window 上，用裸名讀
+    function collectWatch(rc, out, depth) {
+        if (!rc || !rc.req || depth > 24) return;   // depth 上限比照 js/14 ensureMaterial，兼防配方成環
+        for (var i = 0; i < rc.req.length; i++) {
+            var q = rc.req[i];
+            if (!q || !q.id) continue;
+            if (q.cnt === 1 && isGear(q.id) && out.indexOf(q.id) < 0) out.push(q.id);   // cnt=1 的裝備類＝本體
+            var sub = (typeof RECIPE_BY_RESULT !== 'undefined' && RECIPE_BY_RESULT) ? RECIPE_BY_RESULT[q.id] : null;
+            if (sub) collectWatch(sub, out, depth + 1);   // 這個材料自己也是做出來的 → ensureMaterial 會往下吃
+        }
+    }
     if (typeof window.doCraft === 'function' && !window.doCraft.__afkAncDrop) {
         var _origCraft = window.doCraft;
         window.doCraft = function (npcId, recipeIdx) {
@@ -173,10 +191,8 @@
             try {
                 var rc = CRAFT_RECIPES[npcId] && CRAFT_RECIPES[npcId][recipeIdx];
                 var ids = [];
-                if (rc && rc.req) for (var i = 0; i < rc.req.length; i++) {
-                    var q = rc.req[i];
-                    if (q && q.cnt === 1 && isGear(q.id)) ids.push(q.id);   // cnt=1 的裝備類＝本體
-                }
+                try { if (typeof RECIPE_BY_RESULT === 'undefined' || !RECIPE_BY_RESULT) buildRecipeIndex(); } catch (e) {}
+                collectWatch(rc, ids, 0);
                 _watch = ids; _carry = [];
                 return _origCraft.apply(this, arguments);
             } finally { _watch = prevW; _carry = prevC; }
