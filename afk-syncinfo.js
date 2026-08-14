@@ -50,7 +50,8 @@
     var foot = document.createElement('div');
     foot.id = 'afk-syncinfo';
     foot.innerHTML =
-      '<div class="afk-si-row"><span class="afk-si-author">原作者：<span class="afk-si-name">秋玥</span></span></div>' +
+      '<div class="afk-si-row"><span class="afk-si-author">原作者：<span class="afk-si-name">秋玥</span></span>' +
+      '（<a class="afk-si-link" href="https://shines871.github.io/idle-lineage-class/" target="_blank" rel="noopener">原版連結</a>）</div>' +
       '<div class="afk-si-row afk-si-verrow"><span class="afk-si-ver"></span></div>' +
       '<div class="afk-si-row afk-si-updrow"><span class="afk-si-upd"></span></div>';
     menu.appendChild(foot);
