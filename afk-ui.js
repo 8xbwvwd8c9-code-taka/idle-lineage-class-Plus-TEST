@@ -179,7 +179,9 @@
 })();
 
 // ── 共用「確認彈窗」AFK_UI.confirm(opts) ─────────────────────────────
-//   opts:{ title, message, okText='確定', cancelText='取消', danger=false, onOk, onCancel, onDismiss }
+//   opts:{ title, message, okText='確定', cancelText='取消', danger=false, requireText, onOk, onCancel, onDismiss }
+//   requireText='某句話' → 視窗多一個輸入框,打對那句話之前「確定」按不下去(擋手滑點過去)。
+//     不傳＝完全維持原本行為(沒有輸入框、確定一開始就能按)。
 //   非阻塞(confirm 無法同步回傳,故用 callback):確定→onOk();取消鈕→onCancel()。
 //   點背景/ESC/返回鍵=「沒做決定」→ onDismiss();沒給 onDismiss 才退回 onCancel()(與舊行為相容)。
 //   ⚠ 兩個鈕代表「二選一」(如靈魂之球選哪把魔杖)時務必給 onDismiss,否則誤觸背景會幫玩家做掉決定。
@@ -187,9 +189,11 @@
 //   優雅降級:document.body 未就緒退回原生 confirm。
 (function () {
   var U = (window.AFK_UI = window.AFK_UI || {});
-  var modal = null, titleEl, msgEl, okBtn, cancelBtn, layer = null, showing = false, cb = {}, pendingOk = false, decided = false;
+  var modal = null, titleEl, msgEl, reqEl, reqLabel, inputEl, okBtn, cancelBtn, layer = null, showing = false, cb = {}, pendingOk = false, decided = false;
+  var reqText = '';   // 非空＝要先打對這句話才解鎖「確定」
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function syncOk() { okBtn.disabled = !!reqText && inputEl.value.trim() !== reqText; }
 
   function injectCss() {
     if (document.getElementById('afk-confirm-css')) return;
@@ -198,11 +202,20 @@
     s.textContent = [
       '#afk-confirm-modal{display:none;position:fixed;inset:0;top:var(--orig-bar-h,0px);z-index:10001;background:rgba(2,6,23,0.7);align-items:center;justify-content:center;padding:24px;}',
       '#afk-confirm-modal.open{display:flex;}',
-      '#afk-confirm-card{width:min(380px,92vw);background:#0f172a;border:1px solid #334155;border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.6);}',
-      '#afk-confirm-title{color:#f8fafc;font-size:16px;font-weight:bold;text-align:center;margin-bottom:10px;}',
-      '#afk-confirm-msg{color:#cbd5e1;font-size:14px;line-height:1.7;text-align:center;margin-bottom:18px;word-break:break-word;}',
-      '#afk-confirm-btns{display:flex;gap:10px;}',
+      // 直向 flex＋標題/輸入框/按鈕固定、只有訊息區捲動:訊息長一點(或畫面矮一點)時,
+      //   底部按鈕永遠留在畫面上。`max-height:100%` 是相對 modal 的內容區,而 modal 已經
+      //   讓開橫幅(top:--orig-bar-h)並留了 24px padding → 不必自己重算橫幅高度。
+      //   (320x568 這種小螢幕實測會超出畫面、按不到「確定」;同 afk-toggles 面板的作法。)
+      '#afk-confirm-card{width:min(380px,92vw);max-height:100%;display:flex;flex-direction:column;background:#0f172a;border:1px solid #334155;border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.6);}',
+      '#afk-confirm-title{flex:none;color:#f8fafc;font-size:16px;font-weight:bold;text-align:center;margin-bottom:10px;}',
+      '#afk-confirm-msg{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;color:#cbd5e1;font-size:14px;line-height:1.7;text-align:center;margin-bottom:18px;word-break:break-word;}',
+      '#afk-confirm-req{flex:none;margin:0 0 16px;color:#cbd5e1;font-size:13px;text-align:left;line-height:1.6;}',
+      '#afk-confirm-req b{color:#fbbf24;}',
+      // ⚠ font-size 一定要 ≥16px:iOS Safari 對小於 16px 的輸入框會在 focus 時自動放大整頁,之後縮不回去。
+      '#afk-confirm-input{width:100%;margin-top:7px;box-sizing:border-box;background:#0b1222;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:9px 11px;font-size:16px;font-family:inherit;}',
+      '#afk-confirm-btns{flex:none;display:flex;gap:10px;}',
       '.afk-confirm-btn{flex:1;padding:11px;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;font-family:inherit;border:1px solid;}',
+      '.afk-confirm-btn:disabled{opacity:.4;cursor:not-allowed;}',
       '#afk-confirm-cancel{border-color:#475569;background:#334155;color:#e2e8f0;}',
       '#afk-confirm-cancel:active{background:#1e293b;}',
       '#afk-confirm-ok{border-color:#d97706;background:#b45309;color:#fff;}',
@@ -220,6 +233,8 @@
       '<div id="afk-confirm-card">' +
         '<div id="afk-confirm-title"></div>' +
         '<div id="afk-confirm-msg"></div>' +
+        '<div id="afk-confirm-req"><span id="afk-confirm-reqlabel"></span>' +
+          '<input id="afk-confirm-input" type="text" autocomplete="off" spellcheck="false"></div>' +
         '<div id="afk-confirm-btns">' +
           '<button id="afk-confirm-cancel" class="afk-confirm-btn" type="button"></button>' +
           '<button id="afk-confirm-ok" class="afk-confirm-btn" type="button"></button>' +
@@ -228,10 +243,15 @@
     document.body.appendChild(modal);
     titleEl = modal.querySelector('#afk-confirm-title');
     msgEl = modal.querySelector('#afk-confirm-msg');
+    reqEl = modal.querySelector('#afk-confirm-req');
+    reqLabel = modal.querySelector('#afk-confirm-reqlabel');
+    inputEl = modal.querySelector('#afk-confirm-input');
     okBtn = modal.querySelector('#afk-confirm-ok');
     cancelBtn = modal.querySelector('#afk-confirm-cancel');
     okBtn.addEventListener('click', function () { closeWith(true); });
     cancelBtn.addEventListener('click', function () { closeWith(false); });
+    inputEl.addEventListener('input', syncOk);
+    inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !okBtn.disabled) closeWith(true); });
     modal.addEventListener('click', function (e) { if (e.target === modal) dismiss(); });   // 點背景=沒做決定
   }
   // 按鈕:記下選擇(decided)→走 AFK_UI 退一格歷史並觸發 doClose
@@ -256,9 +276,13 @@
   }
   U.confirm = function (opts) {
     opts = opts || {};
-    if (!document.body) {   // 極早期(body 未就緒)退回原生 confirm
-      if (window.confirm((opts.title ? opts.title + '\n' : '') + (opts.message || ''))) { if (opts.onOk) opts.onOk(); }
-      else { if (opts.onCancel) opts.onCancel(); }
+    if (!document.body) {   // 極早期(body 未就緒)退回原生視窗
+      var head = (opts.title ? opts.title + '\n' : '') + (opts.message || '');
+      // requireText 是一道閘,退化路徑也要保留(用 prompt),否則這條路等於不必打字就能確定
+      var pass = opts.requireText
+        ? String(window.prompt(head + '\n\n請輸入「' + opts.requireText + '」以繼續') || '').trim() === opts.requireText
+        : window.confirm(head);
+      if (pass) { if (opts.onOk) opts.onOk(); } else { if (opts.onCancel) opts.onCancel(); }
       return;
     }
     if (!modal) build();
@@ -269,6 +293,12 @@
     titleEl.style.display = (opts.title === '') ? 'none' : '';
     msgEl.innerHTML = esc(opts.message || '').replace(/\n/g, '<br>');
     msgEl.style.textAlign = opts.align === 'left' ? 'left' : '';   // 預設維持置中;條列式訊息傳 align:'left'(置中的條列折行後會歪掉)
+    // 每次開啟都重設:視窗是建一次重複用的,不清會把上一次打過的字留著＝下次一開就已解鎖
+    reqText = opts.requireText || '';
+    reqEl.style.display = reqText ? '' : 'none';
+    inputEl.value = '';
+    if (reqText) { reqLabel.innerHTML = '請輸入 <b>' + esc(reqText) + '</b> 才能繼續：'; inputEl.placeholder = reqText; }
+    syncOk();
     okBtn.textContent = opts.okText || '確定';
     cancelBtn.textContent = opts.cancelText || '取消';
     okBtn.classList.toggle('danger', !!opts.danger);

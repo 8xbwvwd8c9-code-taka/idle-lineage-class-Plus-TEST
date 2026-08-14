@@ -31,7 +31,7 @@
 | `afk-lzcache.js` | 大資料重複處理的快取,三層:①存檔解壓(同一份壓縮字串只解一次;離線結算 4×) ②血盟 Buff 查詢(`getClanBuffStats`——解壓被快取後剩下的成本是每次重 `JSON.parse` 242KB 血盟資料＋整份正規化,`recomputeStats` 每次都會問一次) ③血盟狀態讀取(`_clanReadStateResult`——野外圖每生一個 PVP 對手、每殺一隻怪問一次要不要開團戰都會整包重讀,①蓋不到它因為結算期間存的多半是未壓縮明文。**快取存字串不存物件、每次回傳新物件**:`_clanWithLock` 的 mutator 會就地改它且有 commit:false 改完不寫回的路徑,共用同一個物件會讓本該丟掉的修改默默留下。寫入後用 `_saveUnwrap` 拆出已正規化文字預熱,命中率 3745/3746;跳過正規化的前提是它冪等,第一次填快取時自驗,不過就整層自我停用。實測線上 90 秒 398ms→135ms、離線每次 357→231µs) |
 | `afk-clanroster.js` | 血盟名冊瘦身(核心把「遇過的玩家型 NPC」逐一登記在血盟共用桶、**只增不減**、上限一萬筆;而野外 PVP 每生成一個對手就整包讀改寫一次 → 越玩越慢。改成盟主全留、每盟留最近 20 個成員、無血盟路人留最近 200 個。實測玩家存檔 6,189 筆→620 筆、每離線小時 20.0s→3.4s) |
 | `afk-allyslim.js` | 傭兵快照瘦身(傭兵＝來源角色的深拷貝,隊長存檔裡每個傭兵都各帶一份**沒人讀**的資料;實測三位玩家全部存檔位未壓縮 5,299KB 中傭兵快照佔 1,644KB,光廢品標記就 824KB。清空 junkPrefs/pvpAlignLock/pandoraMarket2/_offStats/autoSellRules/lastMapByCat 六個欄位,存檔小 33~38%。**新增欄位前要過三關**:js/02 整份沒有(player=ally 視窗只跑 recomputeStats)、js/06 整份沒有、全 repo 只以 `player.` 前綴出現;`config` 是反例不能清。清空不 delete——上游哪天加讀取,`{}` 只是空的、undefined 會炸) |
-| `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層) |
+| `afk-ui.js` | 共用彈窗:接管 alert、`AFK_UI.confirm`、openLayer/closeLayer(返回鍵/ESC 關最上層)。`confirm` 的 `requireText:'某句話'` = 多一個輸入框、打對之前「確定」按不下去(擋一路點過去;不傳就完全是原本行為)。⚠️ 視窗是**建一次重複用**的,每次開啟必須重設輸入框與鎖定狀態,否則上一次打過的字會留著＝下次一開就已解鎖。⚠️ 卡片是**直向 flex、只有訊息區捲動**:標題/輸入框/按鈕固定,訊息再長、畫面再矮,底部按鈕都留在畫面上(320x568 實測原本會超出畫面、按不到「確定」)。`max-height:100%` 相對 modal 內容區即可,不必自己重算橫幅高度(modal 已 `top:var(--orig-bar-h)`) |
 | `afk-extradata.js` | dex/wiki 共用手動補充資料(`AFK_EXTRA`:itemAcquire/武器特性白話/mapName) |
 | `afk-offline.js` | 離線掛機整套(關遊戲也結算掛機收益;monkey-patch loadGame/saveGame/changeMap/killMob/gainItem,見 `docs/offline.md`) |
 | `afk-mobile.js` | 手機版面薄殼(底部導覽列切三欄、手機幾何的彈窗讓位、浮動日誌;版面用上游原版) |
