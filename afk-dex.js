@@ -658,6 +658,13 @@
       spdLine = '<div style="line-height:1.8;margin:4px 0;"><span class="text-orange-300">攻擊速度: 每 ' + spd + ' 秒一次（數值越低攻擊越快）</span></div>';
     }
     var priceLine = d.p ? '<div class="m-dex-craft-mats" style="color:#cbd5e1;">賣店價：' + Math.floor(d.p * 0.3).toLocaleString() + ' 金幣</div>' : '';
+    // 黑市成交價:潘朵拉收購單每次輪換擲一次行情價,落在這個區間;出滿上限就必定上架(數字由
+    //   afk-bmprice 借核心函式算,關掉那支開關就整行不出現)。
+    var bmLine = '';
+    var bm = (window.AFK_BM && AFK_BM.itemInfo) ? AFK_BM.itemInfo(id) : null;
+    if (bm && bm.max) bmLine = '<div class="m-dex-craft-mats" style="color:#cbd5e1;">黑市成交價：<b style="color:#fde047;">' + bm.min.toLocaleString() + ' ~ ' + bm.max.toLocaleString() + '</b> 金幣</div>';
+    else if (bm && bm.deny === 'relic') bmLine = '<div class="m-dex-craft-mats" style="color:#94a3b8;">黑市成交價：遺物不能用金幣收購，要在黑市用龍鑽搜索</div>';
+    else if (bm && bm.deny) bmLine = '<div class="m-dex-craft-mats" style="color:#94a3b8;">黑市成交價：不可指定收購</div>';
     // 取得方式:手動補(itemAcquire)/ 歐西里斯寶箱 / 中性句;製作、商店、查掉落鈕沿用
     var acq = '';
     var exAcq = (window.AFK_EXTRA && AFK_EXTRA.itemAcquire) ? AFK_EXTRA.itemAcquire[id] : null;
@@ -684,7 +691,7 @@
         (dl.length > DROP_LIST_CAP ? '<div class="m-dex-craft-mats" style="margin-top:4px;">…等 ' + dl.length + ' 種怪物</div>' : '') + '</div>';
     }
     var tail = dl.length ? '<button class="m-dex-pop-search" data-item="' + esc(d.n) + '">🔍 查有哪些怪會掉這件</button>' : '';
-    return head + typeLine + trialLine + body + spdLine + priceLine + craftInfoHTML(id) + shopInfoHTML(id) + acq + dropList + tail;
+    return head + typeLine + trialLine + body + spdLine + priceLine + bmLine + craftInfoHTML(id) + shopInfoHTML(id) + acq + dropList + tail;
   }
   function openItemPop(id) {
     var pop = document.getElementById('m-dex-itempop'); if (!pop) return;

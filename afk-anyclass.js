@@ -21,6 +21,10 @@
  *   ・關掉本外掛後再讀檔,核心會把「現在穿不上的」自動卸回背包(作者原本就有的機制,
  *     訊息寫的是「因負重強化改版」;裝備只是回背包,不會消失)。
  *
+ * 另補兩處「裝得上卻沒作用」——穿戴限制一解除就會浮現,兩處都跟著本開關走:
+ *   ① 真夏納變身的跨職業武器速度(見下方 patchTrueShanna)
+ *   ② 死靈之書的骷髏復生(見下方 patchNecroBook)
+ *
  * 掛接:在 index.html 的 </body> 前 <script src="afk-anyclass.js">。
  * ========================================================================== */
 (function () {
@@ -62,6 +66,7 @@
     };
 
     patchTrueShanna();
+    patchNecroBook();
     console.log('[AFK-anyclass] hooks OK — 裝備職業/性別限制解除（預設關，於外掛開關面板開啟）。');
   }
 
@@ -96,6 +101,43 @@
       return r;
     };
     window.trueShannaSpeedForActor.__afkAnyClass = true;
+  }
+
+  // ── 死靈之書:跨職業也能喚起骷髏 ──────────────────────────────────────────
+  // 核心把「骷髏復生」綁在造屍術(sk_zombie)身上——死靈之書只是把那個技能改寫成擊殺觸發
+  //   (js/07 的 castSkill 直接 return、不施法不耗 MP),所以 js/23 necroBookPassiveEnabled
+  //   除了「裝著書」還要求「學過造屍術」與「造屍術那一列的自動有勾」。
+  //   而造屍術是**六階**法師魔法(js/00 tier:6),依 js/01 skillReqLv 只有法師(Lv24)與
+  //   妖精(Lv48)學得到——王族只能學一/二階(魔法精通再開到三~五階)、騎士/戰士/幻術士/
+  //   龍騎士/黑暗妖精也各自沒有 → 他們裝上書只有「擊殺全隊回 1%」那半段有效
+  //   (那段只看有沒有裝),骷髏永遠不會出現(玩家回報)。
+  //
+  // 補法同 checkCanEquip:只在 necroBookPassiveEnabled 執行的那一瞬間放行那兩支、跑完還原,
+  //   「活著沒」「有沒有裝書」仍由核心自己判;骷髏的階級/數值/上限/清除也全部沒動。
+  //   ⚠️ **已經學過造屍術的一律照原本規則走**:他技能面板上有那一列勾選框,關掉是他的意思,
+  //      硬開回來等於搶走玩家的控制。沒學過的職業面板上根本沒那一列可勾 → 只能「裝上書＝開」,
+  //      卸下書或關掉本外掛,核心 necroSkeletonTick 自己會把骷髏收掉。
+  //   ⚠️ 這會改到平衡(王族等職業多了六隻骷髏),所以跟著 anyclass 開關走:關掉就完全是原版。
+  var NECRO_GATES = ['_necroKnows', '_necroAutoEnabled'];
+
+  function patchNecroBook() {
+    if (typeof window.necroBookPassiveEnabled !== 'function' || window.necroBookPassiveEnabled.__afkAnyClass) return;
+    var missing = NECRO_GATES.filter(function (n) { return typeof window[n] !== 'function'; });
+    if (missing.length) {
+      console.warn('[AFK-anyclass] 找不到核心 ' + missing.join('／') + '，跨職業的骷髏復生停用（其餘功能不受影響）。');
+      return;
+    }
+    var origPassive = window.necroBookPassiveEnabled;
+    var origKnows = window._necroKnows;   // 先留原函式參照:下面會暫時把 window._necroKnows 換掉
+    window.necroBookPassiveEnabled = function (owner) {
+      var r = origPassive.apply(this, arguments);
+      if (r || !on() || origKnows(owner)) return r;   // 本來就成立／沒開／學得會 → 原樣
+      var saved = [];
+      NECRO_GATES.forEach(function (n) { saved.push([n, window[n]]); window[n] = pass; });
+      try { return origPassive.apply(this, arguments); }
+      finally { saved.forEach(function (kv) { window[kv[0]] = kv[1]; }); }
+    };
+    window.necroBookPassiveEnabled.__afkAnyClass = true;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

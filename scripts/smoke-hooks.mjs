@@ -24,7 +24,10 @@ const server = createServer(async (req, res) => {
     if (p === '/') p = '/index.html';
     const file = join(process.cwd(), normalize(p).replace(/^(\.\.[/\\])+/, ''));
     const buf = await readFile(file);
-    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
+    // content-length 是為了讓「回應被截斷」變成看得見的錯誤:少了它 node 走 chunked,
+    // 截斷會以 net::ERR_INCOMPLETE_CHUNKED_ENCODING 出現、而且訊息裡看不出少了多少;
+    // 帶上長度後截斷會直接回報 net::ERR_CONTENT_LENGTH_MISMATCH，一眼認得出不是外掛的問題。
+    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'content-length': buf.length });
     res.end(buf);
   } catch {
     res.writeHead(404);
@@ -35,6 +38,14 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch();
 const logs = [];
+// 「檔案沒載完」與「外掛沒掛上」看起來一模一樣(都是那支外掛沒印 hooks OK),但要修的地方完全不同。
+// 每頁都收 pageerror / requestfailed,失敗時先印這兩份 → 不必再靠重跑猜是不是假紅。
+const pageErrs = [], netFails = [];
+const watch = (pg) => {
+  pg.on('console', (m) => logs.push(m.text()));
+  pg.on('pageerror', (e) => pageErrs.push(String(e.message).split('\n')[0].slice(0, 140)));
+  pg.on('requestfailed', (q) => netFails.push(q.url().split('/').pop().split('?')[0] + ' ← ' + ((q.failure() && q.failure().errorText) || '?')));
+};
 
 // 各外掛的開機 log:'[AFK] hooks OK' / '[AFK-mobile] hooks OK' / …(集中定義,goto 後輪詢等待 + 最後判定共用)
 // afk-mobile 為「桌機零接觸」設計——只有偵測到手機尺寸/裝置才會 init 並印出 hooks OK(見 afk-mobile.js);
@@ -42,16 +53,23 @@ const logs = [];
 // afk-battlehud 桌機也會 init(只是 CSS 讓它不顯示)→ 放 need 即可;它取代的是核心手機版 #mobile-vitals。
 // afk-touchtip 只在觸控裝置 init(桌機有 hover,本來就不該掛)→ 桌機那輪永遠等不到,必須放手機輪。
 const needMobileOnly = ['[AFK-touchtip]'];
-const need = ['[AFK]', '[AFK-banner]', '[AFK-lzcache]', '[AFK-synccompress]', '[AFK-clanroster]', '[AFK-allyslim]', '[AFK-dollcursor]', '[AFK-mobile]', '[AFK-backnav]', '[AFK-battlehud]', '[AFK-mapbar]', '[AFK-nozoom]', '[AFK-statusicon]', '[AFK-trackinfo]', '[AFK-trackmaps]', '[AFK-relicguard]', '[AFK-wpnfix]', '[AFK-enhtarget]', '[AFK-retrial]', '[AFK-attrbatch]', '[AFK-cursebatch]', '[AFK-battlebuffs]', '[AFK-slotinfo]', '[AFK-dex]', '[AFK-wiki]', '[AFK-syncinfo]', '[AFK-statpts]', '[AFK-statlist]', '[AFK-pwa]', '[AFK-storage]', '[AFK-fullsave]', '[AFK-quotawarn]', '[AFK-notice]', '[AFK-history]', '[AFK-reissueid]', '[AFK-diag]', '[AFK-mobname]', '[AFK-npclabel]', '[AFK-training]', '[AFK-junkmgr]', '[AFK-bossavoid]', '[AFK-mercguard]', '[AFK-itemsearch]', '[AFK-eqlist]', '[AFK-npclist]', '[AFK-whbatch]', '[AFK-anyclass]', '[AFK-locksafe]', '[AFK-skin]'];
+const need = ['[AFK]', '[AFK-banner]', '[AFK-nobanner]','[AFK-lzcache]', '[AFK-synccompress]', '[AFK-clanroster]', '[AFK-allyslim]', '[AFK-dollcursor]', '[AFK-mobile]', '[AFK-backnav]', '[AFK-battlehud]', '[AFK-mapbar]', '[AFK-nozoom]', '[AFK-statusicon]', '[AFK-petui]', '[AFK-trackinfo]', '[AFK-trackmaps]', '[AFK-relicguard]', '[AFK-wpnfix]', '[AFK-enhtarget]', '[AFK-retrial]', '[AFK-attrbatch]', '[AFK-cursebatch]', '[AFK-battlebuffs]', '[AFK-slotinfo]', '[AFK-dex]', '[AFK-wiki]', '[AFK-syncinfo]', '[AFK-statpts]', '[AFK-statlist]', '[AFK-pwa]', '[AFK-storage]', '[AFK-fullsave]', '[AFK-quotawarn]', '[AFK-notice]', '[AFK-history]', '[AFK-reissueid]', '[AFK-diag]', '[AFK-mobname]', '[AFK-npclabel]', '[AFK-training]', '[AFK-junkmgr]', '[AFK-bossavoid]', '[AFK-mercguard]', '[AFK-squadsync]', '[AFK-ancdrop]', '[AFK-relicaffix]', '[AFK-bmprice]', '[AFK-itemsearch]', '[AFK-eqlist]', '[AFK-npclist]', '[AFK-whbatch]', '[AFK-anyclass]', '[AFK-locksafe]', '[AFK-sellguard]', '[AFK-skin]'];
 const seen = (list) => list.every((n) => logs.some((l) => l.includes(n) && l.includes('hooks OK')));
 
 // ⚠ 不用 waitUntil:'networkidle':作者新版(.49 起)加了背景音樂 assets/bgm/*.mp3，<audio> 媒體串流會讓網路
 //   「永遠不靜止」→ networkidle 等不到逾時、smoke 假性失敗、自動同步整個卡住(踩過 2026-06-30,掛點其實全正常)。
 //   改成 domcontentloaded + 輪詢「外掛是否都印出 hooks OK」,既驗到掛點、又完全不受媒體/長連線影響。
 
+// SMOKE_NO_SW=1:這一輪不讓 sw.js 接手。**預設不開**——正常狀態下 SW 那條路本來就該一起走。
+//   只在「這台機器進入送出方向壞掉的狀態」時用它拿一次可信的判讀:那個狀態下傳出去的位元組會被
+//   截斷/改壞(連 127.0.0.1 都會,判別法見全域 CLAUDE.md),而 SW 會把這一頁要傳的量從 ~9MB 拉到 ~84MB
+//   (它把整站資產也抓去快取)→ 幾乎必然踩到 → 核心 js 少載 → 一堆外掛整支不執行 → 報成「外掛沒掛上」。
+//   ⚠️ 用了它就是這一輪沒驗到 SW 那條路,判讀時要自己記得。真正的解是重開機。
+const SMOKE_CTX = process.env.SMOKE_NO_SW === '1' ? { serviceWorkers: 'block' } : {};
+
 // --- 第一輪:桌機視窗,驗桌機面向的 12 支外掛 + 地圖翻譯 ---
-const page = await browser.newPage();
-page.on('console', (m) => logs.push(m.text()));
+const page = await browser.newPage(SMOKE_CTX);
+watch(page);
 await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 const _deadline = Date.now() + 20000;   // 最多等 20 秒讓全部外掛初始化(CI 較慢)
 while (Date.now() < _deadline && !seen(need)) await page.waitForTimeout(200);
@@ -95,6 +113,26 @@ const bossAvoidProblems = await page.evaluate(() => {
     const left = mapState.mobs.filter((m) => m && m.noAutoTeleport).length;
     if (left) bad.push(`autoActions 跑完還有 ${left} 隻怪殘留 noAutoTeleport(旗標沒還原,會被寫進存檔並影響離線收益估算)`);
 
+    // 🔗 「自動找BOSS」開著時,挑到要躲的王仍要逃(afk-bossring 的 huntActive 會問 AFK_BOSSAVOID)。
+    //   這條耦合在「找王沒開」的狀態下永遠測得過——而找王開著正是玩家回報「設了躲黑長者卻沒用」的情境:
+    //   互斥條件看的是「這張圖找王功能有效」而非「正在召喚」,在有王池的圖上恆真 → 一旦耦合斷掉就是
+    //   「迴避頭目整個失效」,而且無錯誤訊息、hooks OK 照印。
+    const _ring = player.eq && player.eq.ring1;
+    const _ringKey = 'afk_bossring_on_' + currentSlot;
+    const _ringPrev = localStorage.getItem(_ringKey);
+    try {
+      player.eq = player.eq || {};
+      player.eq.ring1 = { id: 'acc_116', uid: 'smoke_ring', cnt: 1 };   // 傳送控制戒指:找王的前提
+      localStorage.setItem(_ringKey, '1');
+      if (typeof hasTeleportRing === 'function' && hasTeleportRing() && window.AFK_BOSSRING) {
+        if (!run(PICK)) bad.push(`「自動找BOSS」開著時,挑到要躲的 ${DB.mobs[PICK].n} 沒有逃離(找王與迴避頭目的互斥沒有拆到「隻」的層級 → 迴避頭目在有王池的圖上等於整個失效)`);
+        if (run(OTHER)) bad.push(`「自動找BOSS」開著時,沒挑到的 ${DB.mobs[OTHER].n} 也被逃離了(找王會被自己的逃離瞬移走,卷軸燒光還打不到王)`);
+      }
+    } finally {
+      if (_ring) player.eq.ring1 = _ring; else delete player.eq.ring1;
+      if (_ringPrev === null) localStorage.removeItem(_ringKey); else localStorage.setItem(_ringKey, _ringPrev);
+    }
+
     AFK_BOSSAVOID.set(MAP, []);
     tp.checked = false;
     mapState.mobs = [null, null, null, null, null];
@@ -103,11 +141,45 @@ const bossAvoidProblems = await page.evaluate(() => {
   return bad;
 });
 
+// 💰 黑市收購價(afk-bmprice):驗「成交價區間還算得出來」。
+//   為什麼非驗不可:這支不重刻公式,直接借核心的 pandoraBuyOrderAllowed / pandoraBuyOrderPriceProfile /
+//   pandoraCardPriceRange 拿行情價區間。上游改名或改結構(minMult/maxMult 換欄位名)時,itemInfo 只會
+//   安靜回 null → 收購欄那行與物品詳情那行整個不出現,零錯誤、hooks OK 照印,沒人會發現。
+//   ⚠ 不可在這裡呼叫 pandoraBuyOrderPrice——它走 lootRng,會推進存檔內的 committed RNG 序號。
+const bmProblems = await page.evaluate(() => {
+  const bad = [];
+  try {
+    if (!window.AFK_BM || !AFK_BM.itemInfo) return ['AFK_BM 不存在(外掛沒載入或被關掉)'];
+    if (!AFK_BM.rotateFromCore) bad.push('抓不到核心「每 N 分鐘輪換」那句(上游改了黑市標題寫法?)→「平均等多久」會用猜的 10 分鐘');
+    // 一般裝備:區間＝售價×minMult ~ 售價×maxMult,上限至少要大於售價本身
+    const eq = Object.keys(DB.items).find((id) => {
+      const d = DB.items[id];
+      return d && d.p > 0 && d.eff !== 'card' && typeof pandoraBuyOrderAllowed === 'function' && pandoraBuyOrderAllowed(id);
+    });
+    if (!eq) bad.push('全 DB 找不到任何「可指定收購且有售價」的物品(上游改了 pandoraBuyOrderAllowed 的條件?)');
+    else {
+      const info = AFK_BM.itemInfo(eq);
+      if (!info || !(info.max > DB.items[eq].p) || !(info.min > 0) || !(info.min < info.max)) bad.push(`${DB.items[eq].n} 算不出成交價區間(itemInfo 回 ${JSON.stringify(info)})`);
+    }
+    // 怪物卡走另一條路徑(固定區間·與售價無關),要分開驗
+    const card = Object.keys(DB.items).find((id) => DB.items[id] && DB.items[id].eff === 'card' && DB.items[id].cardTier >= 1);
+    if (card) {
+      const ci = AFK_BM.itemInfo(card);
+      if (!ci || !(ci.max > 0)) bad.push(`${DB.items[card].n} 算不出成交價(pandoraCardPriceRange 改了?)`);
+    }
+    // 物品詳情那行真的有印出來(afk-dex 與小百科裝備頁共用同一支 itemDetailHTML)
+    if (eq && window.AFK_DEX_API && AFK_DEX_API.itemDetailHTML) {
+      if (!AFK_DEX_API.itemDetailHTML(eq).includes('黑市成交價')) bad.push('物品詳情裡沒有「黑市成交價」那一行(afk-dex 的插入點掉了?)');
+    }
+  } catch (e) { bad.push('黑市收購價檢查本身出錯:' + e.message); }
+  return bad;
+});
+
 // --- 第二輪:手機模擬(iPhone 13),專驗 afk-mobile 的三欄掛點在作者最新 DOM 上仍成立 ---
 //   afk-mobile 只在手機時 init,桌機那輪印不出 hooks OK;用真手機模擬(pointer:coarse/UA)讓它跑起來才驗得到。
-const mctx = await browser.newContext({ ...devices['iPhone 13'] });
+const mctx = await browser.newContext({ ...devices['iPhone 13'], ...SMOKE_CTX });
 const mpage = await mctx.newPage();
-mpage.on('console', (m) => logs.push(m.text()));
+watch(mpage);
 await mpage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 const _mDeadline = Date.now() + 20000;
 while (Date.now() < _mDeadline && !seen(needMobileOnly)) await mpage.waitForTimeout(200);
@@ -117,8 +189,9 @@ while (Date.now() < _mDeadline && !seen(needMobileOnly)) await mpage.waitForTime
 //   否則玩家關掉某支外掛後連把它開回來的入口都沒有,變成死結(2026-07-20 實際回報)。
 //   歷史成因都是「基礎設施依賴了可被關掉的外掛」:逃生門的 top 讀 afk-mobile 設的 --orig-bar-h、
 //   afk-skin 靠 afk-mobile 掛的 body.m-mobile 判斷手機。前兩輪都是「全開」狀態,永遠測不到。
-const octx = await browser.newContext({ ...devices['iPhone 13'] });
+const octx = await browser.newContext({ ...devices['iPhone 13'], ...SMOKE_CTX });
 const opage = await octx.newPage();
+watch(opage);
 await opage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 await opage.evaluate(() => localStorage.setItem('afk_toggle_mobile', '0'));
 await opage.reload({ waitUntil: 'domcontentloaded' });
@@ -171,10 +244,12 @@ const toggleOffProblems = await opage.evaluate(() => {
 //   「分頁不捲(我方規則) + #game-screen 也不捲(上游桌機幾何)」→ 道具/防具/設定超出畫面的部分永遠
 //   看不到也滑不到(2026-07-25 玩家回報)。前三輪都是手機或桌機尺寸,正好落在這道縫的兩側,測不到。
 const tctx = await browser.newContext({
+  ...SMOKE_CTX,
   viewport: { width: 820, height: 1180 }, hasTouch: true, deviceScaleFactor: 2,
   userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
 });
 const tpage = await tctx.newPage();
+watch(tpage);
 await tpage.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
 await tpage.waitForTimeout(3000);
 const tabletProblems = await tpage.evaluate(() => {
@@ -321,14 +396,36 @@ const equipPageProblems = await page.evaluate(async () => {
 await browser.close();
 server.close();
 
+// 每一種失敗都先報一次「這一輪的檔案有沒有載完」:載入被截斷時,任何一項檢查都可能長成
+// 「某某東西不存在」,跟真的壞掉分不出來。判準:兩份都是 0 才是真的要修被測的東西。
+function die() {
+  if (netFails.length || pageErrs.length) {
+    console.error(`  ⚠ 這一輪有 ${netFails.length} 個請求失敗、${pageErrs.length} 個頁面錯誤 —— 檔案沒載完也會長成這樣,先排除這個原因再修上面那條:`);
+    for (const f of [...new Set(netFails)].slice(0, 5)) console.error('    ' + f);
+    for (const e of [...new Set(pageErrs)].slice(0, 4)) console.error('    ' + e);
+  }
+  process.exit(1);
+}
+
 const okMap = {};
 for (const n of [...need, ...needMobileOnly]) okMap[n] = logs.some((l) => l.includes(n) && l.includes('hooks OK'));
 const allOK = Object.values(okMap).every(Boolean);
 
 console.log('外掛掛點檢查:', JSON.stringify(okMap, null, 0));
 if (!allOK) {
-  console.error('冒煙測試失敗:有外掛沒有成功 hook(原作者可能改了 DOM / id)。');
-  process.exit(1);
+  console.error('冒煙測試失敗:有外掛沒有成功 hook。');
+  // 先問「檔案有沒有載完」再怪外掛:載入期炸掉的外掛整支不執行,看起來就跟「掛點被改掉」一模一樣。
+  if (netFails.length) {
+    console.error(`  ⚠ 有 ${netFails.length} 個請求失敗 → 先修這個,不是外掛的問題:`);
+    for (const f of [...new Set(netFails)].slice(0, 8)) console.error('    ' + f);
+  }
+  if (pageErrs.length) {
+    console.error(`  ⚠ 頁面丟出 ${pageErrs.length} 個錯誤(前幾個):`);
+    for (const e of [...new Set(pageErrs)].slice(0, 6)) console.error('    ' + e);
+  }
+  if (!netFails.length && !pageErrs.length) console.error('  (沒有網路失敗也沒有頁面錯誤 → 才是真的掛點被改掉,原作者可能改了 DOM / id)');
+  else console.error('  ↑ 這台機器開機久了會進入「送出方向的傳輸壞掉」的狀態(連 127.0.0.1 都會),重開機即可;判別法見全域 CLAUDE.md。');
+  die();
 }
 
 if (bossAvoidProblems.length) {
@@ -337,14 +434,23 @@ if (bossAvoidProblems.length) {
   console.error('  判準:afk-bossavoid 是在 autoActions 之前把「沒挑到的 BOSS」暫時標成 noAutoTeleport,');
   console.error('       借上游自己那行 some(m => m.boss && !m.noAutoTeleport) 少看到牠們;');
   console.error('       上游一旦改掉那行的判斷方式,這支就會安靜失效(hooks OK 照印、無錯誤訊息)。');
-  process.exit(1);
+  die();
+}
+
+if (bmProblems.length) {
+  console.error('冒煙測試失敗:黑市成交價算不出來(收購欄與物品詳情那兩行會安靜消失):');
+  for (const p of bmProblems) console.error('  ' + p);
+  console.error('  判準:afk-bmprice 不重刻公式,借核心 pandoraBuyOrderAllowed / pandoraBuyOrderPriceProfile /');
+  console.error('       pandoraCardPriceRange 拿行情價區間。上游改名或改欄位就會回 null。');
+  console.error('  ⚠ 修的時候絕不可改用 pandoraBuyOrderPrice——它走 lootRng,查個價就推進玩家存檔的亂數序號。');
+  die();
 }
 
 if (toggleOffProblems.length) {
   console.error('冒煙測試失敗:關掉「手機版面」外掛後,手機上的逃生門/入口不見了(玩家會無法把外掛開回來):');
   for (const p of toggleOffProblems) console.error('  ' + p);
   console.error('  判準:不可停用的基礎設施不能依賴可被關掉的外掛提供的 CSS 變數 / body class。');
-  process.exit(1);
+  die();
 }
 
 if (pluginPanelProblems.length) {
@@ -352,14 +458,14 @@ if (pluginPanelProblems.length) {
   for (const p of pluginPanelProblems) console.error('  ' + p);
   console.error('  判準:#afk-plugin-panel 的座標(left/width/top/bottom)是照上游 4:3 舞台算的,');
   console.error('       上游搬動 #login-title-layer / #login-meta-layer 就要跟著調(見 afk-skin.js 的 CSS)。');
-  process.exit(1);
+  die();
 }
 
 if (equipPageProblems.length) {
   console.error('冒煙測試失敗:小百科「裝備」分頁的覆蓋/版面有問題:');
   for (const p of equipPageProblems) console.error('  ' + p);
   console.error('  判準:部位對不上分組桶的裝備要落進「❓ 其他部位」,不可整組消失(見 afk-wiki.js 的 equipGroupKey / EQUIP_GROUPS)。');
-  process.exit(1);
+  die();
 }
 
 if (tabletHudProblems.length) {
@@ -367,7 +473,7 @@ if (tabletHudProblems.length) {
   for (const p of tabletHudProblems) console.error('  ' + p);
   console.error('  判準:不要放寬上游那條 @media(會變成桌機三欄裡的第四欄,擠掉戰鬥區與喝水鈕),');
   console.error('       改由外掛自己判平板缺口、掛自己的 body class 走第二套版面(見 afk-battlehud.js 的 placeStrip)。');
-  process.exit(1);
+  die();
 }
 
 if (tabletProblems.length) {
@@ -375,20 +481,20 @@ if (tabletProblems.length) {
   for (const p of tabletProblems) console.error('  ' + p);
   console.error('  判準:要覆寫上游「寫在 media query 裡」的樣式時,自己的規則必須包進同一條 media query');
   console.error('       (afk-mobile.js 的 MOBILE_GEOM_MQ);只寫 body.m-mobile 會讓觸控平板拿到混搭幾何。');
-  process.exit(1);
+  die();
 }
 
 if (untranslatedMaps.length) {
   console.error('冒煙測試失敗:掉落查詢有地圖名未翻譯(會顯示英文 id),請補進 afk-extradata.js 的 AFK_EXTRA.mapName:');
   for (const [id, nm] of untranslatedMaps) console.error(`  ${id}  ->  ${nm}`);
-  process.exit(1);
+  die();
 }
 
 if (!/dark/.test(colorScheme)) {
   console.error(`冒煙測試失敗::root 的 color-scheme 是「${colorScheme}」,不是 dark。`);
   console.error('  後果:Android Chrome 的自動深色主題會把部分 sprite 反成白色人形,而且重繪/重登/清快取都無效。');
   console.error('  修法:scripts/afk-plugin-block.html 裡那行 <style>:root{color-scheme:dark}</style> 要在,並同步進 index.html。');
-  process.exit(1);
+  die();
 }
 
 console.log('冒煙測試通過:外掛 hooks OK,且掉落查詢地圖名全部已翻譯。');

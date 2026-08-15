@@ -12,6 +12,11 @@
     'use strict';
     if (window.AFK_TOGGLES && !AFK_TOGGLES.enabled('invlist')) return;   // 🎚️ 外掛開關
 
+    // 一列的幾何(與下面 .list-item 那條規則對應)。ROW_BOX 是實測的整列高度——min-height 只是地板(34)，
+    //   內容(圖示 + 一行字)實際把它撐到 38；量法見下面 ROW_CONTENT_H 的註解。
+    var ROW_BOX = 38, ROW_PADDING_Y = 5 * 2, ROW_BORDER_Y = 1 * 2;
+    var ROW_CONTENT_H = ROW_BOX - ROW_PADDING_Y - ROW_BORDER_Y;
+
     var CSS = [
         // 外殼：拆掉藝術背景圖與固定比例，改成「吃掉分頁剩餘高度」的彈性容器。
         //   ⚠ 不可用 height:100%：分頁是直向 flex，外殼上面還有「快速操作」工具列(約 55px)，
@@ -27,6 +32,19 @@
         //     物品一多列高被壓到 min-height 以下，而本檔又把 overflow 改成 visible(格狀皮膚原本靠 hidden 裁掉)
         //     → 名稱直接溢出疊到下一列上(玩家回報「背包名稱疊在一起」)。列各自撐開、整份交給捲軸。
         'body.afk-invlist .classic-inventory-viewport > .list-item{flex:0 0 auto !important;width:100% !important;height:auto !important;min-height:34px;aspect-ratio:auto !important;display:flex !important;align-items:center !important;justify-content:space-between !important;padding:5px 9px !important;border:1px solid #334155 !important;border-radius:6px !important;background:rgba(15,23,42,.55) !important;box-shadow:none !important;overflow:visible !important;}',
+        // 📜 只排版「畫得到的那幾列」：條列式把整份背包攤成一長條（2083 件的真實存檔＝防具分頁 1405 列、
+        //   近 58,000px 高），瀏覽器一次就得把每一列都排版 → 之後遊戲裡**任何一次讀版面**
+        //   （getBoundingClientRect、設 scrollTop）都要把整份清單重排一遍。而遊戲每秒做幾十次這種事
+        //   （8fps 貼圖換向、狀態列對位、掉一件東西就重建清單），手指正在滑的時候主執行緒被鎖住幾百毫秒、
+        //   來不及畫的區塊送出空白 → 玩家看到「上下滑動時畫面閃爍破圖」（2026-08-10 回報）。
+        //   實測（手機模擬 412×915・防具分頁・交錯 A/B 各 4 輪取中位數）：
+        //     一次強制重排 117ms → 25ms；掉一件東西重建清單 288ms → 208ms。
+        //   捲動幾何完全不變：300 步 × 100px（涵蓋 30,000px）逐步比對，位移偏差 0px、捲動高度全程不變。
+        // ⚠ contain-intrinsic-size 給的是**內容框**高度，padding 與框線瀏覽器會自己加上去 ——
+        //   直接填整列的 38px 會讓捲動高度多算 35%（踩過：58,045 → 79,199）。
+        //   `auto` 關鍵字＝已經進過畫面的列改用實測值，所以這個估值只影響「從沒被捲到過」的列，
+        //   日後列高變了也會自己修正。不認得 content-visibility 的瀏覽器（iOS < 18）整條忽略、行為同以前。
+        'body.afk-invlist .classic-inventory-viewport > .list-item{content-visibility:auto;contain-intrinsic-size:auto ' + ROW_CONTENT_H + 'px;}',
         'body.afk-invlist .classic-inventory-viewport > .list-item:hover{border-color:#7dd3fc !important;filter:none;background:rgba(30,41,59,.75) !important;}',
         // 🚫 無法裝備／無法學習：上面那條整片鋪底的 background 帶 !important，會把核心給的 bg-red-950/40
         //   壓掉（Tailwind 那個 class 沒有 !important）→ 條列式下「能不能穿」只剩右側一個 10px 紅字，

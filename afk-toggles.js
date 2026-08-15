@@ -78,7 +78,8 @@
         { id: 'nozoom', name: '手機取消雙擊放大', desc: '連點兩下不會放大畫面（兩指縮放照常）', group: '遊戲介面' },
         { id: 'statusicon', name: '手機狀態圖示縮小', desc: '手機上的狀態圖示縮成一半，不會蓋住戰鬥畫面', group: '遊戲介面' },
         { id: 'battlebuffs', name: '手機戰鬥狀態欄', desc: '戰鬥框下方直接顯示增益、異常與魔物追蹤', group: '遊戲介面' },
-        { id: 'trackinfo', name: '魔物追蹤剩餘時間', desc: '狀態欄顯示正在追蹤哪隻怪、還剩多久', group: '遊戲介面' },
+        { id: 'petui', name: '手機寵物保管排版', desc: '寵物保管的每一列改成兩排，一次看得到好幾隻', group: '遊戲介面' },
+        { id: 'trackinfo', name: '狀態欄補充', desc: '「狀態」欄補上魔物追蹤剩餘時間、龍裔、血盟 Buff、生效中的套裝，以及找王／迴避王', group: '遊戲介面' },
         { id: 'locksafe', name: '上鎖裝備不被收購', desc: '潘朵拉的收購與遺物布告欄不會拿走你上鎖的裝備', group: '遊戲介面' },
         { id: 'relicguard', name: '快速廢品不選遺物', desc: '背包「快速廢品」按全選時自動跳過遺物', group: '遊戲介面' },
         { id: 'junkmgr', name: '廢品標記管理', desc: '查看與刪除「以後掉到同款就自動標廢品」的記憶（自動化分頁開啟）', group: '遊戲介面' },
@@ -101,6 +102,7 @@
         { id: 'synccompress', name: '存檔即時壓縮', desc: '避免存檔爆掉害角色或倉庫消失；代價是存檔時多花一點時間', group: '系統與其他', def: false },
         { id: 'powersave', name: '省電模式', desc: '省電選項：降低畫面更新頻率、關動畫、關光暈濾鏡、關特效與音效', group: '系統與其他' },
         { id: 'skin', name: '首頁外掛入口/資訊', desc: '整理首頁的外掛入口，並顯示原作者連結與最後同步原版的時間', group: '系統與其他' },
+        { id: 'nobanner', name: '隱藏非官方版本橫幅', desc: '藏掉頂端那條「非官方轉載版本」橫幅，把畫面空間讓回來', group: '系統與其他', def: false },
         { id: 'offline', name: '離線快速結算', desc: '關掉遊戲回來自動結算掛機收益', group: '遊戲玩法' },
         { id: 'traditional', name: '傳統模式(偽)', desc: '打到或做出來的裝備自帶隨機強化值（在選角卡右上角逐角色開關）', group: '遊戲玩法' },
         { id: 'dograce', name: '賽狗場', desc: '賭哪隻狗第一，押金幣或龍鑽、中了自動入袋（自動化分頁開啟）', group: '遊戲玩法' },
@@ -149,9 +151,13 @@
             + '<div><div style="font-size:17px;font-weight:700;">🎚️ 外掛開關</div>'
             + '<div style="font-size:12px;color:#94a3b8;margin-top:3px;">某個外掛出問題時，先關掉它就能用原版繼續玩，作者修好再打開。改完按「重新整理」生效。</div></div>'
             + '<button id="afk-tg-close" style="flex:none;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:6px 12px;cursor:pointer;">關閉</button></div>'
-            // 「只看我改過的」：玩家關掉某項之後往往忘了自己關過什麼（回報過），要他從幾十項裡捲著找出來不合理。
-            + '<div style="padding:9px 14px 0;flex:0 0 auto;"><button id="afk-tg-onlychanged"'
-            + ' style="background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;">'
+            // 工具列：搜尋 ＋「只看我改過的」（玩家關掉某項之後往往忘了自己關過什麼（回報過），要他從幾十項裡捲著找出來不合理）
+            //   ⚠ 搜尋框 font-size 一定要 ≥16px：iOS Safari 對小於 16px 的輸入框會在 focus 時自動放大整頁，之後縮不回去。
+            + '<div style="padding:9px 14px 0;flex:0 0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+            + '<input id="afk-tg-search" type="search" placeholder="搜尋外掛名稱或說明"'
+            + ' style="flex:1 1 150px;min-width:0;background:#0b1222;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:6px 10px;font-size:16px;font-family:inherit;">'
+            + '<button id="afk-tg-onlychanged"'
+            + ' style="flex:none;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit;">'
             + '只看我改過的（' + changedCount() + '）</button></div>'
             + '<div id="afk-tg-list" style="padding:10px 14px;flex:1 1 auto;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;">'
             + '<div id="afk-tg-empty" style="display:none;color:#94a3b8;padding:14px;text-align:center;">目前全部都是預設值。</div>';
@@ -201,16 +207,29 @@
         });
         card.querySelector('#afk-tg-reload').addEventListener('click', function () { try { location.reload(); } catch (e) { close(); } });
 
-        // 只看我改過的：切換時才重算一次（勾選當下不即時隱藏那一列，不然剛按到的東西會在眼前消失）
-        var onlyChanged = false, ocBtn = card.querySelector('#afk-tg-onlychanged');
-        ocBtn.addEventListener('click', function () {
-            onlyChanged = !onlyChanged;
+        // ── 篩選：搜尋 ＋ 只看我改過的（兩者同時生效，共用同一支 applyFilter）──
+        // 勾選當下不重算（剛按到的東西會在眼前消失）；只有按鈕切換／打字才重算。
+        var onlyChanged = false, query = '', ocBtn = card.querySelector('#afk-tg-onlychanged');
+        var searchBox = card.querySelector('#afk-tg-search'), emptyEl = card.querySelector('#afk-tg-empty');
+
+        function matchQuery(r) {   // 空白分隔＝全部都要中；名稱／說明／分類／id 都算
+            if (!query) return true;
+            var hay = ((r.name || '') + ' ' + (r.desc || '') + ' ' + (r.group || '') + ' ' + r.id).toLowerCase();
+            var toks = query.split(/\s+/);
+            for (var i = 0; i < toks.length; i++) if (toks[i] && hay.indexOf(toks[i]) < 0) return false;
+            return true;
+        }
+        function applyFilter() {
+            var vis = {};
+            registry.forEach(function (r) { vis[r.id] = (!onlyChanged || isChanged(r)) && matchQuery(r); });
+            // 子選項被搜到 → 父項一起顯示：縮排那列孤零零掛著看不出是誰的子項，也看不出「父項關掉它就失效」。
+            //   只在搜尋時做——「只看我改過的」原本就刻意只列改過的，不能被這條拉回沒改過的父項。
+            if (query && !onlyChanged) registry.forEach(function (r) { if (r.parent && vis[r.id]) vis[r.parent] = true; });
             var n = 0;
             card.querySelectorAll('label[data-tgrow]').forEach(function (row) {
-                var r = find(row.getAttribute('data-tgrow'));
-                var show = !onlyChanged || (r && isChanged(r));
+                var show = !!vis[row.getAttribute('data-tgrow')];
                 row.style.display = show ? 'flex' : 'none';   // ⚠ 不可設成 ''：那會把行內樣式的 display:flex 一起清掉，整列版面散開
-                if (show && onlyChanged) n++;
+                if (show) n++;
             });
             card.querySelectorAll('[data-tggroup]').forEach(function (h) {   // 整組都被濾掉就連標題一起收
                 var g = h.getAttribute('data-tggroup');
@@ -218,10 +237,22 @@
                     .some(function (row) { return row.style.display !== 'none'; });
                 h.style.display = any ? '' : 'none';
             });
-            card.querySelector('#afk-tg-empty').style.display = (onlyChanged && n === 0) ? '' : 'none';
-            ocBtn.textContent = onlyChanged ? '看全部（' + n + ' 項改過）' : '只看我改過的（' + changedCount() + '）';
+            if (emptyEl) {
+                emptyEl.textContent = query ? '找不到符合的外掛。' : '目前全部都是預設值。';
+                emptyEl.style.display = (registry.length && n === 0) ? '' : 'none';
+            }
+        }
+
+        ocBtn.addEventListener('click', function () {
+            onlyChanged = !onlyChanged;
+            ocBtn.textContent = onlyChanged ? '看全部（改過 ' + changedCount() + ' 項）' : '只看我改過的（' + changedCount() + '）';
             ocBtn.style.background = onlyChanged ? '#0e7490' : '#1e293b';
             ocBtn.style.color = onlyChanged ? '#e0f2fe' : '#cbd5e1';
+            applyFilter();
+        });
+        if (searchBox) searchBox.addEventListener('input', function () {
+            query = String(searchBox.value || '').trim().toLowerCase();
+            applyFilter();
         });
     }
 

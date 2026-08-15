@@ -706,7 +706,8 @@
     var HP_FLOOR_ZERO_TICKS = 12000;  // 血量門檻「線性降到 0」的時點:真模擬連續存活滿 20 分鐘(12000 拍)沒死 → 門檻歸 0(之後一律切快速、BOSS 一律 safe)。撐過這段=打得過→完全信任;死了外層撞死即停,根本走不到門檻歸 0。
     var FAST_MIN_REMAIN = 6000;       // 取樣後剩不到 10 分鐘 → 全模擬本來就快,不值得切
     // 🏝️ 遺忘之島「本島」納入快速(2026-07-10 使用者提議):本島=無限刷怪圖、無後續推進,與一般圖同等待遇;
-    //   「途中」(travel)維持全模擬——它是「打倒傳送門 BOSS 才進本島」的過場,怪組與本島不同、取樣不能混用。
+    //   「途中」(travel)那段維持全模擬——怪組與本島不同,取樣不能混用。但它只是「打倒傳送門 BOSS 才進本島」
+    //   的過場、通常幾十秒就結束,所以資格不在這裡定死:進本島後由主迴圈的 oblWaitIsland 重判(見該處)。
     // ⚔ 軍王之室維持全模擬(2026-07-10 實測後決定):曾實作納入快速並 A/B(真實存檔 Lv96 法師,6h)——
     //   魔獸軍王之室快速 +23%(抽驗以滿 MP 開打 vs 全模擬持續耗魔的穩態,對打耗時被量短)、底比斯 -16%,
     //   而結算耗時「幾乎沒變快」(19→20s / 16→10s):王房的內容就是 BOSS 對打本身,首打+5% 抽驗全是真打,
@@ -726,6 +727,11 @@
       : (isObl && !(preObl && preObl.phase === 'island')) ? 'obl-travel'
       : 'short';
     _forceNoFast = false;   // 🧪 一次性:用過即歸零,不影響之後的真實離線結算
+    // 🏝️ 從「途中」出發時,資格要等打倒傳送門進本島才重判(見主迴圈的 oblWaitIsland 分支)——
+    //   過場通常只有幾十秒,一次定死會讓後面整晚都逐格真模擬(玩家存檔實測:8.5h 要 120 秒,本島快轉只要 10 秒)。
+    //   認 fastWhy 而不是自己再組一次條件:'obl-travel' 的語意正是「只差在人還在途中」,
+    //   攀登/軍王之室/debug 各自有自己的代碼,不會誤開。
+    var oblWaitIsland = (fastWhy === 'obl-travel');
     var _dryHit = false;        // 消耗品斷貨旗標:fastAdvance 補不上貨時設起,主迴圈據此走「重取樣」而非永久退出
     var hpFloorFixed = false;   // 斷貨(戰局質變)後改用固定 70% 門檻——「撐過 20 分鐘=打得過」的信任基礎已失效,不再隨時間放寬
     // 血量安全門檻(取樣 + BOSS safe 共用):隨真模擬存活拍數 done 從 70% 線性降到 0(20 分鐘歸 0)。
@@ -1033,10 +1039,12 @@
       //   否則出怪跟不上時每 1 隻也付整批的時間,殺速被人為拖慢(供給受限圖 -20% 的來源之一)。
       return fastAdvance(svcPerEvent * (_killed / batchPerEvent));
     }
-    // 💾 統計快取命中 → 直接進快速段(跳過取樣與 BOSS 首打);未命中 → 照常從取樣開始
-    if (fastEligible && player._offStats && player._offStats.v === 1 && player._offStats.svcE > 0
-        && player._offStats.sig === offStatsSig()
-        && (Date.now() - (player._offStats.savedAt || 0)) < OFFSTATS_MAX_AGE_MS) {
+    // 💾 統計快取命中 → 直接進快速段(跳過取樣與 BOSS 首打);未命中 → 照常從取樣開始。
+    //   簽章含 mapState.current,所以遺忘之島進本島後再問一次(見主迴圈 oblWaitIsland)會拿到本島那份快取。
+    function tryOffStatsCache() {
+      if (!(player._offStats && player._offStats.v === 1 && player._offStats.svcE > 0
+            && player._offStats.sig === offStatsSig()
+            && (Date.now() - (player._offStats.savedAt || 0)) < OFFSTATS_MAX_AGE_MS)) return false;
       svcPerEvent = player._offStats.svcE;
       batchPerEvent = Math.max(1, player._offStats.batch || 1);
       consumePerTick = {}; for (var _ck in player._offStats.consume) consumePerTick[_ck] = player._offStats.consume[_ck];
@@ -1044,7 +1052,9 @@
       bossStats = player._offStats.boss || {};
       fastMode = true; fastWhy = 'cache';
       console.info('[AFK] 💾 統計快取命中:跳過取樣與 BOSS 首打,直接快速結算(每事件 ' + svcPerEvent.toFixed(1) + ' 拍×' + batchPerEvent.toFixed(2) + ' 隻,BOSS 快取 ' + Object.keys(bossStats).length + ' 種)。');
+      return true;
     }
+    if (fastEligible) tryOffStatsCache();
     if (fastEligible && !fastMode) beginSample(0);
     // ═══ 混合快速結算(宣告結束;主迴圈內 fastMode 分支使用) ═════════════════════
 
@@ -1218,6 +1228,20 @@
           tick();
           settleDeadMobs();
           done++; _realSimTicks++;
+          // 🏝️ 途中→本島(原作 settleDeadMobs 打倒傳送門後改的 mapState.current):過場結束,本島與一般圖同等待遇 → 開放快轉。
+          //   取樣一律從這裡重新起算(beginSample 會把 busyTicks/deathEvents/背包等基準點全部重設),
+          //   途中那段的怪組不會混進本島的殺速樣本——這正是「途中不快轉」原本要保護的東西。
+          //   lastLv 要一起對齊:途中升級時沒人維護它(下面那段有 fastEligible 守門),不對齊的話進快速段第一個事件就判成 levelup 重取樣。
+          if (oblWaitIsland && mapState && mapState.current === 'oblivion_island') {
+            oblWaitIsland = false;
+            if (totalTicks - done >= FAST_SAMPLE_TICKS + FAST_MIN_REMAIN) {
+              fastEligible = true; lastLv = player.lv;
+              if (!tryOffStatsCache()) {
+                fastWhy = 'sampling'; sampleGrew = false; sampleEnd = done + FAST_SAMPLE_TICKS; beginSample(done);
+                console.info('[AFK] 🏝️ 已抵達遺忘之島本島:過場結束,開始取樣評估快速結算。');
+              }
+            }
+          }
           if (fastEligible && !fastOff) {   // 取樣段:記錄最低血量+「場上有怪」拍數(純戰鬥耗時)+死亡事件數(AOE 同拍多殺=1 事件),窗滿就評估要不要切快速
             if (mapState.mobs.some(function (m) { return m && !m._dead; })) busyTicks++;
             var _ks = tallySum(killTally);

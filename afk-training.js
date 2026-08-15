@@ -5,6 +5,8 @@
  *  - 選 1~5 隻怪（每隻可不同，預設第 1 格妖魔 orc），用 select+input 篩選挑選。
  *  - 可選「世界模式」（一般／席琳的世界／瘋狂的席琳世界）：重用原作 applySherineBuff 對訓練怪
  *    套用席琳強度（AC/MR/命中/減傷＋怪傷×2/×3 旗標），數值永遠與遊戲一致、作者改倍率自動跟上。
+ *  - 可勾「召喚骷髏」：死靈之書的骷髏只在「擊殺」時喚起，而木人場的怪打不死＝永遠沒有擊殺 → 不補這一手
+ *    就永遠量不到骷髏的輸出。做法是缺額時呼叫原作的 necroBookOnKill（走原本那條路，不自己造骷髏）。
  *  - 怪打不死、玩家/傭兵/寵物/召喚物/城堡護衛也都打不死，跑「真實戰鬥」量輸出。
  *  - 旁邊 HUD 兩個檢視：「👥 來源」＝玩家／每個傭兵／每隻寵物／每種召喚物 各自的 DPS 長條圖，
  *    「🎯 目標」＝打在每隻訓練怪身上的 DPS；上方永遠是總 DPS（平均與近 10 秒即時）。
@@ -55,6 +57,7 @@
   var POS_KEY = 'afk_training_hudpos';   // HUD 拖曳後的位置記憶
   var MODE_KEY = 'afk_training_mode';    // 世界模式記憶（各存檔位各一組，同 slots）
   var NOMP_KEY = 'afk_training_nomp';    // 「MP 不消耗」記憶（同上）
+  var SKELE_KEY = 'afk_training_skele';  // 「召喚骷髏」記憶（同上）
   var VIEW_KEY = 'afk_training_hudview'; // HUD 檢視分頁記憶（來源／目標）
   // 來源分類的排序與顏色：顏色沿用原版「本圖效率統計」那張圖，兩邊看起來才是同一套東西
   var SRC_ORD = { player: 0, ally: 1, pet: 2, summon: 3, other: 4 };
@@ -68,6 +71,12 @@
   //   野外撐得住是因為「怪死掉到下一隻出現之間沒目標＝不放招，自然回魔照跑」＋升級補滿；
   //   木人場一直有目標所以淨消耗快得多。故補 MP 只能是明確的選項，不能假裝在模擬野外。
   var noMp = false;
+  // 🦴 召喚骷髏（死靈之書）。骷髏是「擊殺時喚起」的，而木人場的怪打不死＝一次擊殺都不會發生 → 不勾就
+  // 永遠看不到骷髏、也就量不到牠的輸出。勾了之後在缺額時直接呼叫原作的 necroBookOnKill：喚不喚得起來、
+  // 階級、上限、傷害全部仍由核心決定（我們不自己造骷髏，作者改設計自動跟上）。離場時只收回「在木人場
+  // 多召出來的那幾隻」，進場前就跟著的留著——木人場的產物不外溢到野外。
+  var skele = false;
+  var skeleBefore = null;            // 進場前既有骷髏的 uid 集合（離場時據此分辨哪些是木人場召的）
   var backup = null;                 // 進場前的狀態（離場還原用）
   var dps = null;                    // { startTick, perUid:{uid:累計傷害}, window:[每tick總傷害] }
   var src = null;                    // 來源拆帳 { cum:{key:{name,kind,dmg}}, window:[{key:每tick傷害}] }
@@ -100,6 +109,8 @@
     if (typeof mapState !== 'undefined' && mapState.mobs) {
       for (var i = 0; i < mapState.mobs.length; i++) { if (mapState.mobs[i] && mapState.mobs[i]._train) mapState.mobs[i] = null; }
     }
+    dismissExtraSkeletons();
+    skeleBefore = null;
     closeHud();
   }
 
@@ -142,6 +153,7 @@
     if (player.hp < player.mhp) player.hp = player.mhp;
     player.dead = false;
     if (noMp && player.mp < player.mmp) player.mp = player.mmp;   // 「MP 不消耗」勾了才補（玩家/傭兵/寵物同一個開關，見 noMp）
+    if (skele) keepSkeletons();
     // 🤝 傭兵收拍補滿（同玩家）：curHp/MP 回實際上限供顯示；清掉萬一殘留的倒地旗標與復活冷卻
     for (i = 0; i < allies.length; i++) { var _a = allies[i]; if (!_a) continue; _a.curHp = _a.mhp; if (noMp && _a.mp < _a.mmp) _a.mp = _a.mmp; if (_a._downed) { _a._downed = false; _a._reviveCd = 0; } }
     topUpMinions();
@@ -245,6 +257,45 @@
       if (g._downed) { g._downed = false; g._diedAt = 0; g._reviveAt = 0; g._animAct = null; }
       if ((g.mhp || 0) > 0 && g.hp < g.mhp) g.hp = g.mhp;
     }
+  }
+
+  // ---- 🦴 召喚骷髏（死靈之書）：木人場沒有擊殺，缺額時替核心補一次「擊殺事件」 --------
+  //   刻意呼叫核心的 necroBookOnKill 而不是自己 push 一隻骷髏：條件（有沒有裝書、學了沒、自動施放
+  //   開了沒）、階級、上限、數值全部留在核心那一份，作者改設計時木人場自動跟上。
+  function necroMax() { return (typeof NECRO_SKELETON_MAX !== 'undefined') ? NECRO_SKELETON_MAX : 6; }   // 頂層 const 不掛 window → 裸名讀
+  function necroLive() {
+    if (typeof window.necroSkeletonList !== 'function') return null;
+    return window.necroSkeletonList().filter(function (s) { return s && !s._downed && (s.hp || 0) > 0; });
+  }
+  // 玩家或任一傭兵現在能不能靠死靈之書喚起骷髏（＝necroBookOnKill 會不會有動作）
+  function necroReady() {
+    if (typeof window.necroBookPassiveEnabled !== 'function' || typeof player === 'undefined' || !player) return false;
+    if (window.necroBookPassiveEnabled(player)) return true;
+    var allies = player.allies || [], i;
+    for (i = 0; i < allies.length; i++) { if (allies[i] && window.necroBookPassiveEnabled(allies[i])) return true; }
+    return false;
+  }
+  function keepSkeletons() {
+    if (typeof window.necroBookOnKill !== 'function') return;
+    var live = necroLive();
+    if (!live || live.length >= necroMax()) return;
+    if (!necroReady()) return;   // 沒書／沒學／沒開自動：先問過再呼叫，免得每拍白跑那段全隊回復
+    var m = null, mobs = mapState.mobs, i;
+    for (i = 0; i < mobs.length; i++) { if (mobs[i] && mobs[i]._train && mobs[i].race !== '建築') { m = mobs[i]; break; } }
+    if (!m) return;   // 五格全選建築類：核心本來就不會因為打建築而喚起骷髏，這裡照樣不給
+    window.necroBookOnKill(m);
+  }
+  // 收回「木人場召出來的」骷髏（進場前就跟著的留著）。離場與中途取消勾選都走這裡。
+  function dismissExtraSkeletons() {
+    // skeleBefore 是 null＝這不是一趟木人場（沒記到進場前的名單）→ 一隻都不能動：分不出誰是誰的時候
+    // 全部清掉，會把玩家在野外辛苦召的骷髏一起收走。
+    if (!skeleBefore || typeof window.necroSkeletonList !== 'function') return;
+    var list = window.necroSkeletonList(), removed = 0, i, s;
+    for (i = list.length - 1; i >= 0; i--) {
+      s = list[i];
+      if (!s || !skeleBefore[s.uid]) { list.splice(i, 1); removed++; }
+    }
+    if (removed && typeof window.renderSummonPanel === 'function') window.renderSummonPanel(true);
   }
 
   // ---- 📊 來源拆帳（玩家／每個傭兵／每種寵物·召喚物） ------------------------
@@ -503,10 +554,14 @@
   function enterTraining() {
     if (!player || !player.cls) { alert('請先載入角色，再進木人場。'); return; }
     // 防重入：人已在木人場地圖上 → 只重擺怪+DPS歸零，絕不重抓 backup（避免把木人場狀態記成「進場前」）
-    if (inTrain()) { refillTeam(); spawnTrainingMobs(); resetDps(); closePicker(); openHud(); refreshHud(); return; }
+    if (inTrain()) { if (!skele) dismissExtraSkeletons(); refillTeam(); spawnTrainingMobs(); resetDps(); closePicker(); openHud(); refreshHud(); return; }
     // 進場前：把整個 mapState 全鍵快照存起來（離場還原用，確保離開時換回真實狀態）
     var msSnap = {}; for (var bk in mapState) msSnap[bk] = mapState[bk];
     backup = { ms: msSnap };
+    skeleBefore = {};   // 進場前就跟著的骷髏：離場時要留下來（在這裡記，才分得出哪幾隻是木人場召的）
+    if (typeof window.necroSkeletonList === 'function') {
+      window.necroSkeletonList().forEach(function (s) { if (s && s.uid != null) skeleBefore[s.uid] = 1; });
+    }
     if (player.dead) { player.dead = false; player.hp = player.mhp; }
     mapState.current = TRAIN_MAP;   // ← 設了這個 inTrain() 就成立(零旗標)
     mapState.mobs = [null, null, null, null, null];
@@ -803,6 +858,9 @@
         '</select></div>' +
         '<label class="m-train-opt-row" title="勾起來：玩家／傭兵／寵物的 MP 都不會見底，量的是無限藍的爆發上限。不勾＝真實消耗（想重來一輪按「重新計算」就會補滿）。">' +
         '<input type="checkbox" id="m-train-nomp"><span>MP 不消耗</span></label>' +
+        '<label class="m-train-opt-row" title="木人場的怪不會死＝沒有擊殺，骷髏平常靠擊殺喚起。勾起來就直接補到滿，離開木人場時收回。">' +
+        '<input type="checkbox" id="m-train-skele"><span>召喚骷髏（死靈之書）</span></label>' +
+        '<div id="m-train-skele-hint" class="m-train-opt-hint"></div>' +
         '<div id="m-train-rows"></div>' +
         '<div class="m-train-modal-btns">' +
         '<button id="m-train-go" type="button" class="m-train-btn m-train-btn-amber">進入木人場</button>' +
@@ -819,6 +877,8 @@
         if (msel) worldMode = (msel.value === 'sherine' || msel.value === 'mad') ? msel.value : 'normal';
         var nchk = document.getElementById('m-train-nomp');
         if (nchk) noMp = !!nchk.checked;
+        var schk = document.getElementById('m-train-skele');
+        if (schk) skele = !!schk.checked;
         saveSlots();
         enterTraining();
       });
@@ -828,6 +888,15 @@
     if (msel0) msel0.value = worldMode;
     var nchk0 = document.getElementById('m-train-nomp');
     if (nchk0) nchk0.checked = noMp;
+    var schk0 = document.getElementById('m-train-skele');
+    if (schk0) schk0.checked = skele;
+    // 條件不足時勾了也不會有骷髏出現（核心的 necroBookOnKill 會直接 return）→ 直接說出要補什麼
+    var shint = document.getElementById('m-train-skele-hint');
+    if (shint) {
+      var necroOk = necroReady();
+      shint.textContent = necroOk ? '' : '要裝上死靈之書、並在技能欄勾選造屍術的自動施放，骷髏才會出現。';
+      shint.style.display = necroOk ? 'none' : '';
+    }
     document.getElementById('m-train-go').textContent = inTrain() ? '套用變更' : '進入木人場';
     modal.style.display = 'flex';
   }
@@ -886,6 +955,7 @@
   function slotsKey() { return SLOTS_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
   function modeKey() { return MODE_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
   function nompKey() { return NOMP_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
+  function skeleKey() { return SKELE_KEY + '_' + ((typeof currentSlot !== 'undefined') ? currentSlot : 1); }
   function loadSlots() {
     slots = [DEFAULT_MOB, null, null, null, null];
     try {
@@ -897,8 +967,10 @@
     try { var m = localStorage.getItem(modeKey()); if (m === 'sherine' || m === 'mad') worldMode = m; } catch (e) { /* ignore */ }
     noMp = false;
     try { noMp = localStorage.getItem(nompKey()) === '1'; } catch (e) { /* ignore */ }
+    skele = false;
+    try { skele = localStorage.getItem(skeleKey()) === '1'; } catch (e) { /* ignore */ }
   }
-  function saveSlots() { try { localStorage.setItem(slotsKey(), JSON.stringify(slots)); localStorage.setItem(modeKey(), worldMode); localStorage.setItem(nompKey(), noMp ? '1' : '0'); } catch (e) { /* ignore */ } }
+  function saveSlots() { try { localStorage.setItem(slotsKey(), JSON.stringify(slots)); localStorage.setItem(modeKey(), worldMode); localStorage.setItem(nompKey(), noMp ? '1' : '0'); localStorage.setItem(skeleKey(), skele ? '1' : '0'); } catch (e) { /* ignore */ } }
 
   // ---- 入口：自動化面板「🔌 外掛」列加一顆鈕（沿用 afk-dex 的共用列 id；木人場自成一列、不擠進查詢鈕排） ----
   function injectAutoNav() {
@@ -948,6 +1020,7 @@
       '.m-train-mode-row select{flex:1;min-width:0;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#e2e8f0;padding:6px 4px;font-size:13px;outline:none;}',
       '.m-train-opt-row{display:flex;align-items:center;gap:8px;padding:0 14px 10px;font-size:13px;color:#cbd5e1;cursor:pointer;user-select:none;}',
       '.m-train-opt-row input{width:16px;height:16px;accent-color:#d97706;flex:none;}',
+      '.m-train-opt-hint{padding:0 14px 10px 38px;margin-top:-8px;font-size:12px;color:#fca5a5;line-height:1.4;}',
       '.m-train-tabs{display:flex;gap:4px;margin-bottom:6px;}',
       '.m-train-tab{flex:1;cursor:pointer;border-radius:6px;padding:4px 2px;font-size:11px;background:#1e293b;border:1px solid #334155;color:#94a3b8;white-space:nowrap;}',
       '.m-train-tab.on{background:#334155;border-color:#64748b;color:#e2e8f0;font-weight:bold;}',

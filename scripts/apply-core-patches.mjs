@@ -308,6 +308,62 @@ function patchGiltasWandRecompute() {
   console.log(`[patch] 吉爾塔斯魔杖不再每殺必重算（${FILE}）`);
 }
 
+
+// ── 補丁 10：js/10 裝備分頁的部位條列補上「魔眼」欄 ──────────────────
+//   上游把魔眼欄(slot:'eye'·地龍之魔眼)只加進 js/19 的圖形裝備視窗第 2 頁,js/10 renderTabs 裡
+//   那份寫死的部位清單 _baseSlots 沒跟上 → 條列式看不到這個欄位。
+//   上游看不出問題(圖形視窗蓋在條列上面),但加掛版的 afk-eqlist 預設就是走條列 → 玩家裝上魔眼後
+//   整個介面都找不到它,只能從背包點回去才知道有沒有裝上(玩家回報 2026-08-09)。
+//   清單是 renderTabs 內的區域 const,外掛包不住;自己在 DOM 補一列則要複製整段列渲染(套裝發光/
+//   角標/點擊開視窗),故走錨點補丁改那個字面值——同一個 forEach 畫出來,行為與其他欄位完全一致。
+//   ⚠ 第一頁是 4×6=24 格,補進去後一般裝備欄 21(戰士雙斧 22)格,仍在 24 內 → 遺骸 8 格照樣落在第 25 格起。
+function patchEyeSlotInEquipList() {
+  const FILE = 'js/10-ui-tabs.js';
+  let s = readFileSync(FILE, 'utf8');
+  if (s.includes("{k:'eye',n:'魔眼'}")) { already++; return; }
+
+  const FROM = "{k:'doll',n:'魔法娃娃'},{k:'arrow',n:'箭矢'}]";
+  const TO = "{k:'doll',n:'魔法娃娃'},{k:'arrow',n:'箭矢'},{k:'eye',n:'魔眼'}]";
+  if (s.indexOf(FROM) < 0) throw new Error(`[${FILE}] 找不到裝備分頁部位清單(_baseSlots)的錨點——上游可能改寫了該清單,請人工檢查魔眼欄是否已由上游補上。`);
+  s = s.replace(FROM, TO);
+
+  if (!CHECK) writeFileSync(FILE, s);
+  changed++;
+  console.log(`[patch] 裝備條列補上魔眼欄（${FILE}）`);
+}
+
+// ── 補丁 11：gainItem 遺物詞綴鉤子 ──────────────────────────────────
+//   上游把遺物寫死排除在詞綴分支外（`!isRelic(d)`），而那是全遊戲產生詞綴的唯一入口。
+//   外掛從外面包 gainItem 攔不到：等它跑完，物品已依「白板簽章」併進既有那一疊、掉落訊息
+//   也印完了 → 事後改會改到整疊，要正確就得自己重寫核心的堆疊/日誌邏輯。
+//   故比照補丁 2（__afkTradRollEn）加一個問外掛的鉤子：afk-relicaffix.js 提供 __afkRelicAffix，
+//   決定這件遺物要不要帶祝福/遠古系/屬性。未載外掛/未開 → 回 null（或函式不存在）＝與原版一致。
+//   forceNormal（潘朵拉遺物布告欄）與 _noAffixCtx（寵物白板）沿用核心語意：兩者一律不問鉤子。
+function patchRelicAffixHook() {
+  const FILE = 'js/08-items-equip.js';
+  let s = readFileSync(FILE, 'utf8');
+  if (s.includes('__afkRelicAffix')) { already++; return; }
+
+  const ANCHOR = '    // 🔮 席琳套裝詞綴：';   // 席琳那段註解＋`let seteff = false;` 是一體的，插在它前面才不會把註解跟它解釋的那行拆開
+  if (s.indexOf(ANCHOR) < 0) throw new Error(`[${FILE}] 找不到 gainItem 的席琳套裝詞綴錨點——上游可能改寫了詞綴段，請人工檢查後更新錨點。`);
+
+  const EOL = s.includes('\r\n') ? '\r\n' : '\n';   // 核心是上游原檔鏡像（CRLF），插入行要跟著，否則整檔混行尾
+  const INSERT = [
+    "    // 🔌 加掛版補丁：遺物詞綴鉤子（外掛 afk-relicaffix 提供；未載/未開→null＝完全同原版）",
+    "    if (!forceNormal && !_noAffixCtx && typeof window.__afkRelicAffix === 'function') {",
+    "        let _ra = window.__afkRelicAffix(d, id);",
+    "        if (_ra) { bless = _ra.bless || false; anc = _ra.anc || false; attr = _ra.attr || false; }",
+    "    }",
+    "",
+  ].join(EOL) + EOL;
+  s = s.replace(ANCHOR, INSERT + ANCHOR);
+
+  if (!CHECK) writeFileSync(FILE, s);
+  changed++;
+  console.log(`[patch] gainItem 遺物詞綴鉤子（${FILE}）`);
+}
+
+
 const PATCHES = [
     patchMaybeSpawnMobs,
     patchTradEnHook,
@@ -317,13 +373,14 @@ const PATCHES = [
     patchUseItemKeepModal,
     patchSellNowNoForce,
     patchInsigniaOrder,
-
-    // upstream
     patchGiltasWandRecompute,
+    patchEyeSlotInEquipList,
+    patchRelicAffixHook,
 
     // 城堡系統（集中於 apply-castle-patches.mjs）
     ...castlePatches
 ];
+
 
 try {
   for (const p of PATCHES) p();

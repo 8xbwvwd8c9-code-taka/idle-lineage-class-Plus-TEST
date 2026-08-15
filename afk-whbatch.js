@@ -50,7 +50,6 @@
         }
     }
 
-    var CONFIRM_OVER = 30;        // 超過這麼多格才跳確認(少量搬移不打斷手感)
     var _batch = false;           // 批次模式開關
     var selInv = {}, selWh = {};  // 已勾選的 uid(跨重繪保留;執行後清空)
 
@@ -63,6 +62,31 @@
     function noStore(id) { var L = core('WH_NO_STORE', []); return !!(L && L.indexOf && L.indexOf(id) >= 0); }
     function whMax() { var v = core('WH_MAX', 5000); return (typeof v === 'number' && v > 0) ? v : 5000; }
     function say(html) { try { if (typeof logSys === 'function') logSys(html); } catch (e) {} }
+
+    // ── 搬移中的遮罩 ───────────────────────────────────────────────
+    // 搬移本身很便宜(索引化的單趟掃描),貴的是**搬完之後把兩份清單整個重畫**——成本看的是
+    // 「清單有幾列」而不是「搬了幾件」,所以只搬 10 件進一個 4,500 格的倉庫一樣慢。
+    // 實測(真實存檔·背包 2000／倉庫 4500·CPU 4 倍節流≈中階手機)整趟 2.8 秒,其中
+    // 重畫倉庫面板 1.22 秒、存檔 0.69 秒、重畫背包分頁 0.19 秒 —— 都是同步的,期間畫面完全不動。
+    // 沒有便宜的加速法(要快得重寫核心的清單渲染成虛擬捲動),所以改成「先讓玩家知道在忙」。
+    var BUSY_MIN_ROWS = 500;   // 要重畫的總列數;低於此在手機上也 100ms 內做完,跳個遮罩反而是閃一下
+    function rowsAbout() {
+        try { return ((player && player.inv) || []).length + ((loadWarehouse() || {}).items || []).length; }
+        catch (e) { return 0; }
+    }
+    function busy(work) {
+        if (rowsAbout() < BUSY_MIN_ROWS) { work(); return; }
+        var el = document.createElement('div');
+        el.id = 'afk-whb-busy';
+        el.innerHTML = '<div>搬移中，請稍候…</div>';
+        document.body.appendChild(el);
+        // rAF 之後再 setTimeout(0):只用其中一個,同步的重活會跟這次插入合併進同一幀 → 遮罩根本沒被畫出來。
+        requestAnimationFrame(function () {
+            setTimeout(function () {
+                try { work(); } finally { var e = document.getElementById('afk-whb-busy'); if (e) e.remove(); }
+            }, 0);
+        });
+    }
 
     // ── sig 索引:等價於核心 _whStackFind(同 sig 取最先出現者·gw 永不合併) ──────
     function buildSigIdx(arr) {
@@ -162,16 +186,6 @@
         try { renderWarehouseNPC(document.getElementById('interaction-content')); } catch (e) {}
     }
 
-    // 大批量先確認(取出/存入都會動到存檔,手滑點到全選+執行代價不小)
-    function confirmRun(kind, uids, fn) {
-        var c = uids.length;
-        if (c <= CONFIRM_OVER) { fn(uids); return; }
-        var msg = '即將' + kind + ' ' + c + ' 格（整疊搬移）。\n\n這會寫入存檔與倉庫各一次，過程中請不要關掉頁面。';
-        if (window.AFK_UI && AFK_UI.confirm) {
-            AFK_UI.confirm({ title: '批次' + kind, message: msg, okText: '開始' + kind, cancelText: '再想想', onOk: function () { fn(uids); } });
-        } else if (window.confirm(msg)) fn(uids);
-    }
-
     // ── UI ────────────────────────────────────────────────────────
     function css() {
         if (document.getElementById('afk-whb-css')) return;
@@ -191,7 +205,12 @@
             '.afk-whb-mode [data-tip-uid].afk-whb-on::before{content:"☑ ";color:#22d3ee;}',
             '.afk-whb-mode [data-tip-uid].afk-whb-on{background:rgba(14,116,144,.45) !important;border-color:#22d3ee !important;}',
             '.afk-whb-mode [data-tip-uid].afk-whb-no{opacity:.4;}',
-            '.afk-whb-mode [data-tip-uid].afk-whb-no::before{content:"— ";}'
+            '.afk-whb-mode [data-tip-uid].afk-whb-no::before{content:"— ";}',
+            /* 搬移中遮罩:蓋住整個畫面才擋得住「以為沒反應又多點幾下」 */
+            '#afk-whb-busy{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;',
+            '  background:rgba(2,6,23,.72);}',
+            '#afk-whb-busy>div{padding:14px 22px;border-radius:10px;background:#0b1220;border:1px solid #0891b2;',
+            '  color:#cffafe;font-size:15px;font-weight:bold;}'
         ].join('');
         (document.head || document.documentElement).appendChild(s);
     }
@@ -272,7 +291,7 @@
                 return function () {
                     var uids = []; for (var k in sel) if (sel[k]) uids.push(k);
                     if (!uids.length) return;
-                    confirmRun(act, uids, side === 'wh' ? runWithdraw : runDeposit);
+                    busy(function () { (side === 'wh' ? runWithdraw : runDeposit)(uids); });
                 };
             })(d.side, d.sel, d.act), !cnt);
         }
