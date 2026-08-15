@@ -900,7 +900,7 @@
     function renderCastleBuildingsPanel(container) {
         try {
             if (!container) {
-                container = document.getElementById('castle-buildings-panel') || document.getElementById('interaction-content');
+                container = document.getElementById('interaction-content');
                 if (!container) return;
             }
 
@@ -1160,72 +1160,6 @@
             }
         } catch (e) {
             console.error('[CastleBuildings] render error:', e);
-        }
-    }
-
-    /**
-     * 渲染建築收集冊面板
-     * @param {HTMLElement} container - 要渲染到的容器元素
-     */
-    function renderBuildingAlbum(container) {
-        try {
-            if (!container) {
-                container = document.getElementById('castle-album-panel');
-                if (!container) return;
-            }
-
-            var html = '';
-            html += '<div style="padding:10px;font-family:monospace;font-size:14px;color:#eee;">';
-            html += '<div style="font-size:16px;font-weight:bold;margin-bottom:10px;">📖 建築收集冊</div>';
-
-            var totalCollected = 0;
-            var totalPossible = BUILDING_IDS.length * 5; // 12 棟 × 5 級
-
-            html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;">';
-
-            for (var i = 0; i < BUILDING_IDS.length; i++) {
-                var id = BUILDING_IDS[i];
-                var cfg = BUILDING_DATA[id];
-                if (!cfg) continue;
-
-                html += '<div style="border:1px solid #555;border-radius:4px;padding:6px;background:rgba(0,0,0,0.3);">';
-                html += '<div style="font-size:13px;font-weight:bold;margin-bottom:4px;">' + cfg.emoji + ' ' + cfg.name + '</div>';
-
-                for (var lv = 1; lv <= 5; lv++) {
-                    var key = id + '_lv' + lv;
-                    var collected = buildingDexHas(key);
-                    if (collected) totalCollected++;
-                    html += '<span style="display:inline-block;width:28px;height:20px;line-height:20px;text-align:center;font-size:11px;margin:1px;border-radius:3px;';
-                    if (collected) {
-                        html += 'background:#2a6;color:#fff;">Lv' + lv;
-                    } else {
-                        html += 'background:#333;color:#666;">?';
-                    }
-                    html += '</span>';
-                }
-
-                html += '</div>';
-            }
-
-            html += '</div>';
-
-            // 進度
-            var pct = totalPossible > 0 ? ((totalCollected / totalPossible) * 100).toFixed(1) : 0;
-            html += '<div style="margin-top:10px;text-align:center;font-size:13px;color:#aaa;">';
-            html += '收集進度：' + totalCollected + ' / ' + totalPossible + '（' + pct + '%）';
-            html += '</div>';
-
-            // 全收集獎勵
-            if (hasFullCollectionBonus()) {
-                html += '<div style="margin-top:8px;padding:6px;background:linear-gradient(90deg,#828,#448);border-radius:4px;text-align:center;font-size:13px;color:#ff8;">';
-                html += '🏆 全收集獎勵已啟用：所有建築效果 +1%';
-                html += '</div>';
-            }
-
-            html += '</div>';
-            container.innerHTML = html;
-        } catch (e) {
-            console.error('[CastleBuildings] renderAlbum error:', e);
         }
     }
 
@@ -1539,8 +1473,6 @@
     function updateCountdowns() {
         try {
             var containers = [];
-            var panel = document.getElementById('castle-buildings-panel');
-            if (panel && panel.offsetParent !== null) containers.push(panel);
             var npcPanel = document.getElementById('interaction-content');
             if (npcPanel && npcPanel.offsetParent !== null && npcPanel.querySelector('.castle-upgrade-btn')) {
                 containers.push(npcPanel);
